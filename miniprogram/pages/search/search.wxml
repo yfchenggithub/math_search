@@ -1,0 +1,133 @@
+<view class="page">
+
+  <!-- ✅ iOS安全区头部 -->
+  <view 
+    class="header"
+    style="padding-top: calc({{statusBarHeight}}px + 20rpx);"
+  >
+    <view class="title">📚 二级结论库</view>
+    <view class="sub">
+      共 {{total}} 条结论 ｜ 近三年高频 {{hotCount}} 条
+    </view>
+  </view>
+
+  <!-- 统计卡 -->
+  <view class="stats-card">
+    <view class="stat-item">
+      <view class="num">{{learned}} / {{total}}</view>
+      <view class="label">已掌握</view>
+    </view>
+
+    <view class="stat-item">
+      <view class="num">{{rate1}}%</view>
+      <view class="label">高频掌握率</view>
+    </view>
+
+    <view class="stat-item">
+      <view class="num">{{rate2}}%</view>
+      <view class="label">近三年掌握率</view>
+    </view>
+  </view>
+
+  <!-- 搜索框 -->
+  <view class="search-box">
+    <text>🔍</text>
+    <input
+      class="search-input"
+      value="{{query}}"
+      bindinput="onInput"
+      focus="{{focus}}"
+      placeholder="搜索：恒成立 / 参数范围 / 2025"
+    />
+
+    <!-- 清除按钮 -->
+    <view wx:if="{{showClear}}" class="clear-btn" bindtap="onClear">
+      X
+    </view>
+</view>
+
+<!-- 🔥 自动补全建议（必须在搜索框下面） -->
+<view wx:if="{{query && suggestions.length > 0}}" class="suggest-box">
+  <block wx:for="{{suggestions}}" wx:key="index">
+    <view 
+      class="suggest-item"
+      data-text="{{item}}"
+      bindtap="onSuggestionTap"
+    >
+      🔍 {{item}}
+    </view>
+  </block>
+</view>
+
+  <!-- tabs -->
+  <scroll-view scroll-x class="tabs">
+    <view 
+      class="tab {{activeTab === item ? 'active' : ''}}"
+      wx:for="{{tabs}}"
+      wx:key="index"
+      bindtap="onTabTap"
+      data-tab="{{item}}"
+    >
+      {{item}}
+    </view>
+  </scroll-view>
+
+  <!-- 排序 -->
+  <view class="sort">
+    🔥 默认：按近三年累计分数排序
+  </view>
+
+  <!-- 列表 -->
+  <scroll-view scroll-y class="list">
+
+    <view 
+      class="card"
+      wx:for="{{results}}"
+      wx:key="id"
+      bindtap="onResultTap"
+      data-id="{{item.id}}"
+    >
+
+    <view class="card-top">
+      <view class="card-title">
+        <block wx:for="{{item.titleSegments}}" wx:key="index">
+          <text class="{{item.highlight ? 'hl' : ''}}">
+            {{item.text}}
+          </text>
+        </block>
+      </view>
+
+      <view class="score">🏆 累计{{item.score}}分</view>
+
+    </view>
+
+      <view class="formula">
+        {{item.formula}}
+      </view>
+
+      <view class="tags">
+        <text class="tag">模块：{{item.module}}</text>
+        <text class="tag">难度：{{item.level}}</text>
+        <text class="tag">频率：{{item.freq}}</text>
+        <text class="tag red">近三年 {{item.recentScore}} 分</text>
+      </view>
+
+      <view class="usage">
+        📌 {{item.usage}}
+      </view>
+
+    <view class="footer">
+      <view 
+        class="detail-btn"
+        bindtap="onResultTap"
+        data-id="{{item.id}}"
+      >
+        查看详情
+      </view>
+    </view>
+
+    </view>
+
+  </scroll-view>
+
+</view>

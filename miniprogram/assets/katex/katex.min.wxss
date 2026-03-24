@@ -1,0 +1,154 @@
+/* ================================
+   KaTeX WXSS 稳定版（小程序专用）
+   ================================ */
+
+/* ===== 核心容器 ===== */
+.katex {
+  font-family: Times New Roman, serif;
+  font-size: 18px;
+  line-height: 1.4;
+  position: relative;
+  text-indent: 0;
+  white-space: nowrap;
+}
+
+/* 隐藏 MathML */
+.katex .katex-mathml {
+  display: none;
+}
+
+/* 换行支持 */
+.katex .katex-html > .newline {
+  display: block;
+}
+
+/* 基础块 */
+.katex .base {
+  display: inline-block;
+  position: relative;
+  white-space: nowrap;
+}
+
+.katex .strut {
+  display: inline-block;
+}
+
+/* 字体控制（退化为系统字体） */
+.katex .textbf { font-weight: bold; }
+.katex .textit { font-style: italic; }
+.katex .mathrm { font-style: normal; }
+.katex .mathbf { font-weight: bold; }
+
+/* ===== 垂直排版系统（核心） ===== */
+.katex .vlist-t {
+  display: inline-table;
+  border-collapse: collapse;
+}
+
+.katex .vlist-r {
+  display: table-row;
+}
+
+.katex .vlist {
+  display: table-cell;
+  position: relative;
+  vertical-align: bottom;
+}
+
+.katex .vlist > span {
+  display: block;
+  position: relative;
+}
+
+/* ===== 上下标 ===== */
+.katex .msupsub {
+  text-align: left;
+  font-size: 0.8em;
+}
+
+/* ===== 分数 ===== */
+.katex .mfrac {
+  display: inline-block;
+  text-align: center;
+}
+
+.katex .mfrac .frac-line {
+  border-bottom: 1px solid #000;
+  width: 100%;
+  display: inline-block;
+  margin: 2px 0;
+}
+
+/* ===== 根号 ===== */
+.katex .sqrt {
+  border-top: 1px solid #000;
+  padding-left: 4px;
+}
+
+/* ===== 间距 ===== */
+.katex .mspace {
+  display: inline-block;
+}
+
+/* ===== 表格（矩阵） ===== */
+.katex .mtable {
+  display: inline-table;
+  border-spacing: 4px;
+}
+
+.katex .mtr {
+  display: table-row;
+}
+
+.katex .mtd {
+  display: table-cell;
+  padding: 2px 4px;
+}
+
+/* ===== 线条 ===== */
+.katex .overline .overline-line,
+.katex .underline .underline-line,
+.katex .hline {
+  border-bottom: 1px solid #000;
+  display: inline-block;
+  width: 100%;
+}
+
+/* ===== box ===== */
+.katex .fbox {
+  border: 1px solid #000;
+  padding: 2px 4px;
+}
+
+/* ===== 删除线 ===== */
+.katex .sout {
+  border-bottom: 1px solid #000;
+}
+
+/* ===== SVG 支持（括号/大符号） ===== */
+.katex svg {
+  display: block;
+  width: 100%;
+  height: inherit;
+  fill: currentColor;
+}
+
+/* ===== 显示模式 ===== */
+.katex-display {
+  display: block;
+  margin: 16px 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.katex-display > .katex {
+  display: block;
+  text-align: center;
+}
+
+/* ===== 防止挤压 ===== */
+.katex .mord,
+.katex .mrel,
+.katex .mop {
+  margin: 0 2px;
+}

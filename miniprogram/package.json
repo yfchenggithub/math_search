@@ -1,0 +1,16 @@
+{
+  "name": "miniprogram",
+  "version": "1.0.0",
+  "description": "交互设计\r 关键原则：",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "katex": "^0.16.40",
+    "mp-html": "^2.5.2"
+  }
+}

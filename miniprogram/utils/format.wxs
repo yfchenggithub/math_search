@@ -1,0 +1,11 @@
+// utils/format.wxs
+
+// 判断是否为数组，用于决定是单次渲染还是循环渲染
+var isArray = function(val) {
+  return val && val.constructor === 'Array';
+};
+
+// 导出模块
+module.exports = {
+  isArray: isArray
+};
