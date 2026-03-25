@@ -12,8 +12,8 @@ Page({
   // ========================
   // 状态（全部放 JS，不进 data）
   // ========================
-  scale: 1,
-  lastScale: 1,
+  scale: 1, //当前帧
+  lastScale: 1, //上一轮手势结果
 
   translateX: 0,
   translateY: 0,
@@ -28,7 +28,7 @@ Page({
   // ========================
   gesture: {
     startDistance: 0,
-    startScale: 1,
+    startScale: 1, //本轮起点
     startX: 0,
     startY: 0,
   },
@@ -337,9 +337,12 @@ Page({
 
     const touches = this.getTouches(e);
 
+    // ========================
+    // 【修改后】touchstart（双指）
+    // ========================
     if (touches.length === 2) {
       this.gesture.startDistance = this.getDistance(touches);
-      this.gesture.startScale = this.scale;
+      this.gesture.startScale = this.lastScale;
     }
 
     if (touches.length === 1) {
