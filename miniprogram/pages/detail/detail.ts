@@ -124,31 +124,72 @@ Page({
   // ========================
   // 【新增】计算边界
   // ========================
+  // ========================
+  // 【修改后】calcBounds（严格按真实坐标系）
+  // ========================
   calcBounds() {
     const scaledW = this.contentWidth * this.scale;
     const scaledH = this.contentHeight * this.scale;
 
-    const maxX = Math.max(0, (scaledW - this.containerWidth) / 2);
-    const maxY = Math.max(0, (scaledH - this.containerHeight) / 2);
+    let minX: number, maxX: number;
+    let minY: number, maxY: number;
 
-    return {
-      minX: -maxX,
-      maxX: maxX,
-      minY: -maxY,
-      maxY: maxY,
-    };
+    // ===== 横向 =====
+    if (scaledW > this.containerWidth) {
+      // 👉 可拖动
+      minX = this.containerWidth - scaledW;
+      maxX = 0;
+    } else {
+      // 👉 居中（不能拖）
+      const center = (this.containerWidth - scaledW) / 2;
+      minX = maxX = center;
+    }
+
+    // ===== 纵向（关键修复点）=====
+    if (scaledH > this.containerHeight) {
+      // 👉 可拖动（允许看到顶部）
+      minY = this.containerHeight - scaledH;
+      maxY = 0;
+    } else {
+      // 👉 居中
+      const center = (this.containerHeight - scaledH) / 2;
+      minY = maxY = center;
+    }
+
+    return { minX, maxX, minY, maxY };
   },
 
   // ========================
   // 【新增】阻尼（橡皮筋）
   // ========================
+  // ========================
+  // 【修改后】阻尼函数（只处理越界部分）
+  // ========================
   applyResistance(value: number, min: number, max: number) {
+    // ✅ 在边界内：完全不处理
+    if (value >= min && value <= max) {
+      return value;
+    }
+
+    // ===== 下越界 =====
     if (value < min) {
-      return min + (value - min) * 0.3;
+      const delta = value - min; // 超出距离（负数）
+
+      // 👉 阻尼（越远越难）
+      const resisted = delta * 0.35;
+
+      return min + resisted;
     }
+
+    // ===== 上越界 =====
     if (value > max) {
-      return max + (value - max) * 0.3;
+      const delta = value - max;
+
+      const resisted = delta * 0.35;
+
+      return max + resisted;
     }
+
     return value;
   },
 
@@ -341,14 +382,14 @@ Page({
       }
 
       if (touches.length === 1 && this.scale > 1) {
-        let x = touches[0].pageX - this.gesture.startX;
-        let y = touches[0].pageY - this.gesture.startY;
+        let rawX = touches[0].pageX - this.gesture.startX;
+        let rawY = touches[0].pageY - this.gesture.startY;
 
         const bounds = this.calcBounds();
 
-        // 👉 阻尼处理
-        this.translateX = this.applyResistance(x, bounds.minX, bounds.maxX);
-        this.translateY = this.applyResistance(y, bounds.minY, bounds.maxY);
+        // ❗先用 raw 值判断
+        this.translateX = this.applyResistance(rawX, bounds.minX, bounds.maxX);
+        this.translateY = this.applyResistance(rawY, bounds.minY, bounds.maxY);
 
         // 👉 计算速度
         const now = Date.now();
