@@ -192,11 +192,12 @@ Page({
 
   getModuleById(id: string): string {
     if (id.startsWith("I")) return "inequality";
-    return "inequality";
+    if (id.startsWith("V")) return "vector";
+    return "vector";
   },
 
   // 用户点击详情后可以到达结论的详情页面
-  onResultTap(e: any) {
+  onDetailTap(e: any) {
     const id = e.currentTarget.dataset.id;
     wx.navigateTo({
       url: `/pages/detail/detail?id=${id}`,

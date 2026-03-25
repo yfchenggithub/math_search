@@ -1,84 +1,28 @@
-<wxs src="../../utils/format.wxs" module="tools" />
-
-<view class="container">
-  <nav-bar title="二级结论" showBack="{{true}}" backText="搜索" bind:back="onNavBack" />
-  <!-- 顶部 -->
-  <view class="header">
-    <view class="title">{{detail.title}}</view>
-  </view>
-
-  <!-- 结论表述 -->
-  <view wx:if="{{detail.statement_html}}" class="card highlight">
-    <view class="card-title">📌 结论</view>
-    <view class="card-content">
-    <mp-html class="card-content" content="{{detail.statement}}" />
+<scroll-view
+  scroll-y
+  class="page"
+  enhanced
+  show-scrollbar="false"
+>
+  <view class="container">
+    <view
+      class="viewer"
+      catchtouchstart="onTouchStart"
+      catchtouchmove="onTouchMove"
+      catchtouchend="onTouchEnd"
+    >
+      <!-- SVG 容器（可换成 inline svg 或 rich-text） -->
+      <view
+        id="svgWrapper"
+        class="svg-wrapper"
+        style="{{transformStyle}}"
+      >
+        <image
+          src="{{svgUrl}}"
+          mode="aspectFit"
+          class="svg-image"
+        />
+      </view>
     </view>
   </view>
-
-
-<view class="card">
-  <view class="card-title">📌 核心结论</view>
-  <block wx:if="{{tools.isArray(detail.statement_html)}}">
-    <view>
-      <mp-html 
-        wx:for="{{detail.statement_html}}" 
-        wx:key="index" 
-        content="{{item}}" 
-        class="card-content"
-      />
-      <view>
-    </view>
-  </block>
-  <block wx:else>
-    <mp-html content="{{detail.statement_search}}" />
-  </block>
-</view>
-
-
-  <!-- 理解解释 -->
-  <view wx:if="{{detail.explanation_html}}" class="card">
-    <view class="card-title">🧠 理解解释</view>
-    <mp-html class="card-content" content="{{detail.explanation_html}}" />
-  </view>
-
-  <!-- 证明（可折叠） -->
-  <view wx:if="{{detail.proof_html}}" class="card">
-    <view class="card-title" bindtap="toggleProof">
-      📖 证明过程
-      <text class="toggle">{{showProof ? '收起' : '展开'}}</text>
-    </view>
-    <view wx:if="{{showProof}}" class="card-content">
-      <mp-html content="{{detail.proof_html}}" />
-    </view>
-  </view>
-
-<view class="section-container" wx:if="{{detail.proof_html}}">
-  <view class="section-title">推导证明</view>
-  <block wx:if="{{tools.isArray(detail.proof_html)}}">
-    <mp-html 
-      wx:for="{{detail.proof_html}}" 
-      wx:key="index" 
-      content="{{item}}" 
-    />
-  </block>
-  <mp-html wx:else content="{{detail.proof_html}}" />
-</view>
-
-  <!-- 示例 -->
-  <view wx:if="{{detail.examples_html}}" class="card">
-    <view class="card-title">🧪 典型例题</view>
-    <mp-html content="{{detail.examples_html}}" />
-  </view>
-
-  <!-- 易错点 -->
-  <view wx:if="{{detail.traps_html}}" class="card warning">
-    <view class="card-title">⚠️ 易错点</view>
-    <mp-html content="{{detail.traps_html}}" />
-  </view>
-
-  <!-- 总结 -->
-  <view wx:if="{{detail.summary_text_html}}" class="card success">
-    <view class="card-title">🧠 一句话总结</view>
-    <mp-html content="{{detail.summary_text_html}}"/>
-  </view>
-</view>
+</scroll-view>

@@ -14,7 +14,7 @@
     "useLanDebug": false,
     "showES6CompileOption": false,
     "compileHotReLoad": true,
-    "bigPackageSizeSupport": false,
+    "bigPackageSizeSupport": true,
     "checkInvalidKey": true,
     "ignoreDevUnusedFiles": true
   },
@@ -22,11 +22,18 @@
     "miniprogram": {
       "list": [
         {
-          "name": "pages/search/search",
-          "pathName": "pages/search/search",
+          "name": "pages/detail/detail",
+          "pathName": "pages/detail/detail",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "pages/search/search",
+          "pathName": "pages/search/search",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         }
       ]
     }

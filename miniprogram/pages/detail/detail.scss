@@ -1,105 +1,37 @@
-/* KaTeX 公式优化 */
-.katex {
-  font-size: 18px;
-  vertical-align: middle;
-}
-
-/* 块级公式防溢出 */
-.katex-display {
-  overflow-x: auto;
-  overflow-y: hidden;
-  margin: 12px 0;
+.page {
+  height: 100vh;
 }
 
 .container {
-  padding: 24rpx;
-  background: #f7f8fa;
+  height: 200vh; /* 用来测试滚动 */
 }
 
-.header {
-  margin-bottom: 24rpx;
-
-  .title {
-    font-size: 40rpx;
-    font-weight: 700;
-    color: #111;
-  }
-
-  .module {
-    font-size: 24rpx;
-    color: #888;
-    margin-top: 8rpx;
-  }
+.viewer {
+  width: 100%;
+  height: 500px;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
 }
 
-.card {
-  background: #fff;
-  border-radius: 16rpx;
-  padding: 20rpx;
-  margin-bottom: 20rpx;
-  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.04);
+.svg-wrapper {
+  width: 100%;
+  height: 100%;
 
-  .card-title {
-    font-size: 28rpx;
-    font-weight: 600;
-    margin-bottom: 12rpx;
-  }
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-  .card-content {
-    font-size: 26rpx;
-    color: #333;
-    line-height: 1.6;
-  }
+  /* ✅ GPU 加速 */
+  will-change: transform;
+  transform-origin: 0 0;
 
-  .formula {
-    font-size: 30rpx;
-    font-weight: 500;
-    color: #2d5cff;
-  }
+  /* ✅ 防闪关键 */
+  backface-visibility: hidden;
 }
 
-.highlight {
-  border-left: 6rpx solid #2d5cff;
-}
-
-.warning {
-  border-left: 6rpx solid #ff4d4f;
-  background: #fff7f7;
-}
-
-.success {
-  border-left: 6rpx solid #52c41a;
-  background: #f6ffed;
-}
-
-.toggle {
-  float: right;
-  color: #999;
-  font-size: 24rpx;
-}
-
-.section-container {
-  padding: 30rpx;
-  background: #fff;
-  margin-bottom: 20rpx;
-}
-
-.section-title {
-  font-weight: bold;
-  border-left: 8rpx solid #007aff;
-  padding-left: 20rpx;
-  margin-bottom: 30rpx;
-}
-
-/* 针对 list-wrapper 内部的 li 样式优化 */
-.list-wrapper {
-  /* 如果你的 splitter 包装的是 <li>，可以在这里统一列表编号样式 */
-  padding-left: 10rpx;
-  display: block;
-}
-
-/* 减小分块间的垂直间距，使公式衔接自然 */
-mp-html {
-  display: block;
-  line-height: 1.6;
+.svg-image {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }

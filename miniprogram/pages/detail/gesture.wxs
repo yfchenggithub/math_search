@@ -1,0 +1,68 @@
+/* ========================================
+WXS 手势引擎（纯计算 + 返回数据）
+======================================== */
+
+var scale = 1;
+var x = 0;
+var y = 0;
+
+var startDistance = 0;
+var startScale = 1;
+var startX = 0;
+var startY = 0;
+
+function getDistance(touches) {
+  var dx = touches[0].pageX - touches[1].pageX;
+  var dy = touches[0].pageY - touches[1].pageY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function touchstart(e) {
+  var touches = e.touches;
+
+  if (touches.length === 2) {
+    startDistance = getDistance(touches);
+    startScale = scale;
+  } else {
+    startX = touches[0].pageX - x;
+    startY = touches[0].pageY - y;
+  }
+
+  return { scale: scale, x: x, y: y };
+}
+
+function touchmove(e) {
+  var touches = e.touches;
+
+  if (touches.length === 2) {
+    var newDistance = getDistance(touches);
+    scale = (newDistance / startDistance) * startScale;
+
+    if (scale < 1) scale = 1;
+    if (scale > 4) scale = 4;
+  } else {
+    x = touches[0].pageX - startX;
+    y = touches[0].pageY - startY;
+  }
+
+  return { scale: scale, x: x, y: y };
+}
+
+function touchend() {
+  // 边界限制
+  var maxOffset = 150 * (scale - 1);
+
+  if (x > maxOffset) x = maxOffset;
+  if (x < -maxOffset) x = -maxOffset;
+
+  if (y > maxOffset) y = maxOffset;
+  if (y < -maxOffset) y = -maxOffset;
+
+  return { scale: scale, x: x, y: y };
+}
+
+module.exports = {
+  touchstart: touchstart,
+  touchmove: touchmove,
+  touchend: touchend,
+};

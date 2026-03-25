@@ -84,7 +84,7 @@
       class="card"
       wx:for="{{results}}"
       wx:key="id"
-      bindtap="onResultTap"
+      bindtap="onDetailTap"
       data-id="{{item.id}}"
     >
 
@@ -119,7 +119,7 @@
     <view class="footer">
       <view 
         class="detail-btn"
-        bindtap="onResultTap"
+        bindtap="onDetailTap"
         data-id="{{item.id}}"
       >
         查看详情
