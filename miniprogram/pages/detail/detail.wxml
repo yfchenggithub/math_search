@@ -1,28 +1,28 @@
-<scroll-view
-  scroll-y
-  class="page"
-  enhanced
-  show-scrollbar="false"
->
-  <view class="container">
+<view class="page">
+  <!-- 内容（占满） -->
+  <view
+    class="viewer"
+    catchtouchstart="onTouchStart"
+    catchtouchmove="onTouchMove"
+    catchtouchend="onTouchEnd"
+  >
     <view
-      class="viewer"
-      catchtouchstart="onTouchStart"
-      catchtouchmove="onTouchMove"
-      catchtouchend="onTouchEnd"
+      id="svgWrapper"
+      class="svg-wrapper"
+      style="{{transformStyle}}"
     >
-      <!-- SVG 容器（可换成 inline svg 或 rich-text） -->
-      <view
-        id="svgWrapper"
-        class="svg-wrapper"
-        style="{{transformStyle}}"
-      >
-        <image
-          src="{{svgUrl}}"
-          mode="aspectFit"
-          class="svg-image"
-        />
-      </view>
+      <image
+        src="{{svgUrl}}"
+        mode="widthFix"
+        class="svg-image"
+      />
     </view>
   </view>
-</scroll-view>
+
+  <view>
+    <button bindtap="openPdf" class="pdf-btn">
+      查看高清PDF
+    </button>
+  </view>
+
+</view>

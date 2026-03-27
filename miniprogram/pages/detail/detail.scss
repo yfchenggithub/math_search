@@ -1,19 +1,101 @@
+/* ========================
+   🎯 Design Tokens
+======================== */
+$bg: #fff;          // 页面灰（PDF阅读器背景）
+$paper: #ffffff;       // 纸张白
+$text: #111;
+$border: #e5e5e5;
+
+$spacing-sm: 16rpx;
+$spacing-md: 24rpx;
+
+$radius: 12rpx;
+
+/* ========================
+   🌐 Page
+======================== */
 .page {
-  height: 100vh;
+  height: 100vh; // 让页面占满整个屏幕
+  background: $bg; //定义“阅读环境”
+  display: flex;
+  flex-direction: column;
 }
 
-.container {
-  height: 200vh; /* 用来测试滚动 */
+/* ========================
+   📌 Toolbar（PDF风）
+======================== */
+.toolbar {
+  height: 88rpx; // 固定工具栏高度（小程序标准）
+  padding: 0 $spacing-md; // 左右留白，让按钮不贴边
+
+  display: flex;
+  align-items: center; // 垂直居中按钮
+  justify-content: flex-end;// 按钮靠右（符合工具栏习惯）
+
+  background: #fff;
+  border-bottom: 1rpx solid $border;
 }
 
+/* ========================
+   🔘 按钮（更明显）
+======================== */
+.pdf-btn {
+  padding: 10rpx 20rpx;
+
+  font-size: 26rpx;
+  color: #fff;
+
+  background: #007aff; // 关键：高对比
+  border-radius: 999rpx;// 变成胶囊按钮（现代 UI）
+
+  box-shadow: 0 4rpx 12rpx rgba(0, 122, 255, 0.3); // 更“可点击”
+
+  transition: all 0.2s ease; // 让交互不生硬（高级感来源）
+
+  &:active {
+    transform: scale(0.96);
+    opacity: 0.85;
+  } // 用户点击时：缩小 变暗 👉 反馈清晰  
+}
+
+/* ========================
+   🖼 Viewer
+======================== */
 .viewer {
-  width: 100%;
-  height: 500px;
-  overflow: hidden;
-  position: relative;
-  touch-action: none;
+  flex: 1; // 占满剩余空间（关键）
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  // padding: $spacing-md;
+
+  overflow: hidden; // 防止内容溢出
+  touch-action: none; // 允许你自己处理手势（缩放/拖动）
 }
 
+/* ========================
+   📄 PDF纸张（核心）
+======================== */
+.page-container {
+  width: 100%;
+  height: 100%;
+
+  background: $paper; // 白纸
+  border-radius: $radius; // 现代 UI（但 PDF 其实是直角）
+
+  /* 关键：纸张阴影 */
+  box-shadow: 0 8rpx 30rpx rgba(0, 0, 0, 0.08); // 让用户觉得这是“浮起来的一页纸”
+
+  overflow: hidden;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ========================
+   🔄 SVG Wrapper
+======================== */
 .svg-wrapper {
   width: 100%;
   height: 100%;
@@ -22,24 +104,18 @@
   align-items: center;
   justify-content: center;
 
-  /* ✅ GPU 加速 */
-  will-change: transform;
-  transform-origin: 0 0;
-
-  /* ✅ 防闪关键 */
-  backface-visibility: hidden;
+  transform-origin: 0 0;// 缩放从左上角开始
+  will-change: transform; // 浏览器优化性能（提前准备 GPU）
 }
 
+/* ========================
+   🧾 Image
+======================== */
 .svg-image {
   width: 100%;
   height: 100%;
-  pointer-events: none;
+
+  object-fit: contain; // 完整显示，不裁剪
+  pointer-events: none;// 让手势传递给父容器（用于缩放）
 }
 
-.svg-content svg {
-  width: 100%;
-  height: 100%;
-
-  /* ✅ 防止位图化 */
-  image-rendering: optimizeQuality;
-}

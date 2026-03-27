@@ -5,8 +5,9 @@ type TouchPoint = {
 
 Page({
   data: {
-    svgUrl: "/assets/svg/vector/001.svg",
+    svgUrl: "/assets/svg/vector/001.svg", // 上云
     transformStyle: "",
+    pdfPath: "http://192.168.0.101:3000/002.pdf", // 上云
   },
 
   // ========================
@@ -63,7 +64,32 @@ Page({
   raf(callback: Function) {
     return setTimeout(() => callback(), 16); // 约 60FPS
   },
+  openPdf() {
+    console.log("enter openPdf ");
+    const { pdfPath } = this.data;
 
+    wx.showLoading({ title: "加载中..." });
+
+    wx.downloadFile({
+      url: pdfPath,
+      success: (res) => {
+        wx.hideLoading();
+
+        if (res.statusCode === 200) {
+          wx.openDocument({
+            filePath: res.tempFilePath,
+            fileType: "pdf",
+          });
+        } else {
+          wx.showToast({ title: "下载失败", icon: "none" });
+        }
+      },
+      fail: () => {
+        wx.hideLoading();
+        wx.showToast({ title: "网络错误", icon: "none" });
+      },
+    });
+  },
   // ========================
   // 工具：距离计算
   // ========================
