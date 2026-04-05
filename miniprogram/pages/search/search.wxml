@@ -1,70 +1,66 @@
 <view class="page">
-
-  <!-- ✅ iOS安全区头部 -->
-  <view 
+  <view
     class="header"
     style="padding-top: calc({{statusBarHeight}}px + 20rpx);"
   >
-    <view class="title">📚 二级结论库</view>
+    <view class="title">数学搜索</view>
     <view class="sub">
-      共 {{total}} 条结论 ｜ 近三年高频 {{hotCount}} 条
+      共 {{total}} 条索引，热点考点 {{hotCount}} 条
     </view>
   </view>
 
-  <!-- 统计卡 -->
   <view class="stats-card">
     <view class="stat-item">
-      <view class="num">{{learned}} / {{total}}</view>
-      <view class="label">已掌握</view>
+      <view class="num">{{learned}}</view>
+      <view class="label">已入索引</view>
     </view>
 
     <view class="stat-item">
       <view class="num">{{rate1}}%</view>
-      <view class="label">高频掌握率</view>
+      <view class="label">高热度占比</view>
     </view>
 
     <view class="stat-item">
       <view class="num">{{rate2}}%</view>
-      <view class="label">近三年掌握率</view>
+      <view class="label">高频考点占比</view>
     </view>
   </view>
 
-  <!-- 搜索框 -->
   <view class="search-box">
-    <text>🔍</text>
+    <text class="search-prefix">检索</text>
     <input
       class="search-input"
       value="{{query}}"
       bindinput="onInput"
+      bindconfirm="onConfirm"
+      confirm-type="search"
       focus="{{focus}}"
-      placeholder="搜索：恒成立 / 参数范围 / 2025"
+      placeholder="搜索：柯西 / sin / lnx / 对数平均值"
     />
 
-    <!-- 清除按钮 -->
     <view wx:if="{{showClear}}" class="clear-btn" bindtap="onClear">
       X
     </view>
-</view>
+  </view>
 
-<!-- 🔥 自动补全建议（必须在搜索框下面） -->
-<view wx:if="{{query && suggestions.length > 0}}" class="suggest-box">
-  <block wx:for="{{suggestions}}" wx:key="index">
-    <view 
-      class="suggest-item"
-      data-text="{{item}}"
-      bindtap="onSuggestionTap"
-    >
-      🔍 {{item}}
-    </view>
-  </block>
-</view>
+  <view wx:if="{{query && suggestions.length > 0}}" class="suggest-box">
+    <block wx:for="{{suggestions}}" wx:key="index">
+      <view
+        class="suggest-item"
+        data-text="{{item.text}}"
+        bindtap="onSuggestionTap"
+      >
+        <text class="suggest-text">{{item.text}}</text>
+        <text class="suggest-id">{{item.id}}</text>
+      </view>
+    </block>
+  </view>
 
-  <!-- tabs -->
   <scroll-view scroll-x class="tabs">
-    <view 
+    <view
       class="tab {{activeTab === item ? 'active' : ''}}"
       wx:for="{{tabs}}"
-      wx:key="index"
+      wx:key="*this"
       bindtap="onTabTap"
       data-tab="{{item}}"
     >
@@ -72,62 +68,133 @@
     </view>
   </scroll-view>
 
-  <!-- 排序 -->
   <view class="sort">
-    🔥 默认：按近三年累计分数排序
+    当前排序：term / prefix 聚合得分优先，其次参考条目 rank
   </view>
 
-  <!-- 列表 -->
-  <scroll-view scroll-y class="list">
+  <view wx:if="{{query && debugInfo}}" class="debug-card">
+    <view class="debug-head" bindtap="onToggleDebug">
+      <text class="debug-title">搜索调试</text>
+      <text class="debug-toggle">{{debugExpanded ? '收起' : '展开'}}</text>
+    </view>
 
-    <view 
+    <view wx:if="{{debugExpanded}}" class="debug-body">
+      <view class="debug-metrics">
+        <view class="debug-metric">
+          <text class="debug-label">规范化</text>
+          <text class="debug-value">{{debugInfo.normalizedQuery}}</text>
+        </view>
+
+        <view class="debug-metric">
+          <text class="debug-label">term 命中</text>
+          <text class="debug-value">{{debugInfo.termHitCount}}</text>
+        </view>
+
+        <view class="debug-metric">
+          <text class="debug-label">prefix 命中</text>
+          <text class="debug-value">{{debugInfo.prefixHitCount}}</text>
+        </view>
+
+        <view class="debug-metric">
+          <text class="debug-label">建议候选</text>
+          <text class="debug-value">{{debugInfo.suggestionHitCount}}</text>
+        </view>
+
+        <view class="debug-metric">
+          <text class="debug-label">结果数</text>
+          <text class="debug-value">{{debugInfo.resultCount}}</text>
+        </view>
+
+        <view class="debug-metric">
+          <text class="debug-label">回退建议</text>
+          <text class="debug-value">{{debugInfo.fallbackUsed ? '是' : '否'}}</text>
+        </view>
+      </view>
+
+      <view class="debug-section">
+        <view class="debug-section-title">Lookup Tokens</view>
+        <view class="debug-chip-row">
+          <text
+            wx:for="{{debugInfo.lookupTokens}}"
+            wx:key="*this"
+            class="debug-chip"
+          >
+            {{item}}
+          </text>
+        </view>
+      </view>
+
+      <view wx:if="{{debugInfo.topSuggestions.length > 0}}" class="debug-section">
+        <view class="debug-section-title">建议候选</view>
+        <block wx:for="{{debugInfo.topSuggestions}}" wx:key="index">
+          <view class="debug-line">
+            <text class="debug-line-main">{{item.text}}</text>
+            <text class="debug-line-side">{{item.id}} / {{item.score}}</text>
+          </view>
+        </block>
+      </view>
+
+      <view wx:if="{{debugInfo.topMatches.length > 0}}" class="debug-section">
+        <view class="debug-section-title">Top Hits</view>
+        <block wx:for="{{debugInfo.topMatches}}" wx:key="id">
+          <view class="debug-hit">
+            <view class="debug-hit-title">{{item.id}} · {{item.title}}</view>
+            <view class="debug-hit-meta">score {{item.score}} · {{item.matchedFieldsLabel}}</view>
+            <view class="debug-hit-meta">{{item.reasonSummary}}</view>
+          </view>
+        </block>
+      </view>
+    </view>
+  </view>
+
+  <scroll-view scroll-y class="list">
+    <view wx:if="{{query && results.length === 0}}" class="empty-state">
+      没有命中结果，试试更短的关键词或点上面的建议词。
+    </view>
+
+    <view
       class="card"
       wx:for="{{results}}"
       wx:key="id"
       bindtap="onDetailTap"
       data-id="{{item.id}}"
     >
+      <view class="card-top">
+        <view class="card-title">
+          <block wx:for="{{item.titleSegments}}" wx:key="index">
+            <text class="{{item.highlight ? 'hl' : ''}}">
+              {{item.text}}
+            </text>
+          </block>
+        </view>
 
-    <view class="card-top">
-      <view class="card-title">
-        <block wx:for="{{item.titleSegments}}" wx:key="index">
-          <text class="{{item.highlight ? 'hl' : ''}}">
-            {{item.text}}
-          </text>
-        </block>
+        <view class="score">搜索 {{item.score}}</view>
       </view>
-
-      <view class="score">🏆 累计{{item.score}}分</view>
-
-    </view>
 
       <view class="formula">
         {{item.formula}}
       </view>
 
       <view class="tags">
-        <text class="tag">模块：{{item.module}}</text>
+        <text class="tag">分类：{{item.category}}</text>
         <text class="tag">难度：{{item.level}}</text>
         <text class="tag">频率：{{item.freq}}</text>
-        <text class="tag red">近三年 {{item.recentScore}} 分</text>
+        <text class="tag red">考分：{{item.recentScore}}</text>
       </view>
 
       <view class="usage">
-        📌 {{item.usage}}
+        {{item.usage}}
       </view>
 
-    <view class="footer">
-      <view 
-        class="detail-btn"
-        bindtap="onDetailTap"
-        data-id="{{item.id}}"
-      >
-        查看详情
+      <view class="footer">
+        <view
+          class="detail-btn"
+          catchtap="onDetailTap"
+          data-id="{{item.id}}"
+        >
+          查看详情
+        </view>
       </view>
     </view>
-
-    </view>
-
   </scroll-view>
-
 </view>

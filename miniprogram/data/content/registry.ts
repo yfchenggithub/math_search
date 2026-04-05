@@ -4,13 +4,13 @@
 const core_index = require("../index/core_index.js");
 const suggest_index = require("../index/suggest_index.js");
 const rank_index = require("../index/rank_index.js");
-// const inequality = require("./inequality.js");
-const vector = require("./vector.js");
+const inequality = require("./inequality.js");
+// const vector = require("./vector.js");
 
 // 定义一个类型映射，方便后续在 loadContent 中使用
 export const ContentMap = {
-  // inequality, // 不等式
-  vector, // 向量
+  inequality, // 不等式
+  // vector, // 向量
   // 随着结论增加，在这里持续添加映射
   core_index,
   suggest_index,
