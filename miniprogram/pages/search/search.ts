@@ -11,6 +11,7 @@ import {
   initSearchEngine,
   searchWithDebug,
 } from "../../utils/search-engine";
+import { renderMath } from "../../utils/math-render";
 
 type HighlightSegment = {
   text: string;
@@ -21,6 +22,8 @@ interface SearchCardItem extends ResultItem {
   titleSegments: HighlightSegment[];
   category: string;
   searchScore: number;
+  formulaHtml: string;
+  formulaText: string;
 }
 
 let timer: number | null = null;
@@ -172,13 +175,16 @@ Page({
     return results.map((result) => {
       const doc = result.doc;
       const summary = doc.summary || (doc.tags || []).join(" / ");
+      const mathResult = renderMath(doc.coreFormula || doc.title, true);
 
       return {
         id: doc.id,
         title: doc.title,
         titleSegments: this.highlightSegments(doc.title, highlightQuery),
         summary,
-        formula: doc.coreFormula || doc.title,
+        formula: mathResult.source,
+        formulaHtml: mathResult.html,
+        formulaText: mathResult.source,
         module: doc.moduleDir,
         category: doc.category || this.getModuleLabel(doc.module),
         tags: doc.tags || [],

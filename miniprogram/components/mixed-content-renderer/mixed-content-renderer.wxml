@@ -1,0 +1,8 @@
+<view wx:if="{{segments.length}}" class="mixed-renderer">
+  <block wx:for="{{segments}}" wx:key="id" wx:for-item="segment">
+    <rich-text
+      class="mixed-segment mixed-segment-{{segment.kind}}"
+      nodes="{{segment.html}}"
+    ></rich-text>
+  </block>
+</view>

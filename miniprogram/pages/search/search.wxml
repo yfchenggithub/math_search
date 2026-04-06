@@ -172,7 +172,9 @@
       </view>
 
       <view class="formula">
-        {{item.formula}}
+        <scroll-view scroll-x class="formula-scroll" enhanced="{{true}}">
+          <rich-text class="formula-rich" nodes="{{item.formulaHtml}}"></rich-text>
+        </scroll-view>
       </view>
 
       <view class="tags">

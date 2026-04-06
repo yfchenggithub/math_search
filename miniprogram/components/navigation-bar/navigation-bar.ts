@@ -16,11 +16,11 @@ Component({
     },
     background: {
       type: String,
-      value: ''
+      value: 'rgba(248, 250, 252, 0.86)'
     },
     color: {
       type: String,
-      value: ''
+      value: '#0f172a'
     },
     back: {
       type: Boolean,
@@ -55,7 +55,11 @@ Component({
    * 组件的初始数据
    */
   data: {
-    displayStyle: ''
+    displayStyle: '',
+    innerPaddingRight: '',
+    leftWidth: '',
+    safeAreaTop: '',
+    contentStyle: '',
   },
   lifetimes: {
     attached() {
@@ -63,12 +67,22 @@ Component({
       wx.getSystemInfo({
         success: (res) => {
           const isAndroid = res.platform === 'android'
-          const isDevtools = res.platform === 'devtools'
+          const statusBarHeight = res.statusBarHeight || res.safeArea?.top || 0
+          const fallbackContentHeight = isAndroid ? 48 : 44
+          const capsuleGap = rect.top ? Math.max(rect.top - statusBarHeight, 6) : 6
+          const contentHeight = rect.height
+            ? Math.max(fallbackContentHeight, rect.height + capsuleGap * 2)
+            : fallbackContentHeight
+          const sideWidth = rect.left
+            ? Math.max(res.windowWidth - rect.left, 88)
+            : 96
+
           this.setData({
             ios: !isAndroid,
-            innerPaddingRight: `padding-right: ${res.windowWidth - rect.left}px`,
-            leftWidth: `width: ${res.windowWidth - rect.left }px`,
-            safeAreaTop: isDevtools || isAndroid ? `height: calc(var(--height) + ${res.safeArea.top}px); padding-top: ${res.safeArea.top}px` : ``
+            innerPaddingRight: `padding-right: ${sideWidth}px;`,
+            leftWidth: `width: ${sideWidth}px;`,
+            safeAreaTop: `padding-top: ${statusBarHeight}px;`,
+            contentStyle: `height: ${contentHeight}px;`,
           })
         }
       })
@@ -100,6 +114,12 @@ Component({
         })
       }
       this.triggerEvent('back', { delta: data.delta }, {})
+    },
+    home() {
+      wx.reLaunch({
+        url: '/pages/index/index'
+      })
+      this.triggerEvent('home', {}, {})
     }
   },
 })

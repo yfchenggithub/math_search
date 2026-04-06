@@ -328,12 +328,25 @@
 
 .formula {
   margin-top: 16rpx;
-  padding: 16rpx;
+  padding: 22rpx 16rpx 18rpx;
   border-radius: 16rpx;
   background: #f8fafc;
-  font-size: 24rpx;
   color: #334155;
-  word-break: break-all;
+  overflow: visible;
+}
+
+.formula-scroll {
+  width: 100%;
+  white-space: nowrap;
+  min-height: 72rpx;
+  color: #0f172a;
+  overflow: visible;
+}
+
+.formula-rich {
+  display: block;
+  min-width: 100%;
+  overflow: visible;
 }
 
 .tags {

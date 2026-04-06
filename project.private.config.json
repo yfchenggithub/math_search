@@ -2,7 +2,7 @@
   "libVersion": "2.32.3",
   "projectname": "search",
   "setting": {
-    "urlCheck": true,
+    "urlCheck": false,
     "coverView": false,
     "lazyloadPlaceholderEnable": false,
     "skylineRenderEnable": true,
@@ -22,15 +22,15 @@
     "miniprogram": {
       "list": [
         {
-          "name": "pages/detail/detail",
-          "pathName": "pages/detail/detail",
+          "name": "pages/search/search",
+          "pathName": "pages/search/search",
           "query": "",
           "scene": null,
           "launchMode": "default"
         },
         {
-          "name": "pages/search/search",
-          "pathName": "pages/search/search",
+          "name": "pages/detail/detail",
+          "pathName": "pages/detail/detail",
           "query": "",
           "launchMode": "default",
           "scene": null

@@ -2,6 +2,12 @@
 
 @import "./assets/katex/katex.min.wxss";
 
+.math-fallback {
+  display: inline-block;
+  color: #475569;
+  white-space: nowrap;
+}
+
 .container {
   height: 100%;
   display: flex;

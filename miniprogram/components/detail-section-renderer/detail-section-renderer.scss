@@ -1,0 +1,97 @@
+.section {
+  margin-top: 32rpx;
+}
+
+.section-title {
+  margin-bottom: 18rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.section-text {
+  margin-top: 14rpx;
+  font-size: 27rpx;
+  line-height: 1.9;
+  color: #334155;
+  white-space: normal;
+}
+
+.section-bullet {
+  margin-top: 14rpx;
+  display: flex;
+  align-items: flex-start;
+  gap: 14rpx;
+}
+
+.bullet-dot {
+  width: 10rpx;
+  height: 10rpx;
+  margin-top: 18rpx;
+  border-radius: 50%;
+  background: #2563eb;
+  flex-shrink: 0;
+}
+
+.bullet-text {
+  flex: 1;
+  font-size: 27rpx;
+  line-height: 1.9;
+  color: #334155;
+  white-space: normal;
+}
+
+.formula-card {
+  margin-top: 18rpx;
+  font-size: 30rpx;
+  padding: 24rpx 16rpx 18rpx;
+  border-radius: 18rpx;
+  background: #f8fafc;
+  border: 1rpx solid #e2e8f0;
+  overflow: visible;
+}
+
+.formula-card.inner {
+  margin-top: 16rpx;
+}
+
+.formula-scroll {
+  width: 100%;
+  min-height: 72rpx;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.formula-rich {
+  display: block;
+  min-width: 100%;
+  overflow: visible;
+}
+
+.theorem-card {
+  margin-top: 18rpx;
+  padding: 24rpx 22rpx;
+  border-radius: 20rpx;
+  background: #ffffff;
+  border: 1rpx solid #e5edf6;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.04);
+}
+
+.theorem-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.6;
+}
+
+.theorem-desc {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  line-height: 1.85;
+  color: #475569;
+  white-space: normal;
+}
+
+.rich-copy rich-text {
+  display: block;
+}

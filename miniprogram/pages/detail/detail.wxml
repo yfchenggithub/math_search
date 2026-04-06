@@ -1,28 +1,72 @@
 <view class="page">
-  <!-- 内容（占满） -->
-  <view
-    class="viewer"
-    catchtouchstart="onTouchStart"
-    catchtouchmove="onTouchMove"
-    catchtouchend="onTouchEnd"
-  >
-    <view
-      id="svgWrapper"
-      class="svg-wrapper"
-      style="{{transformStyle}}"
-    >
-      <image
-        src="{{svgUrl}}"
-        mode="widthFix"
-        class="svg-image"
-      />
+  <navigation-bar back="{{true}}"></navigation-bar>
+
+  <view class="toolbar">
+    <view class="toolbar-main">
+      <view class="toolbar-title">{{title}}</view>
+      <view class="toolbar-sub">
+        <text>{{category}}</text>
+        <text class="toolbar-id">ID {{id}}</text>
+        <text class="toolbar-scale">{{scaleLabel}}</text>
+      </view>
+    </view>
+
+    <view class="toolbar-actions">
+      <button bindtap="onToggleZoom" class="toolbar-btn">
+        {{zoomActive ? '退出缩放' : '缩放阅读'}}
+      </button>
+      <button bindtap="openPdf" class="pdf-btn">
+        查看高清 PDF
+      </button>
     </view>
   </view>
 
-  <view>
-    <button bindtap="openPdf" class="pdf-btn">
-      查看高清PDF
-    </button>
-  </view>
+  <view class="viewer">
+    <scroll-view
+      class="article-scroll"
+      scroll-y="{{!zoomActive}}"
+      enhanced="{{true}}"
+      show-scrollbar="{{false}}"
+    >
+      <view
+        id="articleWrapper"
+        class="article-wrapper"
+        style="{{transformStyle}}"
+        bindtouchstart="onTouchStart"
+        bindtouchmove="onTouchMove"
+        bindtouchend="onTouchEnd"
+      >
+        <view class="article-card">
+          <view class="article-header">
+            <view class="article-eyebrow">{{category}}</view>
+            <view class="article-id">条目 ID: {{id}}</view>
+            <view class="article-title">{{title}}</view>
+            <view wx:if="{{summaryHtml}}" class="article-summary rich-copy">
+              <rich-text nodes="{{summaryHtml}}"></rich-text>
+            </view>
+            <view wx:elif="{{summary}}" class="article-summary">
+              {{summary}}
+            </view>
+          </view>
 
+          <view wx:if="{{coreFormulaHtml}}" class="hero-formula">
+            <scroll-view scroll-x class="formula-scroll" enhanced="{{true}}">
+              <rich-text class="formula-rich" nodes="{{coreFormulaHtml}}"></rich-text>
+            </scroll-view>
+          </view>
+
+          <detail-section-renderer
+            wx:for="{{sections}}"
+            wx:key="key"
+            wx:for-item="section"
+            section="{{section}}"
+          ></detail-section-renderer>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view wx:if="{{zoomActive}}" class="zoom-hint">
+      双指缩放，单指拖动
+    </view>
+  </view>
 </view>

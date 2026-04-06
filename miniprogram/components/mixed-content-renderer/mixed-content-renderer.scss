@@ -1,0 +1,17 @@
+.mixed-renderer {
+  display: block;
+  font: inherit;
+  color: inherit;
+  line-height: inherit;
+  white-space: normal;
+}
+
+.mixed-renderer rich-text,
+.mixed-segment {
+  display: inline;
+  vertical-align: baseline;
+}
+
+.mixed-segment-math {
+  margin: 0 2rpx;
+}

@@ -1,16 +1,26 @@
 page {
+  min-height: 100vh;
   height: 100vh;
   display: flex;
   flex-direction: column;
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
 }
+
 .scrollarea {
   flex: 1;
   overflow-y: hidden;
+  box-sizing: border-box;
+  padding: 16rpx 24rpx calc(env(safe-area-inset-bottom) + 24rpx);
 }
+
 .log-item {
-  margin-top: 20rpx;
-  text-align: center;
-}
-.log-item:last-child {
-  padding-bottom: env(safe-area-inset-bottom);
+  margin-top: 16rpx;
+  padding: 24rpx 28rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12rpx 32rpx rgba(15, 23, 42, 0.06);
+  color: #334155;
+  font-size: 26rpx;
+  line-height: 1.7;
+  text-align: left;
 }

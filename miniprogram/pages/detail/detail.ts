@@ -1,3 +1,7 @@
+import type { DetailSectionView } from "../../utils/detail-content";
+import { getDetailDocument } from "../../utils/detail-content";
+import { handleInvalidAccess } from "../../utils/router";
+
 type TouchPoint = {
   pageX: number;
   pageY: number;
@@ -5,16 +9,23 @@ type TouchPoint = {
 
 Page({
   data: {
-    svgUrl: "/assets/svg/vector/001.svg", // 上云
-    transformStyle: "",
-    pdfPath: "http://192.168.0.101:3000/002.pdf", // 上云
+    id: "",
+    title: "",
+    category: "",
+    summary: "",
+    summaryHtml: "",
+    coreFormulaHtml: "",
+    sections: [] as DetailSectionView[],
+    pdfUrl: "",
+    hasPdf: false,
+    sourceType: "meta",
+    transformStyle: "transform: translate3d(0px, 0px, 0) scale(1);",
+    zoomActive: false,
+    scaleLabel: "100%",
   },
 
-  // ========================
-  // 状态（全部放 JS，不进 data）
-  // ========================
-  scale: 1, //当前帧
-  lastScale: 1, //上一轮手势结果
+  scale: 1,
+  lastScale: 1,
 
   translateX: 0,
   translateY: 0,
@@ -22,80 +33,182 @@ Page({
   lastTranslateY: 0,
 
   minScale: 1,
-  maxScale: 6,
+  maxScale: 4,
 
-  // ========================
-  // 手势状态（核心方案）
-  // ========================
   gesture: {
     startDistance: 0,
-    startScale: 1, //本轮起点
+    startScale: 1,
     startX: 0,
     startY: 0,
   },
 
-  // 双击检测
   lastTapTime: 0,
-
-  // 节流锁
   ticking: false,
 
-  // ========================
-  // 【新增】尺寸缓存
-  // ========================
   containerWidth: 0,
   containerHeight: 0,
   contentWidth: 0,
   contentHeight: 0,
 
-  // ========================
-  // 【新增】惯性
-  // ========================
   velocityX: 0,
   velocityY: 0,
   lastMoveTime: 0,
   lastMoveX: 0,
   lastMoveY: 0,
   inertiaId: 0,
+  measureTimer: 0,
 
-  // ========================
-  // rAF（兼容小程序）
-  // ========================
   raf(callback: Function) {
-    return setTimeout(() => callback(), 16); // 约 60FPS
+    return setTimeout(() => callback(), 16);
   },
+
+  onLoad(options: Record<string, string | undefined>) {
+    const id = (options.id || "").trim();
+    const detail = getDetailDocument(id);
+
+    if (!detail) {
+      handleInvalidAccess("未找到对应内容");
+      return;
+    }
+
+    this.resetTransform(false);
+
+    this.setData({
+      id: detail.id,
+      title: detail.title,
+      category: detail.category,
+      summary: detail.summary,
+      summaryHtml: detail.summaryHtml,
+      coreFormulaHtml: detail.coreFormulaHtml,
+      sections: detail.sections,
+      pdfUrl: detail.pdfUrl,
+      hasPdf: detail.hasPdf,
+      sourceType: detail.sourceType,
+      transformStyle: this.buildTransformStyle(),
+      zoomActive: false,
+      scaleLabel: "100%",
+    }, () => {
+      this.scheduleMeasure();
+    });
+  },
+
+  onUnload() {
+    clearTimeout(this.inertiaId);
+    clearTimeout(this.measureTimer);
+  },
+
+  onReady() {
+    this.scheduleMeasure();
+  },
+
+  onRenderReady() {
+    this.scheduleMeasure();
+  },
+
+  scheduleMeasure() {
+    clearTimeout(this.measureTimer);
+
+    this.measureTimer = setTimeout(() => {
+      this.measureContent();
+    }, 80) as unknown as number;
+  },
+
+  measureContent() {
+    const query = wx.createSelectorQuery().in(this);
+    query.select(".viewer").boundingClientRect();
+    query.select("#articleWrapper").boundingClientRect();
+    query.exec((res) => {
+      const viewer = res[0];
+      const content = res[1];
+
+      if (!viewer || !content) {
+        return;
+      }
+
+      this.containerWidth = viewer.width || 0;
+      this.containerHeight = viewer.height || 0;
+
+      if (this.scale <= 1.01 || this.contentWidth === 0 || this.contentHeight === 0) {
+        this.contentWidth = content.width || this.containerWidth;
+        this.contentHeight = content.height || this.containerHeight;
+      }
+
+      if (this.scale > 1.01) {
+        this.rebound();
+      }
+    });
+  },
+
   openPdf() {
-    console.log("enter openPdf ");
-    const { pdfPath } = this.data;
+    const pdfUrl = String(this.data.pdfUrl || "");
 
-    wx.showLoading({ title: "加载中..." });
+    if (!pdfUrl) {
+      wx.showToast({
+        title: "暂无PDF资源",
+        icon: "none",
+      });
+      return;
+    }
 
-    wx.downloadFile({
-      url: pdfPath,
-      success: (res) => {
-        wx.hideLoading();
+    if (/^https?:\/\//i.test(pdfUrl)) {
+      wx.showLoading({ title: "加载中..." });
 
-        if (res.statusCode === 200) {
-          wx.openDocument({
-            filePath: res.tempFilePath,
-            fileType: "pdf",
+      wx.downloadFile({
+        url: pdfUrl,
+        success: (res) => {
+          wx.hideLoading();
+
+          if (res.statusCode === 200) {
+            wx.openDocument({
+              filePath: res.tempFilePath,
+              fileType: "pdf",
+              showMenu: true,
+            });
+          } else {
+            wx.showToast({
+              title: "PDF下载失败",
+              icon: "none",
+            });
+          }
+        },
+        fail: () => {
+          wx.hideLoading();
+          wx.showToast({
+            title: "PDF打开失败",
+            icon: "none",
           });
-        } else {
-          wx.showToast({ title: "下载失败", icon: "none" });
-        }
-      },
+        },
+      });
+      return;
+    }
+
+    wx.openDocument({
+      filePath: pdfUrl,
+      fileType: "pdf",
+      showMenu: true,
       fail: () => {
-        wx.hideLoading();
-        wx.showToast({ title: "网络错误", icon: "none" });
+        wx.showToast({
+          title: "PDF打开失败",
+          icon: "none",
+        });
       },
     });
   },
-  // ========================
-  // 工具：距离计算
-  // ========================
-  getTouches(e: any): TouchPoint[] {
-    // 用 unknown 作为跳板，把一个不兼容的类型“强行伪装”成你想要的类型
-    return e.touches as unknown as TouchPoint[]; // 把 TouchList 强行当成 TouchPoint[] 来用
+
+  onToggleZoom() {
+    if (this.scale > 1.01) {
+      this.resetTransform();
+      return;
+    }
+
+    const centerX = this.containerWidth ? this.containerWidth / 2 : 0;
+    const centerY = this.containerHeight ? this.containerHeight / 2 : 0;
+
+    this.zoomTo(1.8, centerX, centerY);
+  },
+
+  getTouches(e: WechatMiniprogram.TouchEvent): TouchPoint[] {
+    return e.touches as unknown as TouchPoint[];
   },
 
   getDistance(touches: TouchPoint[]) {
@@ -104,351 +217,270 @@ Page({
     return Math.sqrt(dx * dx + dy * dy);
   },
 
-  // ========================
-  // 工具：中心点
-  // ========================
   getCenter(touches: TouchPoint[]) {
     return {
       x: (touches[0].pageX + touches[1].pageX) / 2,
       y: (touches[0].pageY + touches[1].pageY) / 2,
     };
   },
-  // ========================
-  // 【新增】初始化尺寸
-  // ========================
-  onReady() {
-    const query = wx.createSelectorQuery().in(this);
-    query.select(".viewer").boundingClientRect();
-    query.select(".svg-wrapper").boundingClientRect();
-    query.exec((res) => {
-      const viewer = res[0];
-      const content = res[1];
 
-      this.containerWidth = viewer.width;
-      this.containerHeight = viewer.height;
-      this.contentWidth = content.width;
-      this.contentHeight = content.height;
-    });
+  buildTransformStyle() {
+    return `transform: translate3d(${this.translateX}px, ${this.translateY}px, 0) scale(${this.scale});`;
   },
-  // ========================
-  // 核心：更新 transform（无闪）
-  // ========================
-  updateTransform() {
-    // 从对象里“解包”出属性，变成局部变量
-    const { scale, translateX, translateY } = this;
 
-    const style = `
-      transform: translate3d(${translateX}px, ${translateY}px, 0) scale(${scale});
-    `;
-
-    // ✅ 极小更新（只更新 style）
+  syncTransformState() {
     this.setData({
-      transformStyle: style,
+      transformStyle: this.buildTransformStyle(),
+      zoomActive: this.scale > 1.01,
+      scaleLabel: `${Math.round(this.scale * 100)}%`,
     });
   },
 
-  // ========================
-  // 【新增】计算边界
-  // ========================
-  // ========================
-  // 【修改后】calcBounds（严格按真实坐标系）
-  // ========================
   calcBounds() {
-    const scaledW = this.contentWidth * this.scale;
-    const scaledH = this.contentHeight * this.scale;
+    const scaledWidth = this.contentWidth * this.scale;
+    const scaledHeight = this.contentHeight * this.scale;
 
-    let minX: number, maxX: number;
-    let minY: number, maxY: number;
+    let minX = 0;
+    let maxX = 0;
+    let minY = 0;
+    let maxY = 0;
 
-    // ===== 横向 =====
-    if (scaledW > this.containerWidth) {
-      // 👉 可拖动
-      minX = this.containerWidth - scaledW;
+    if (scaledWidth > this.containerWidth) {
+      minX = this.containerWidth - scaledWidth;
       maxX = 0;
     } else {
-      // 👉 居中（不能拖）
-      const center = (this.containerWidth - scaledW) / 2;
-      minX = maxX = center;
+      const centeredX = (this.containerWidth - scaledWidth) / 2;
+      minX = centeredX;
+      maxX = centeredX;
     }
 
-    // ===== 纵向（关键修复点）=====
-    if (scaledH > this.containerHeight) {
-      // 👉 可拖动（允许看到顶部）
-      minY = this.containerHeight - scaledH;
+    if (scaledHeight > this.containerHeight) {
+      minY = this.containerHeight - scaledHeight;
       maxY = 0;
     } else {
-      // 👉 居中
-      const center = (this.containerHeight - scaledH) / 2;
-      minY = maxY = center;
+      const centeredY = (this.containerHeight - scaledHeight) / 2;
+      minY = centeredY;
+      maxY = centeredY;
     }
 
-    return { minX, maxX, minY, maxY };
+    return {
+      minX,
+      maxX,
+      minY,
+      maxY,
+    };
   },
 
-  // ========================
-  // 【新增】阻尼（橡皮筋）
-  // ========================
-  // ========================
-  // 【修改后】阻尼函数（只处理越界部分）
-  // ========================
   applyResistance(value: number, min: number, max: number) {
-    // ✅ 在边界内：完全不处理
     if (value >= min && value <= max) {
       return value;
     }
 
-    // ===== 下越界 =====
     if (value < min) {
-      const delta = value - min; // 超出距离（负数）
-
-      // 👉 阻尼（越远越难）
-      const resisted = delta * 0.35;
-
-      return min + resisted;
+      return min + (value - min) * 0.35;
     }
 
-    // ===== 上越界 =====
-    if (value > max) {
-      const delta = value - max;
-
-      const resisted = delta * 0.35;
-
-      return max + resisted;
-    }
-
-    return value;
+    return max + (value - max) * 0.35;
   },
 
-  // ========================
-  // 【新增】回弹动画
-  // ========================
   rebound() {
-    const { minX, maxX, minY, maxY } = this.calcBounds();
-
-    let targetX = Math.min(maxX, Math.max(minX, this.translateX));
-    let targetY = Math.min(maxY, Math.max(minY, this.translateY));
+    const bounds = this.calcBounds();
+    const targetX = Math.min(bounds.maxX, Math.max(bounds.minX, this.translateX));
+    const targetY = Math.min(bounds.maxY, Math.max(bounds.minY, this.translateY));
 
     const startX = this.translateX;
     const startY = this.translateY;
+    const deltaX = targetX - startX;
+    const deltaY = targetY - startY;
 
-    const dx = targetX - startX;
-    const dy = targetY - startY;
+    if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) {
+      this.translateX = targetX;
+      this.translateY = targetY;
+      this.lastTranslateX = targetX;
+      this.lastTranslateY = targetY;
+      this.syncTransformState();
+      return;
+    }
 
-    const duration = 200;
+    const duration = 220;
     const startTime = Date.now();
 
     const animate = () => {
-      let t = (Date.now() - startTime) / duration;
-      if (t > 1) t = 1;
+      let progress = (Date.now() - startTime) / duration;
+      if (progress > 1) {
+        progress = 1;
+      }
 
-      const ease = 1 - Math.pow(1 - t, 3);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      this.translateX = startX + deltaX * ease;
+      this.translateY = startY + deltaY * ease;
+      this.syncTransformState();
 
-      this.translateX = startX + dx * ease;
-      this.translateY = startY + dy * ease;
+      if (progress < 1) {
+        this.raf(animate);
+        return;
+      }
 
-      this.updateTransform();
-
-      if (t < 1) this.raf(animate);
+      this.lastTranslateX = this.translateX;
+      this.lastTranslateY = this.translateY;
     };
 
     animate();
   },
 
-  // ========================
-  // 【新增】惯性启动
-  // ========================
-  startInertia() {
-    const friction = 0.95;
+  zoomTo(targetScale: number, centerX: number, centerY: number) {
+    const clampedScale = Math.max(this.minScale, Math.min(targetScale, this.maxScale));
+    const ratio = clampedScale / this.scale;
 
-    const step = () => {
-      this.velocityX *= friction;
-      this.velocityY *= friction;
-
-      this.translateX += this.velocityX;
-      this.translateY += this.velocityY;
-
-      const bounds = this.calcBounds();
-
-      // 撞边停止
-      if (
-        this.translateX < bounds.minX ||
-        this.translateX > bounds.maxX ||
-        this.translateY < bounds.minY ||
-        this.translateY > bounds.maxY
-      ) {
-        this.stopInertia();
-        this.rebound();
-        return;
-      }
-
-      this.updateTransform();
-
-      if (Math.abs(this.velocityX) > 0.1 || Math.abs(this.velocityY) > 0.1) {
-        this.inertiaId = this.raf(step);
-      }
-    };
-
-    step();
+    this.translateX = centerX - ratio * (centerX - this.translateX);
+    this.translateY = centerY - ratio * (centerY - this.translateY);
+    this.scale = clampedScale;
+    this.lastScale = clampedScale;
+    this.syncTransformState();
+    this.rebound();
   },
 
   stopInertia() {
     clearTimeout(this.inertiaId);
   },
 
-  // ========================
-  // 双击检测
-  // ========================
-  handleDoubleTap(e: any) {
+  startInertia() {
+    if (this.scale <= 1.01) {
+      return;
+    }
+
+    const friction = 0.94;
+
+    const step = () => {
+      this.velocityX *= friction;
+      this.velocityY *= friction;
+      this.translateX += this.velocityX;
+      this.translateY += this.velocityY;
+
+      const bounds = this.calcBounds();
+
+      if (
+        this.translateX < bounds.minX
+        || this.translateX > bounds.maxX
+        || this.translateY < bounds.minY
+        || this.translateY > bounds.maxY
+      ) {
+        this.stopInertia();
+        this.rebound();
+        return;
+      }
+
+      this.syncTransformState();
+
+      if (Math.abs(this.velocityX) > 0.12 || Math.abs(this.velocityY) > 0.12) {
+        this.inertiaId = this.raf(step) as unknown as number;
+      }
+    };
+
+    step();
+  },
+
+  handleDoubleTap(e: WechatMiniprogram.TouchEvent) {
     const now = Date.now();
 
-    if (now - this.lastTapTime < 300) {
-      const touches = this.getTouches(e);
-      const point = touches[0];
+    if (now - this.lastTapTime < 300 && e.touches.length === 1) {
+      const point = this.getTouches(e)[0];
 
-      const targetScale = this.scale === 1 ? 2 : 1;
-
-      // 👉 核心公式（保持点击点不动）
-      const scaleRatio = targetScale / this.scale;
-
-      this.translateX =
-        point.pageX - scaleRatio * (point.pageX - this.translateX);
-      this.translateY =
-        point.pageY - scaleRatio * (point.pageY - this.translateY);
-
-      this.scale = targetScale;
-
-      this.updateTransform();
+      if (this.scale > 1.01) {
+        this.resetTransform();
+      } else {
+        this.zoomTo(2, point.pageX, point.pageY);
+      }
     }
 
     this.lastTapTime = now;
   },
 
-  // ========================
-  // 动画缩放（iOS 手感）
-  // ========================
-  animateScale(targetScale: number, centerX: number, centerY: number) {
-    const startScale = this.scale;
-    const diff = targetScale - startScale;
-
-    const duration = 200;
-    const startTime = Date.now();
-
-    const animate = () => {
-      const now = Date.now();
-      let progress = (now - startTime) / duration;
-
-      if (progress > 1) progress = 1;
-
-      // ease-out
-      const ease = 1 - Math.pow(1 - progress, 3);
-
-      this.scale = startScale + diff * ease;
-
-      this.updateTransform();
-
-      if (progress < 1) {
-        this.raf(animate);
-      }
-    };
-
-    animate();
-  },
-
-  // ========================
-  // touchstart
-  // ========================
-  onTouchStart(e: any) {
+  onTouchStart(e: WechatMiniprogram.TouchEvent) {
     this.stopInertia();
     this.handleDoubleTap(e);
 
     const touches = this.getTouches(e);
 
-    // ========================
-    // 【修改后】touchstart（双指）
-    // ========================
     if (touches.length === 2) {
       this.gesture.startDistance = this.getDistance(touches);
-      this.gesture.startScale = this.lastScale;
+      this.gesture.startScale = this.scale;
+      this.velocityX = 0;
+      this.velocityY = 0;
     }
 
-    if (touches.length === 1) {
+    if (touches.length === 1 && this.scale > 1.01) {
       this.gesture.startX = touches[0].pageX - this.lastTranslateX;
       this.gesture.startY = touches[0].pageY - this.lastTranslateY;
-      // 【新增】记录速度
       this.lastMoveTime = Date.now();
       this.lastMoveX = touches[0].pageX;
       this.lastMoveY = touches[0].pageY;
     }
   },
 
-  // ========================
-  // touchmove（核心）
-  // ========================
-  onTouchMove(e: any) {
-    if (this.ticking) return;
+  onTouchMove(e: WechatMiniprogram.TouchEvent) {
+    const touches = this.getTouches(e);
+
+    if (touches.length === 1 && this.scale <= 1.01) {
+      return;
+    }
+
+    if (this.ticking) {
+      return;
+    }
+
     this.ticking = true;
 
     this.raf(() => {
-      const touches = this.getTouches(e);
-
-      if (touches.length === 2) {
-        // ===== 双指缩放 =====
+      if (touches.length === 2 && this.gesture.startDistance > 0) {
         const distance = this.getDistance(touches);
+        let nextScale = (distance / this.gesture.startDistance) * this.gesture.startScale;
+        nextScale = Math.max(this.minScale, Math.min(nextScale, this.maxScale));
 
-        let newScale =
-          (distance / this.gesture.startDistance) * this.gesture.startScale;
-
-        newScale = Math.max(this.minScale, Math.min(newScale, this.maxScale));
-
-        // ✅ 缩放中心补偿（关键！防漂移）
         const center = this.getCenter(touches);
-        const scaleRatio = newScale / this.scale;
+        const ratio = nextScale / this.scale;
 
-        this.translateX = center.x - scaleRatio * (center.x - this.translateX);
-        this.translateY = center.y - scaleRatio * (center.y - this.translateY);
-
-        this.scale = newScale;
+        this.translateX = center.x - ratio * (center.x - this.translateX);
+        this.translateY = center.y - ratio * (center.y - this.translateY);
+        this.scale = nextScale;
       }
 
-      if (touches.length === 1 && this.scale > 1) {
-        let rawX = touches[0].pageX - this.gesture.startX;
-        let rawY = touches[0].pageY - this.gesture.startY;
-
+      if (touches.length === 1 && this.scale > 1.01) {
+        const rawX = touches[0].pageX - this.gesture.startX;
+        const rawY = touches[0].pageY - this.gesture.startY;
         const bounds = this.calcBounds();
 
-        // ❗先用 raw 值判断
         this.translateX = this.applyResistance(rawX, bounds.minX, bounds.maxX);
         this.translateY = this.applyResistance(rawY, bounds.minY, bounds.maxY);
 
-        // 👉 计算速度
         const now = Date.now();
-        const dt = now - this.lastMoveTime;
+        const deltaTime = now - this.lastMoveTime;
 
-        if (dt > 0) {
-          this.velocityX = ((touches[0].pageX - this.lastMoveX) / dt) * 16;
-          this.velocityY = ((touches[0].pageY - this.lastMoveY) / dt) * 16;
-
+        if (deltaTime > 0) {
+          this.velocityX = ((touches[0].pageX - this.lastMoveX) / deltaTime) * 16;
+          this.velocityY = ((touches[0].pageY - this.lastMoveY) / deltaTime) * 16;
+          this.lastMoveTime = now;
           this.lastMoveX = touches[0].pageX;
           this.lastMoveY = touches[0].pageY;
-          this.lastMoveTime = now;
         }
       }
 
-      this.updateTransform();
-
+      this.syncTransformState();
       this.ticking = false;
     });
   },
 
-  // ========================
-  // touchend
-  // ========================
   onTouchEnd() {
     this.lastScale = this.scale;
     this.lastTranslateX = this.translateX;
     this.lastTranslateY = this.translateY;
+    this.gesture.startDistance = 0;
 
-    // 👉 惯性触发
+    if (this.scale <= 1.01) {
+      this.resetTransform();
+      return;
+    }
+
     if (Math.abs(this.velocityX) > 1 || Math.abs(this.velocityY) > 1) {
       this.startInertia();
     } else {
@@ -456,18 +488,18 @@ Page({
     }
   },
 
-  // ========================
-  // 重置
-  // ========================
-  reset() {
+  resetTransform(syncData = true) {
     this.scale = 1;
+    this.lastScale = 1;
     this.translateX = 0;
     this.translateY = 0;
-
-    this.lastScale = 1;
     this.lastTranslateX = 0;
     this.lastTranslateY = 0;
+    this.velocityX = 0;
+    this.velocityY = 0;
 
-    this.updateTransform();
+    if (syncData) {
+      this.syncTransformState();
+    }
   },
 });
