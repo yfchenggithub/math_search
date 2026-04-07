@@ -466,6 +466,12 @@ function serializeMathTree(node: KatexTreeNode, context: SerializeContext): stri
   }
 
   const classes = getClassList(node);
+  const compositeRelationHtml = serializeCompositeRelation(node, classes, context);
+
+  if (compositeRelationHtml) {
+    return compositeRelationHtml;
+  }
+
   const styles = resolveNodeStyles(node, classes, context);
   const attributes = serializeAttributes(node.attributes, styles);
   const children = (node.children || [])
@@ -502,6 +508,41 @@ function normalizeMathGlyphs(input: string): string {
   }
 
   return normalized;
+}
+
+function serializeCompositeRelation(
+  node: KatexTreeNode,
+  classes: string[],
+  context: SerializeContext,
+): string | null {
+  if (!classes.includes("mrel")) {
+    return null;
+  }
+
+  const normalizedText = collectNormalizedText(node)
+    .replace(/\s+/g, "")
+    .replace(/\u200b/g, "");
+
+  // KaTeX emits \neq as an overlaid slash glyph plus a visible "=" node.
+  // WeChat rich-text does not reliably keep that overlay, so we collapse the
+  // composite relation into a single not-equal glyph.
+  if (!(normalizedText.includes("\u2260") && normalizedText.includes("="))) {
+    return null;
+  }
+
+  const styles = resolveNodeStyles(node, classes, context);
+  const attributes = serializeAttributes(node.attributes, styles);
+  return `<span${attributes}>\u2260</span>`;
+}
+
+function collectNormalizedText(node: KatexTreeNode): string {
+  if (typeof node.text === "string") {
+    return normalizeMathGlyphs(node.text || "");
+  }
+
+  return (node.children || [])
+    .map((child) => collectNormalizedText(child))
+    .join("");
 }
 
 function serializeSvgNode(node: KatexTreeNode): string {
