@@ -4,14 +4,11 @@
   color: inherit;
   line-height: inherit;
   white-space: normal;
+  text-align: inherit;
 }
 
-.mixed-renderer rich-text,
-.mixed-segment {
-  display: inline;
-  vertical-align: baseline;
-}
-
-.mixed-segment-math {
-  margin: 0 2rpx;
+.mixed-rich,
+.mixed-renderer rich-text {
+  display: block;
+  line-height: inherit;
 }

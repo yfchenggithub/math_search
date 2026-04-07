@@ -706,15 +706,18 @@ function createStructuredLatexBlock(
   blockId: string,
   latex: string,
 ): DetailBlockView {
+  const inlineHtml = renderMath(latex, false).html;
+
   if (section.key === "variables" || section.layout === "list") {
     return {
       id: blockId,
       kind: "bullet",
+      html: inlineHtml,
       segments: [
         {
           id: `${blockId}-math`,
           kind: "math",
-          html: renderMath(latex, false).html,
+          html: inlineHtml,
         },
       ],
     };
@@ -738,6 +741,7 @@ function createStructuredSegmentBlock(
   // The builder has already separated plain text and math spans for v2 data.
   // Keeping that boundary here avoids regressing back to legacy formula guessing.
   const normalizedSegments = buildStructuredSegments(segments, blockId);
+  const inlineHtml = composeInlineSegmentHtml(normalizedSegments);
 
   if (normalizedSegments.length === 0) {
     return null;
@@ -747,6 +751,7 @@ function createStructuredSegmentBlock(
     return {
       id: blockId,
       kind: "bullet",
+      html: inlineHtml,
       segments: normalizedSegments,
     };
   }
@@ -754,6 +759,7 @@ function createStructuredSegmentBlock(
   return {
     id: blockId,
     kind: "mixed",
+    html: inlineHtml,
     segments: normalizedSegments,
   };
 }
@@ -788,10 +794,11 @@ function buildStructuredSegments(
   segments: RawStructuredSegment[],
   blockId: string,
 ): DetailInlineSegmentView[] {
+  const normalizedSource = normalizeInlineSegments(segments);
   const result: DetailInlineSegmentView[] = [];
 
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index];
+  for (let index = 0; index < normalizedSource.length; index += 1) {
+    const segment = normalizedSource[index];
 
     if (segment.type === "math" && normalizeText(segment.latex)) {
       result.push({
@@ -802,19 +809,74 @@ function buildStructuredSegments(
       continue;
     }
 
-    const text = normalizeText(segment.text);
-    if (!text) {
-      continue;
-    }
-
     result.push({
       id: `${blockId}-segment-${index + 1}`,
       kind: "text",
-      html: renderPlainTextHtml(text, true),
+      html: renderPlainTextHtml(segment.text, true),
     });
   }
 
   return result;
+}
+
+function composeInlineSegmentHtml(segments: DetailInlineSegmentView[]): string {
+  const content = segments
+    .map((segment) => segment.html)
+    .filter((html) => html.length > 0)
+    .join("");
+
+  if (!content) {
+    return "";
+  }
+
+  // Wrap one structured item into a single inline-flow container so text/math
+  // segments behave like one paragraph instead of unrelated sibling blocks.
+  return `<span style="display:inline;white-space:normal;line-height:inherit;">${content}</span>`;
+}
+
+function normalizeInlineSegments(segments: RawStructuredSegment[]): RawStructuredSegment[] {
+  const result: RawStructuredSegment[] = [];
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+
+    if (segment.type === "math") {
+      const latex = normalizeText(segment.latex);
+
+      if (!latex) {
+        continue;
+      }
+
+      result.push({
+        type: "math",
+        latex,
+      });
+      continue;
+    }
+
+    const text = normalizeInlineText(segment.text);
+
+    if (!text) {
+      continue;
+    }
+
+    const previous = result[result.length - 1];
+    if (previous && previous.type !== "math") {
+      previous.text = `${previous.text || ""}${text}`;
+      continue;
+    }
+
+    result.push({
+      type: "text",
+      text,
+    });
+  }
+
+  return result;
+}
+
+function normalizeInlineText(text?: string): string {
+  return (text || "").replace(/\r\n?/g, "\n");
 }
 
 function parseStatementContent(statement: string): DetailSectionView[] {

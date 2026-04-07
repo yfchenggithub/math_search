@@ -615,9 +615,13 @@ function resolveNodeStyles(
   }
 
   if (classes.includes("katex-html") && context.parentClasses.includes("katex")) {
+    const isDisplayMath = context.grandParentClasses.includes("katex-display");
+
     mergeStyles(styles, {
-      display: "block",
+      display: isDisplayMath ? "block" : "inline-block",
       position: "relative",
+      "white-space": "nowrap",
+      "vertical-align": "baseline",
     });
   }
 

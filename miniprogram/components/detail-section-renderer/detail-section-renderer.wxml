@@ -9,7 +9,10 @@
     </view>
 
     <view wx:if="{{block.kind === 'mixed'}}" class="section-text">
-      <mixed-content-renderer segments="{{block.segments || []}}"></mixed-content-renderer>
+      <mixed-content-renderer
+        html="{{block.html || ''}}"
+        segments="{{block.segments || []}}"
+      ></mixed-content-renderer>
     </view>
 
     <view wx:if="{{block.kind === 'bullet'}}" class="section-bullet">
@@ -17,6 +20,7 @@
       <view class="bullet-text">
         <mixed-content-renderer
           wx:if="{{block.segments && block.segments.length}}"
+          html="{{block.html || ''}}"
           segments="{{block.segments}}"
         ></mixed-content-renderer>
         <view wx:else class="rich-copy">
