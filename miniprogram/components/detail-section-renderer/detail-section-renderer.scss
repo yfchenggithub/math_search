@@ -1,3 +1,10 @@
+$reading-copy-font-size: 30rpx;
+$reading-copy-line-height: 2.02;
+$reading-copy-color: #10233a;
+$reading-theorem-desc-font-size: 29rpx;
+$reading-theorem-desc-line-height: 1.96;
+$reading-theorem-desc-color: #334155;
+
 .section {
   margin-top: 34rpx;
 }
@@ -168,9 +175,9 @@
 
 .section--reading .section-text {
   margin-top: 20rpx;
-  font-size: 30rpx;
-  line-height: 2.02;
-  color: #10233a;
+  font-size: $reading-copy-font-size;
+  line-height: $reading-copy-line-height;
+  color: $reading-copy-color;
   text-align: left;
 }
 
@@ -186,9 +193,9 @@
 }
 
 .section--reading .bullet-text {
-  font-size: 30rpx;
-  line-height: 2.02;
-  color: #10233a;
+  font-size: $reading-copy-font-size;
+  line-height: $reading-copy-line-height;
+  color: $reading-copy-color;
   text-align: left;
 }
 
@@ -236,9 +243,9 @@
 
 .section--reading .theorem-desc {
   margin-top: 14rpx;
-  font-size: 29rpx;
-  line-height: 1.96;
-  color: #334155;
+  font-size: $reading-theorem-desc-font-size;
+  line-height: $reading-theorem-desc-line-height;
+  color: $reading-theorem-desc-color;
   text-align: left;
 }
 
@@ -351,14 +358,12 @@
   background: #6b4b3d;
 }
 
-.section--tone-summary .section-text {
-  font-size: 34rpx;
-  line-height: 1.88;
+.section--tone-summary .section-text,
+.section--tone-summary .bullet-text {
   color: #1f1712;
-  letter-spacing: -0.4rpx;
 }
 
-.section--tone-summary .bullet-text {
+.section--tone-summary .theorem-desc {
   color: #2b211c;
 }
 
