@@ -1,62 +1,72 @@
-<view wx:if="{{section}}" class="section section-{{section.layout || 'legacy'}}">
-  <view class="section-title">{{section.title}}</view>
-
-  <block wx:for="{{section.blocks}}" wx:key="id" wx:for-item="block">
-    <view wx:if="{{block.kind === 'text'}}" class="section-text">
-      <view class="rich-copy">
-        <rich-text nodes="{{block.html || block.text}}"></rich-text>
-      </view>
+<view wx:if="{{section}}" class="{{rootClass}}">
+  <view class="section-shell">
+    <view class="section-header">
+      <view class="section-title">{{section.title}}</view>
     </view>
 
-    <view wx:if="{{block.kind === 'mixed'}}" class="section-text">
-      <mixed-content-renderer
-        html="{{block.html || ''}}"
-        segments="{{block.segments || []}}"
-      ></mixed-content-renderer>
-    </view>
-
-    <view wx:if="{{block.kind === 'bullet'}}" class="section-bullet">
-      <view class="bullet-dot"></view>
-      <view class="bullet-text">
-        <mixed-content-renderer
-          wx:if="{{block.segments && block.segments.length}}"
-          html="{{block.html || ''}}"
-          segments="{{block.segments}}"
-        ></mixed-content-renderer>
-        <view wx:else class="rich-copy">
-          <rich-text nodes="{{block.html || block.text}}"></rich-text>
+    <view class="section-body">
+      <block wx:for="{{section.blocks}}" wx:key="id" wx:for-item="block">
+        <view wx:if="{{block.kind === 'text'}}" class="section-text">
+          <view class="rich-copy">
+            <rich-text nodes="{{block.html || block.text}}"></rich-text>
+          </view>
         </view>
-      </view>
-    </view>
 
-    <view wx:if="{{block.kind === 'formula'}}" class="formula-card">
-      <scroll-view scroll-x class="formula-scroll" enhanced="{{true}}">
-        <rich-text class="formula-rich" nodes="{{block.formulaHtml}}"></rich-text>
-      </scroll-view>
-    </view>
+        <view wx:if="{{block.kind === 'mixed'}}" class="section-text">
+          <mixed-content-renderer
+            html="{{block.html || ''}}"
+            segments="{{block.segments || []}}"
+          ></mixed-content-renderer>
+        </view>
 
-    <view wx:if="{{block.kind === 'theorem'}}" class="theorem-card">
-      <view wx:if="{{block.titleHtml}}" class="theorem-title">
-        <view class="rich-copy">
-          <rich-text nodes="{{block.titleHtml}}"></rich-text>
+        <view wx:if="{{block.kind === 'bullet'}}" class="section-bullet">
+          <view class="bullet-dot"></view>
+          <view class="bullet-text">
+            <mixed-content-renderer
+              wx:if="{{block.segments && block.segments.length}}"
+              html="{{block.html || ''}}"
+              segments="{{block.segments}}"
+            ></mixed-content-renderer>
+            <view wx:else class="rich-copy">
+              <rich-text nodes="{{block.html || block.text}}"></rich-text>
+            </view>
+          </view>
         </view>
-      </view>
-      <view wx:elif="{{block.title}}" class="theorem-title">
-        {{block.title}}
-      </view>
-      <view wx:if="{{block.descHtml}}" class="theorem-desc">
-        <view class="rich-copy">
-          <rich-text nodes="{{block.descHtml}}"></rich-text>
+
+        <view wx:if="{{block.kind === 'formula'}}" class="formula-card">
+          <scroll-view scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
+            <view class="formula-track">
+              <rich-text class="formula-rich" nodes="{{block.formulaHtml}}"></rich-text>
+            </view>
+          </scroll-view>
         </view>
-      </view>
-      <view wx:elif="{{block.desc}}" class="theorem-desc">
-        {{block.desc}}
-      </view>
-      <view wx:if="{{block.formulaHtml}}" class="formula-card inner">
-        <scroll-view scroll-x class="formula-scroll" enhanced="{{true}}">
-          <rich-text class="formula-rich" nodes="{{block.formulaHtml}}"></rich-text>
-        </scroll-view>
-      </view>
+
+        <view wx:if="{{block.kind === 'theorem'}}" class="theorem-card">
+          <view wx:if="{{block.titleHtml}}" class="theorem-title">
+            <view class="rich-copy">
+              <rich-text nodes="{{block.titleHtml}}"></rich-text>
+            </view>
+          </view>
+          <view wx:elif="{{block.title}}" class="theorem-title">
+            {{block.title}}
+          </view>
+          <view wx:if="{{block.descHtml}}" class="theorem-desc">
+            <view class="rich-copy">
+              <rich-text nodes="{{block.descHtml}}"></rich-text>
+            </view>
+          </view>
+          <view wx:elif="{{block.desc}}" class="theorem-desc">
+            {{block.desc}}
+          </view>
+          <view wx:if="{{block.formulaHtml}}" class="formula-card inner">
+            <scroll-view scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
+              <view class="formula-track">
+                <rich-text class="formula-rich" nodes="{{block.formulaHtml}}"></rich-text>
+              </view>
+            </scroll-view>
+          </view>
+        </view>
+      </block>
     </view>
-  </block>
+  </view>
 </view>

@@ -649,7 +649,8 @@ function resolveNodeStyles(
 
   if (classes.includes("katex") && context.parentClasses.includes("katex-display")) {
     mergeStyles(styles, {
-      display: "block",
+      display: "inline-block",
+      "min-width": "100%",
       "text-align": "center",
       "white-space": "nowrap",
     });

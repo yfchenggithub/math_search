@@ -19,6 +19,7 @@ Page({
     pdfUrl: "",
     hasPdf: false,
     sourceType: "meta",
+    articleScrollTop: 0,
     transformStyle: "transform: translate3d(0px, 0px, 0) scale(1);",
     zoomActive: false,
     scaleLabel: "100%",
@@ -49,6 +50,9 @@ Page({
   containerHeight: 0,
   contentWidth: 0,
   contentHeight: 0,
+  viewerLeft: 0,
+  viewerTop: 0,
+  articleScrollTop: 0,
 
   velocityX: 0,
   velocityY: 0,
@@ -72,6 +76,7 @@ Page({
     }
 
     this.resetTransform(false);
+    this.articleScrollTop = 0;
 
     this.setData({
       id: detail.id,
@@ -84,6 +89,7 @@ Page({
       pdfUrl: detail.pdfUrl,
       hasPdf: detail.hasPdf,
       sourceType: detail.sourceType,
+      articleScrollTop: 0,
       transformStyle: this.buildTransformStyle(),
       zoomActive: false,
       scaleLabel: "100%",
@@ -127,6 +133,8 @@ Page({
 
       this.containerWidth = viewer.width || 0;
       this.containerHeight = viewer.height || 0;
+      this.viewerLeft = viewer.left || 0;
+      this.viewerTop = viewer.top || 0;
 
       if (this.scale <= 1.01 || this.contentWidth === 0 || this.contentHeight === 0) {
         this.contentWidth = content.width || this.containerWidth;
@@ -201,10 +209,12 @@ Page({
       return;
     }
 
-    const centerX = this.containerWidth ? this.containerWidth / 2 : 0;
-    const centerY = this.containerHeight ? this.containerHeight / 2 : 0;
+    this.prepareZoomViewport(() => {
+      const centerX = this.containerWidth ? this.containerWidth / 2 : 0;
+      const centerY = this.containerHeight ? this.containerHeight / 2 : 0;
 
-    this.zoomTo(1.8, centerX, centerY);
+      this.zoomTo(1.8, centerX, centerY);
+    });
   },
 
   getTouches(e: WechatMiniprogram.TouchEvent): TouchPoint[] {
@@ -218,10 +228,55 @@ Page({
   },
 
   getCenter(touches: TouchPoint[]) {
+    const first = this.getViewerPoint(touches[0]);
+    const second = this.getViewerPoint(touches[1]);
+
     return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
+      x: (first.x + second.x) / 2,
+      y: (first.y + second.y) / 2,
     };
+  },
+
+  getViewerPoint(point: TouchPoint) {
+    return {
+      x: point.pageX - this.viewerLeft,
+      y: point.pageY - this.viewerTop,
+    };
+  },
+
+  getMaxScrollTop() {
+    return Math.max(0, this.contentHeight - this.containerHeight);
+  },
+
+  getRestoreScrollTop() {
+    if (this.scale <= 1.01) {
+      return Math.min(this.getMaxScrollTop(), Math.max(0, this.articleScrollTop));
+    }
+
+    const visibleTop = -this.translateY / Math.max(this.scale, 1);
+    return Math.min(this.getMaxScrollTop(), Math.max(0, visibleTop));
+  },
+
+  prepareZoomViewport(callback?: () => void) {
+    const currentScrollTop = this.articleScrollTop;
+
+    if (currentScrollTop <= 0.5) {
+      callback?.();
+      return;
+    }
+
+    this.translateX = 0;
+    this.lastTranslateX = 0;
+    this.translateY = -currentScrollTop;
+    this.lastTranslateY = this.translateY;
+    this.articleScrollTop = 0;
+
+    this.setData({
+      articleScrollTop: 0,
+      transformStyle: this.buildTransformStyle(),
+    }, () => {
+      callback?.();
+    });
   },
 
   buildTransformStyle() {
@@ -344,6 +399,14 @@ Page({
     clearTimeout(this.inertiaId);
   },
 
+  onArticleScroll(e: WechatMiniprogram.ScrollViewScrollEvent) {
+    if (this.scale > 1.01) {
+      return;
+    }
+
+    this.articleScrollTop = Number(e.detail.scrollTop || 0);
+  },
+
   startInertia() {
     if (this.scale <= 1.01) {
       return;
@@ -384,12 +447,14 @@ Page({
     const now = Date.now();
 
     if (now - this.lastTapTime < 300 && e.touches.length === 1) {
-      const point = this.getTouches(e)[0];
+      const point = this.getViewerPoint(this.getTouches(e)[0]);
 
       if (this.scale > 1.01) {
         this.resetTransform();
       } else {
-        this.zoomTo(2, point.pageX, point.pageY);
+        this.prepareZoomViewport(() => {
+          this.zoomTo(2, point.x, point.y);
+        });
       }
     }
 
@@ -403,6 +468,10 @@ Page({
     const touches = this.getTouches(e);
 
     if (touches.length === 2) {
+      if (this.scale <= 1.01) {
+        this.prepareZoomViewport();
+      }
+
       this.gesture.startDistance = this.getDistance(touches);
       this.gesture.startScale = this.scale;
       this.velocityX = 0;
@@ -410,11 +479,12 @@ Page({
     }
 
     if (touches.length === 1 && this.scale > 1.01) {
-      this.gesture.startX = touches[0].pageX - this.lastTranslateX;
-      this.gesture.startY = touches[0].pageY - this.lastTranslateY;
+      const point = this.getViewerPoint(touches[0]);
+      this.gesture.startX = point.x - this.lastTranslateX;
+      this.gesture.startY = point.y - this.lastTranslateY;
       this.lastMoveTime = Date.now();
-      this.lastMoveX = touches[0].pageX;
-      this.lastMoveY = touches[0].pageY;
+      this.lastMoveX = point.x;
+      this.lastMoveY = point.y;
     }
   },
 
@@ -446,8 +516,9 @@ Page({
       }
 
       if (touches.length === 1 && this.scale > 1.01) {
-        const rawX = touches[0].pageX - this.gesture.startX;
-        const rawY = touches[0].pageY - this.gesture.startY;
+        const point = this.getViewerPoint(touches[0]);
+        const rawX = point.x - this.gesture.startX;
+        const rawY = point.y - this.gesture.startY;
         const bounds = this.calcBounds();
 
         this.translateX = this.applyResistance(rawX, bounds.minX, bounds.maxX);
@@ -457,11 +528,11 @@ Page({
         const deltaTime = now - this.lastMoveTime;
 
         if (deltaTime > 0) {
-          this.velocityX = ((touches[0].pageX - this.lastMoveX) / deltaTime) * 16;
-          this.velocityY = ((touches[0].pageY - this.lastMoveY) / deltaTime) * 16;
+          this.velocityX = ((point.x - this.lastMoveX) / deltaTime) * 16;
+          this.velocityY = ((point.y - this.lastMoveY) / deltaTime) * 16;
           this.lastMoveTime = now;
-          this.lastMoveX = touches[0].pageX;
-          this.lastMoveY = touches[0].pageY;
+          this.lastMoveX = point.x;
+          this.lastMoveY = point.y;
         }
       }
 
@@ -489,6 +560,8 @@ Page({
   },
 
   resetTransform(syncData = true) {
+    const restoreScrollTop = syncData ? this.getRestoreScrollTop() : 0;
+
     this.scale = 1;
     this.lastScale = 1;
     this.translateX = 0;
@@ -497,9 +570,15 @@ Page({
     this.lastTranslateY = 0;
     this.velocityX = 0;
     this.velocityY = 0;
+    this.articleScrollTop = restoreScrollTop;
 
     if (syncData) {
-      this.syncTransformState();
+      this.setData({
+        articleScrollTop: restoreScrollTop,
+        transformStyle: this.buildTransformStyle(),
+        zoomActive: false,
+        scaleLabel: "100%",
+      });
     }
   },
 });

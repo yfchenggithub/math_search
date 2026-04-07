@@ -21,20 +21,24 @@
     </view>
   </view>
 
-  <view class="viewer">
+  <view
+    class="viewer"
+    bindtouchstart="onTouchStart"
+    bindtouchmove="onTouchMove"
+    bindtouchend="onTouchEnd"
+  >
     <scroll-view
       class="article-scroll"
       scroll-y="{{!zoomActive}}"
+      scroll-top="{{articleScrollTop}}"
       enhanced="{{true}}"
       show-scrollbar="{{false}}"
+      bindscroll="onArticleScroll"
     >
       <view
         id="articleWrapper"
         class="article-wrapper"
         style="{{transformStyle}}"
-        bindtouchstart="onTouchStart"
-        bindtouchmove="onTouchMove"
-        bindtouchend="onTouchEnd"
       >
         <view class="article-card">
           <view class="article-header">
@@ -50,8 +54,10 @@
           </view>
 
           <view wx:if="{{coreFormulaHtml}}" class="hero-formula">
-            <scroll-view scroll-x class="formula-scroll" enhanced="{{true}}">
-              <rich-text class="formula-rich" nodes="{{coreFormulaHtml}}"></rich-text>
+            <scroll-view scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
+              <view class="formula-track">
+                <rich-text class="formula-rich" nodes="{{coreFormulaHtml}}"></rich-text>
+              </view>
             </scroll-view>
           </view>
 
@@ -60,6 +66,7 @@
             wx:key="key"
             wx:for-item="section"
             section="{{section}}"
+            zoomActive="{{zoomActive}}"
           ></detail-section-renderer>
         </view>
       </view>
