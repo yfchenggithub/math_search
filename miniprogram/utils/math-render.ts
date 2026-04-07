@@ -504,6 +504,7 @@ function serializeMathTree(node: KatexTreeNode, context: SerializeContext): stri
         parentClasses: classes,
         grandParentClasses: context.parentClasses,
         parentIsVlistChild: context.parentClasses.includes("vlist"),
+        displayAlign: context.displayAlign,
       }),
     )
     .join("");
@@ -570,6 +571,10 @@ function collectNormalizedText(node: KatexTreeNode): string {
 }
 
 function serializeSvgNode(node: KatexTreeNode): string {
+  if ((node.children || []).some((child) => child.pathName === "vert")) {
+    return serializeVerticalDelimiterFallback(node);
+  }
+
   if ((node.children || []).some((child) => child.pathName === "sqrtMain")) {
     return serializeSqrtFallback(node);
   }
@@ -583,20 +588,11 @@ function serializeSvgNode(node: KatexTreeNode): string {
 
   attributes.style = styleMapToString({
     display: "block",
-    position: "absolute",
-    width: "100%",
-    height: "inherit",
+    overflow: "visible",
     fill: "currentColor",
     stroke: "currentColor",
     "fill-rule": "nonzero",
     "fill-opacity": "1",
-    "stroke-width": "1",
-    "stroke-linecap": "butt",
-    "stroke-linejoin": "miter",
-    "stroke-miterlimit": "4",
-    "stroke-dasharray": "none",
-    "stroke-dashoffset": "0",
-    "stroke-opacity": "1",
   });
 
   const children = (node.children || [])
@@ -610,6 +606,27 @@ function serializeSvgNode(node: KatexTreeNode): string {
     .join("");
 
   return `<svg${stringifyAttributes(attributes)}>${children}</svg>`;
+}
+
+function serializeVerticalDelimiterFallback(node: KatexTreeNode): string {
+  const width = String(node.attributes?.width || "0.333em");
+  const height = String(node.attributes?.height || "1em");
+  const containerStyle = styleMapToString({
+    display: "block",
+    width,
+    height,
+    overflow: "visible",
+  });
+  const barStyle = styleMapToString({
+    display: "block",
+    width: "0",
+    height: "100%",
+    margin: "0 auto",
+    "border-left": "1.3px solid currentColor",
+    "box-sizing": "border-box",
+  });
+
+  return `<span style="${containerStyle}"><span style="${barStyle}"></span></span>`;
 }
 
 function serializeSqrtFallback(node: KatexTreeNode): string {
