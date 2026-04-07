@@ -1,9 +1,40 @@
+/**
+ * 详情数据适配层。
+ *
+ * 这个文件的核心任务是把 `data/content/*.js` 中的原始条目数据，
+ * 转换成详情页可以直接渲染的统一 view model。
+ *
+ * 为什么需要这一层：
+ * 1. 详情页不应该直接理解多种数据 schema，否则页面文件会充满分支判断。
+ * 2. 当前仓库既要兼容旧的 legacy 字段，也要优先支持 `display_version = 2 + sections`
+ *    的 structured 数据。
+ * 3. 数学公式、混排段落、theorem 列表、变量列表等展示形态，都需要在这里提前整理好。
+ *
+ * 上游输入：
+ * - `data/content/*.js` 中的原始 record。
+ *
+ * 下游输出：
+ * - `DetailDocumentView`
+ * - `DetailSectionView`
+ * - `DetailBlockView`
+ *
+ * 推荐阅读顺序：
+ * 1. `getDetailDocument`
+ * 2. `buildDetailViewModel`
+ * 3. `buildSections`
+ * 4. `buildStructuredSections`
+ * 5. `parseStatementContent`（legacy 兜底）
+ */
 import {
   renderMath,
   renderMixedTextHtml,
   renderPlainTextHtml,
 } from "./math-render";
 
+/**
+ * 以下 Raw* 类型描述的是“构建脚本输出的数据形态”。
+ * 这些类型并不直接用于页面渲染，而是作为适配层的输入。
+ */
 type RawStructuredSegment = {
   type?: "text" | "math";
   text?: string;
@@ -98,6 +129,10 @@ type RawDetailEntry = {
 
 type RawDetailMap = Record<string, RawDetailEntry>;
 
+/**
+ * 以下 Detail*View 类型是“页面渲染层的统一输出结构”。
+ * 页面和组件只需要理解这些结构，不需要再关心原始 record 的字段差异。
+ */
 export interface DetailInlineSegmentView {
   id: string;
   kind: "text" | "math";
@@ -142,6 +177,20 @@ export interface DetailDocumentView {
 
 let detailContentCache: RawDetailMap | null = null;
 
+/**
+ * 详情页对外的统一入口。
+ *
+ * 输入：
+ * - `id`：详情页路由参数里的条目 id。
+ *
+ * 输出：
+ * - 一个可直接供详情页页面层消费的 `DetailDocumentView`。
+ *
+ * 主要职责：
+ * 1. 从缓存中找到原始 record。
+ * 2. 将 record 适配为统一 view model。
+ * 3. 推导标题、摘要、核心公式、PDF 地址和来源类型。
+ */
 export function getDetailDocument(id: string): DetailDocumentView | null {
   if (!id) {
     return null;
@@ -171,6 +220,12 @@ export function getDetailDocument(id: string): DetailDocumentView | null {
   };
 }
 
+/**
+ * 按 id 读取原始详情条目，并在首次访问时建立缓存。
+ *
+ * 这样做的原因是详情数据是本地静态模块，适合在运行时只加载一次，
+ * 避免每次进入详情页都重复扫描整个内容文件。
+ */
 function getRawDetailEntry(id: string): RawDetailEntry | null {
   if (!detailContentCache) {
     try {
@@ -184,6 +239,13 @@ function getRawDetailEntry(id: string): RawDetailEntry | null {
   return detailContentCache[id] || null;
 }
 
+/**
+ * 将单条原始 record 转为页面层需要的核心视图模型。
+ *
+ * 这里是页面层与数据层之间最重要的一道边界：
+ * - 页面只关心“摘要是什么、sections 长什么样、PDF 在哪、来源类型是什么”；
+ * - 至于这些值来自 structured 字段、legacy 字段还是兜底推导，都由这里处理。
+ */
 function buildDetailViewModel(rawEntry: RawDetailEntry, id: string) {
   const summary = getPreferredSummary(rawEntry);
   const sections = buildSections(rawEntry, summary);
@@ -199,6 +261,11 @@ function buildDetailViewModel(rawEntry: RawDetailEntry, id: string) {
   };
 }
 
+/**
+ * 扫描详情数据模块并建立 `id -> record` 缓存。
+ *
+ * 这是一个“运行时轻量索引”，目的是让详情页可以通过 id O(1) 命中条目。
+ */
 function buildDetailContentCache(): RawDetailMap {
   const cache: RawDetailMap = {};
   const modules = loadDetailContentModules();
@@ -227,6 +294,13 @@ function buildDetailContentCache(): RawDetailMap {
   return cache;
 }
 
+/**
+ * 加载当前详情页真正依赖的数据模块。
+ *
+ * 这里刻意不走共享 registry：
+ * - registry 中可能还会顺带引入搜索索引模块；
+ * - 详情页运行时只需要详情内容 bundle，不需要搜索侧的附加依赖。
+ */
 function loadDetailContentModules(): Array<Record<string, unknown>> {
   // The detail page should only hydrate from detail-content bundles.
   // Pulling in the shared registry also loads search indexes, which can
@@ -236,6 +310,10 @@ function loadDetailContentModules(): Array<Record<string, unknown>> {
   ];
 }
 
+/**
+ * 判断一个候选对象是否像“详情 record”。
+ * 这是建立缓存时的第一道筛选，避免把无关对象误当成条目数据。
+ */
 function looksLikeDetailEntry(candidate: unknown): candidate is RawDetailEntry {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     return false;
@@ -257,6 +335,12 @@ function looksLikeDetailEntry(candidate: unknown): candidate is RawDetailEntry {
   );
 }
 
+/**
+ * 判断当前条目是否拥有 structured v2 sections。
+ *
+ * 一旦满足这个条件，structured 数据就是详情页的权威渲染来源，
+ * 不再退回到 legacy 字段做主渲染。
+ */
 function hasStructuredSections(
   rawEntry: RawDetailEntry | null | undefined,
 ): rawEntry is RawDetailEntry & { display_version: 2; sections: RawStructuredSection[] } {
@@ -267,6 +351,20 @@ function hasStructuredSections(
   );
 }
 
+/**
+ * 选择详情 section 的构建路径。
+ *
+ * 优先级：
+ * 1. structured sections（display_version = 2）
+ * 2. rich legacy 字段（explanation / proof / examples ...）
+ * 3. statement 字段解析
+ * 4. 最后才退回到只显示摘要
+ *
+ * 这样可以最大程度保证：
+ * - 新数据走新 renderer；
+ * - 老数据不至于丢失；
+ * - 页面层始终只消费统一的 `DetailSectionView[]`。
+ */
 function buildSections(rawEntry: RawDetailEntry, headerSummary: string): DetailSectionView[] {
   // Structured sections are the authoritative render source for display_version=2.
   if (hasStructuredSections(rawEntry)) {
@@ -304,6 +402,12 @@ function buildSections(rawEntry: RawDetailEntry, headerSummary: string): DetailS
   ];
 }
 
+/**
+ * legacy 详情字段的主构建链。
+ *
+ * 这条链主要服务旧格式数据，把多个松散字段拼成一组 section。
+ * 与 structured 路径相比，这里更偏“字段拼装 + 后续再装饰”。
+ */
 function buildRichSections(rawEntry: RawDetailEntry, headerSummary: string): DetailSectionView[] {
   const sections: DetailSectionView[] = [];
 
@@ -327,6 +431,10 @@ function buildRichSections(rawEntry: RawDetailEntry, headerSummary: string): Det
   return sections;
 }
 
+/**
+ * 变量说明 section。
+ * 旧数据中的变量通常还是普通文本，因此这里先做文本整理，后续由 legacy 装饰层统一渲染。
+ */
 function buildVariableSection(variables?: RawDetailVariable[]): DetailSectionView | null {
   if (!Array.isArray(variables) || variables.length === 0) {
     return null;
@@ -359,6 +467,10 @@ function buildVariableSection(variables?: RawDetailVariable[]): DetailSectionVie
   };
 }
 
+/**
+ * 相关公式 section。
+ * 这里的每一项都直接作为独立 display formula 渲染。
+ */
 function buildRelatedFormulaSection(relatedFormulas?: string[]): DetailSectionView | null {
   if (!Array.isArray(relatedFormulas) || relatedFormulas.length === 0) {
     return null;
@@ -393,6 +505,10 @@ function buildRelatedFormulaSection(relatedFormulas?: string[]): DetailSectionVi
   };
 }
 
+/**
+ * 使用场景 section。
+ * 主要把 usage 里的场景、题型、频率和分值拆成页面可消费的 block 列表。
+ */
 function buildUsageSection(usage?: RawUsage): DetailSectionView | null {
   if (!usage) {
     return null;
@@ -462,6 +578,10 @@ function buildUsageSection(usage?: RawUsage): DetailSectionView | null {
   };
 }
 
+/**
+ * 关联知识 section。
+ * 用于承接 prerequisites / related_ids / similar 这类附加说明。
+ */
 function buildRelationsSection(relations?: RawRelations): DetailSectionView | null {
   if (!relations) {
     return null;
@@ -521,6 +641,12 @@ function buildRelationsSection(relations?: RawRelations): DetailSectionView | nu
   };
 }
 
+/**
+ * 由一个松散文本字段创建 legacy section。
+ *
+ * 输入可以是单个字符串，也可以是字符串数组；
+ * 最终都会先归一化成一段文本，再拆成 text / bullet / formula blocks。
+ */
 function createLooseSection(
   key: string,
   title: string,
@@ -544,6 +670,18 @@ function createLooseSection(
   };
 }
 
+/**
+ * 解析 legacy 文本块。
+ *
+ * 处理策略：
+ * - 以行为单位扫描；
+ * - 识别 bullet；
+ * - 识别整行公式；
+ * - 其余内容按段落累计。
+ *
+ * 这条链本质上是在“旧数据只能给一大段文本”的前提下，
+ * 尽量推断出详情页还能接受的结构。
+ */
 function parseLooseContentBlocks(text: string, key: string): DetailBlockView[] {
   const lines = text
     .split(/\r?\n/)
@@ -597,6 +735,14 @@ function parseLooseContentBlocks(text: string, key: string): DetailBlockView[] {
   return blocks;
 }
 
+/**
+ * structured v2 sections 的主构建链。
+ *
+ * 这是当前详情页最推荐的数据路径：
+ * - section 的层级由数据显式给出；
+ * - item 的类型由数据显式给出；
+ * - 适配层只需要把这些结构稳定映射为 view blocks。
+ */
 function buildStructuredSections(sections: RawStructuredSection[]): DetailSectionView[] {
   const result: DetailSectionView[] = [];
 
@@ -651,6 +797,12 @@ function buildStructuredSections(sections: RawStructuredSection[]): DetailSectio
   return result;
 }
 
+/**
+ * 将单个 structured item 转成一个或多个 block。
+ *
+ * 一个 item 之所以可能对应多个 block，
+ * 是因为 `segments` 里可能混有需要被提升成独立 display formula 的数学段。
+ */
 function buildStructuredBlocks(
   section: DetailSectionView,
   rawItem: string | RawStructuredItem,
@@ -687,6 +839,10 @@ function buildStructuredBlocks(
   return null;
 }
 
+/**
+ * structured 普通文本 block。
+ * list / variables 场景会转成 bullet，其余场景保留为普通正文段。
+ */
 function createStructuredTextBlock(
   section: DetailSectionView,
   blockId: string,
@@ -709,6 +865,13 @@ function createStructuredTextBlock(
   };
 }
 
+/**
+ * structured 中的纯 latex item。
+ *
+ * 规则：
+ * - 在 variables / list 这类列表场景下，按行内数学 bullet 处理。
+ * - 在普通正文场景下，按独立公式块处理。
+ */
 function createStructuredLatexBlock(
   section: DetailSectionView,
   blockId: string,
@@ -741,6 +904,13 @@ function createStructuredLatexBlock(
   };
 }
 
+/**
+ * structured mixed segments 的主适配入口。
+ *
+ * 为什么这里要特别小心：
+ * - v2 数据已经明确区分了 text 与 math，适配层不能再把它们拼回纯文本去猜公式；
+ * - 同时，对于明显属于 display math 的长公式，还需要从段落里提升成独立公式卡片。
+ */
 function createStructuredSegmentBlocks(
   section: DetailSectionView,
   blockId: string,
@@ -808,6 +978,13 @@ function createStructuredSegmentBlocks(
   return result;
 }
 
+/**
+ * 将一个“仍应保持句内混排”的 structured segments item 转成单个 block。
+ *
+ * 输出：
+ * - list / variables 场景：bullet
+ * - 其它正文场景：mixed
+ */
 function createStructuredInlineSegmentBlock(
   section: DetailSectionView,
   blockId: string,
@@ -837,6 +1014,12 @@ function createStructuredInlineSegmentBlock(
   };
 }
 
+/**
+ * 创建左对齐 display formula block。
+ *
+ * 这类 block 多用于从正文里提升出来的推导型长公式，
+ * 比起完全居中，左对齐通常更符合阅读推导过程的习惯。
+ */
 function createStructuredFormulaBlock(blockId: string, latex: string): DetailBlockView {
   const mathResult = renderMath(latex, true, { align: "left" });
 
@@ -849,6 +1032,16 @@ function createStructuredFormulaBlock(blockId: string, latex: string): DetailBlo
   };
 }
 
+/**
+ * theorem-list item 的适配逻辑。
+ *
+ * 这类 block 同时可能包含：
+ * - 标题
+ * - 描述
+ * - 公式
+ *
+ * 适合表达“结论一 / 结论二”这种教学卡片结构。
+ */
 function createStructuredTheoremBlock(
   _section: DetailSectionView,
   blockId: string,
@@ -875,6 +1068,14 @@ function createStructuredTheoremBlock(
   };
 }
 
+/**
+ * 将 structured `segments` 转为页面层真正的 inline segments。
+ *
+ * 这一步非常关键：
+ * - text 片段保持文本渲染；
+ * - math 片段保持行内数学渲染；
+ * - 不会因为进入前端 renderer 而退化成纯文本猜公式。
+ */
 function buildStructuredSegments(
   segments: RawStructuredSegment[],
   blockId: string,
@@ -904,6 +1105,13 @@ function buildStructuredSegments(
   return result;
 }
 
+/**
+ * 把同一个 item 内的所有 inline segments 组合成一个连续段落。
+ *
+ * 这里故意只包成一个容器，是为了保证：
+ * - 中文 + inline math 在同一段落里自然换行；
+ * - 不会因为 segment 边界而被拆成很多互不相关的小块。
+ */
 function composeInlineSegmentHtml(segments: DetailInlineSegmentView[]): string {
   const content = segments
     .map((segment) => segment.html)
@@ -919,6 +1127,14 @@ function composeInlineSegmentHtml(segments: DetailInlineSegmentView[]): string {
   return `<span style="display:inline;white-space:normal;line-height:inherit;">${content}</span>`;
 }
 
+/**
+ * 归一化 structured segments。
+ *
+ * 主要做三件事：
+ * 1. 去掉空 segment；
+ * 2. 规范化 math latex；
+ * 3. 合并相邻 text，避免页面渲染时出现无意义碎片。
+ */
 function normalizeInlineSegments(segments: RawStructuredSegment[]): RawStructuredSegment[] {
   const result: RawStructuredSegment[] = [];
 
@@ -960,10 +1176,22 @@ function normalizeInlineSegments(segments: RawStructuredSegment[]): RawStructure
   return result;
 }
 
+/**
+ * 保留行内文本中的自然换行，不做额外裁剪。
+ * 这是为了尽量尊重 structured 数据原本的段内语义。
+ */
 function normalizeInlineText(text?: string): string {
   return (text || "").replace(/\r\n?/g, "\n");
 }
 
+/**
+ * 判断一个 structured math segment 是否应该被提升为 display formula。
+ *
+ * 典型触发条件：
+ * - 多行公式
+ * - 明显的 aligned / matrix / cases 环境
+ * - 很长的等式链或不等式链
+ */
 function isStructuredDisplayMathSegment(segment: RawStructuredSegment): boolean {
   if (segment.type !== "math") {
     return false;
@@ -982,6 +1210,13 @@ function isStructuredDisplayMathSegment(segment: RawStructuredSegment): boolean 
   );
 }
 
+/**
+ * 判断一条 latex 是否像“长推导公式链”。
+ *
+ * 这个函数的目标不是严格数学解析，而是做一个偏保守的 UI 决策：
+ * 如果一条公式在正文中作为 inline math 很可能撑破布局，
+ * 就优先提升成独立公式卡片，换取更稳定的阅读体验。
+ */
 function isStructuredLongEquationChain(latex: string): boolean {
   const normalized = latex.replace(/\s+/g, " ").trim();
 
@@ -1007,6 +1242,15 @@ function isStructuredLongEquationChain(latex: string): boolean {
   );
 }
 
+/**
+ * statement 字段的 legacy 解析器。
+ *
+ * 这是旧数据最后一道重要兜底：
+ * - 识别 section heading（条件 / 结论 / 取等条件）
+ * - 识别 theorem 风格条目
+ * - 识别整行公式
+ * - 其余内容作为普通文本
+ */
 function parseStatementContent(statement: string): DetailSectionView[] {
   const sections: DetailSectionView[] = [];
   const lines = statement
@@ -1110,6 +1354,10 @@ function parseStatementContent(statement: string): DetailSectionView[] {
   return sections.filter((section) => section.blocks.length > 0);
 }
 
+/**
+ * 为 legacy section 补充 HTML 展示字段。
+ * 这样页面层在渲染 legacy 数据时，也能尽量复用统一模板。
+ */
 function decorateLegacySections(sections: DetailSectionView[]): DetailSectionView[] {
   return sections.map((section) => ({
     ...section,
@@ -1117,6 +1365,13 @@ function decorateLegacySections(sections: DetailSectionView[]): DetailSectionVie
   }));
 }
 
+/**
+ * 给单个 legacy block 补充 HTML。
+ *
+ * 说明：
+ * - text / bullet 会走 mixed-text 渲染，以兼容旧文本中夹杂的简单公式。
+ * - theorem 需要分别装饰标题和描述。
+ */
 function decorateLegacyBlock(block: DetailBlockView): DetailBlockView {
   if (block.kind === "text" || block.kind === "bullet") {
     return {
@@ -1136,6 +1391,10 @@ function decorateLegacyBlock(block: DetailBlockView): DetailBlockView {
   return block;
 }
 
+/**
+ * 识别 legacy statement 中的章节标题。
+ * 返回值里同时保留 inlineText，便于把标题后面跟着的短说明继续挂到当前 section 上。
+ */
 function matchSectionHeading(
   line: string,
 ): { title: string; key: string; inlineText: string } | null {
@@ -1173,6 +1432,13 @@ function matchSectionHeading(
   };
 }
 
+/**
+ * 判断某一行是否像独立公式。
+ *
+ * 这是 legacy 文本解析中的启发式规则：
+ * - structured v2 数据不会依赖这里；
+ * - 只有旧文本字段才需要用它来猜“这一整行应不应该当公式块处理”。
+ */
 function looksLikeFormula(line: string): boolean {
   if (!line) {
     return false;
@@ -1197,6 +1463,9 @@ function looksLikeFormula(line: string): boolean {
   return !hasChinese || /^[|$\\(]/.test(candidate);
 }
 
+/**
+ * 去掉整行公式外层可能包裹的数学定界符，便于后续进一步判断和渲染。
+ */
 function unwrapFormulaLine(line: string): string {
   let normalized = normalizeText(line);
   const wrappedPairs: Array<[string, string]> = [
@@ -1228,6 +1497,10 @@ function unwrapFormulaLine(line: string): string {
   return normalized;
 }
 
+/**
+ * 获取或创建 legacy section。
+ * 这是 statement 解析过程中维护 section 聚合状态的一个小工具函数。
+ */
 function ensureSection(
   sections: DetailSectionView[],
   title: string,
@@ -1249,6 +1522,9 @@ function ensureSection(
   return section;
 }
 
+/**
+ * 标记当前条目的来源类型，便于页面层或调试时知道它究竟走的是哪条数据链。
+ */
 function detectSourceType(rawEntry: RawDetailEntry | null): "structured" | "legacy" | "meta" {
   if (!rawEntry) {
     return "meta";
@@ -1265,6 +1541,10 @@ function detectSourceType(rawEntry: RawDetailEntry | null): "structured" | "lega
   return "meta";
 }
 
+/**
+ * 判断旧 record 是否仍然拥有较丰富的详情字段。
+ * 这主要用于区分“真正空数据”与“仍可从 legacy 字段拼出完整详情”的记录。
+ */
 function hasRichDetailFields(rawEntry: RawDetailEntry): boolean {
   return Boolean(
     rawEntry.core_summary
@@ -1282,6 +1562,11 @@ function hasRichDetailFields(rawEntry: RawDetailEntry): boolean {
   );
 }
 
+/**
+ * 以下一组 helper 负责为详情页挑选“展示优先字段”。
+ * 它们的共同目标是：在原始数据存在别名字段、兜底字段或轻微不一致时，
+ * 仍然为页面返回尽量稳定的标题、摘要、公式、PDF 地址和分类。
+ */
 function getPreferredTitle(rawEntry: RawDetailEntry, id: string): string {
   const rawTitle = normalizeText(rawEntry.title);
   if (rawTitle && !looksLikeSyntheticTitle(rawTitle, id)) {
@@ -1409,6 +1694,10 @@ function formatVariableText(variable: RawDetailVariable): string {
   return name || description;
 }
 
+/**
+ * 以下一组 helper 负责做最基础的文本归一化与数组拼接。
+ * 它们不承担业务判断，只提供低成本的清洗与聚合能力。
+ */
 function toNormalizedList(input?: string[]): string[] {
   if (!Array.isArray(input)) {
     return [];

@@ -1,3 +1,27 @@
+/**
+ * 小程序数学渲染工具层。
+ *
+ * 这个文件的目标不是“完整实现一个数学排版引擎”，而是把 KaTeX 的渲染结果
+ * 尽可能稳定地翻译成微信小程序 `rich-text` 能接受的 HTML 片段。
+ *
+ * 为什么这个文件会比较复杂：
+ * 1. 小程序 `rich-text` 对浏览器里常见的 CSS / SVG / overlay 行为支持不完整。
+ * 2. KaTeX 生成的结构很细，根号、绝对值、叠加关系符、分式、上下标往往依赖复杂 DOM。
+ * 3. 详情页和搜索页同时存在 block math、inline math、纯文本、中文混排等多种场景。
+ *
+ * 因此这里分成了几层：
+ * - 归一化层：把 legacy/plain 输入尽量整理成更稳定的 latex。
+ * - 渲染入口层：决定是 block 还是 inline，以及渲染失败时如何兜底。
+ * - 序列化层：把 KaTeX tree 转成小程序可接受的 HTML。
+ * - 兼容修补层：专门修复微信环境下不稳定的根号、竖线、`\\neq` 等结构。
+ *
+ * 推荐阅读顺序：
+ * 1. `normalizeLegacyMath`
+ * 2. `renderMath`
+ * 3. `renderMixedTextHtml`
+ * 4. `serializeMathTree`
+ * 5. `serializeSvgNode` 及几个 fallback
+ */
 type KatexOptions = {
   displayMode?: boolean;
   output?: "html" | "mathml" | "htmlAndMathml";
@@ -49,6 +73,13 @@ type MixedTextSegment = {
 
 const katex = require("../vendor/katex.js") as KatexRenderer;
 
+/**
+ * KaTeX class 到小程序可执行样式的映射表。
+ *
+ * 核心思路：
+ * - 尽量保留 KaTeX 的排版语义；
+ * - 但要把浏览器里依赖复杂布局的表现，转换成小程序更稳定的 display / position / white-space。
+ */
 const CLASS_STYLE_MAP: Record<string, StyleMap> = {
   "katex-display": {
     display: "inline-block",
@@ -180,6 +211,10 @@ const PRIVATE_USE_GLYPH_MAP: Record<string, string> = {
   "\uE020": "\u2260",
 };
 
+/**
+ * 纯文本 HTML 转义。
+ * 既服务普通文本，也服务数学渲染失败时的兜底输出。
+ */
 export function escapeHtml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
@@ -189,6 +224,19 @@ export function escapeHtml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * 归一化 legacy 数学文本。
+ *
+ * 解决的问题：
+ * - 老数据里可能混用 `!=`、`sqrt(...)`、`ln x`、普通括号分式等不够标准的写法。
+ * - structured v2 数据虽然更规范，但页面其它位置仍可能传入半结构化公式文本。
+ *
+ * 输入：
+ * - 原始字符串，可能是 plain text，也可能已经是部分 latex。
+ *
+ * 输出：
+ * - 更接近 KaTeX 可稳定处理的 latex 字符串。
+ */
 export function normalizeLegacyMath(input?: string): string {
   if (!input) {
     return "";
@@ -241,6 +289,9 @@ export function normalizeLegacyMath(input?: string): string {
   return normalized;
 }
 
+/**
+ * 去掉公式外层可能包裹的数学定界符，如 `$...$`、`\\(...\\)`、`$$...$$`。
+ */
 function stripMathDelimiters(input: string): string {
   let normalized = input.trim();
   let changed = true;
@@ -273,10 +324,36 @@ function stripMathDelimiters(input: string): string {
   return normalized;
 }
 
+/**
+ * 判断输入是否已经显式包含 latex 命令。
+ * 这样后续归一化时可以更保守，避免把本来就正确的 latex 再次误改写。
+ */
 function hasExplicitLatex(input: string): boolean {
   return /\\[A-Za-z]+/.test(input) || /\\[,;!]/.test(input);
 }
 
+/**
+ * 数学渲染总入口。
+ *
+ * 输入：
+ * - `source`：原始公式字符串。
+ * - `displayMode`：
+ *   - `true`：独立公式块（block math）。
+ *   - `false`：行内公式（inline math）。
+ * - `options.align`：仅对 display math 有意义，用于控制左对齐或居中。
+ *
+ * 输出：
+ * - `RenderMathResult`
+ *   - `html`：小程序可用的 HTML。
+ *   - `rendered`：是否成功走了 KaTeX 渲染链。
+ *   - `source`：归一化后的公式源码。
+ *
+ * 处理流程：
+ * 1. 先做 legacy 归一化。
+ * 2. 调用 KaTeX 生成 HTML tree。
+ * 3. 把 tree 序列化成 rich-text 可接受的结构。
+ * 4. 如失败则回退到纯文本形式，保证页面不崩。
+ */
 export function renderMath(
   source?: string,
   displayMode = false,
@@ -324,6 +401,9 @@ export function renderMath(
   }
 }
 
+/**
+ * `renderMath` 的便捷包装，只取 html。
+ */
 export function renderMathHtml(
   source?: string,
   displayMode = false,
@@ -332,6 +412,14 @@ export function renderMathHtml(
   return renderMath(source, displayMode, options).html;
 }
 
+/**
+ * 纯文本渲染为 HTML。
+ *
+ * 使用场景：
+ * - structured 中的纯 text item
+ * - theorem 的 title / desc
+ * - 需要明确保持原始换行和空格的普通说明文本
+ */
 export function renderPlainTextHtml(source?: string, inline = false): string {
   const normalizedSource = source || "";
 
@@ -346,6 +434,17 @@ export function renderPlainTextHtml(source?: string, inline = false): string {
   return `<${tag} style="display:${display};white-space:pre-wrap;">${escaped}</${tag}>`;
 }
 
+/**
+ * “中文说明 + 简单数学内容”混排渲染。
+ *
+ * 这个函数主要服务 legacy 文本：
+ * - 它会先按每一行拆开；
+ * - 再在一行内部做启发式 text / math 分段；
+ * - 数学片段走 inline math，其余片段保留普通文本。
+ *
+ * 注意：structured v2 的 `segments` 不依赖这里做主分段，
+ * 因为 structured 数据已经明确给出了 text 与 math 的边界。
+ */
 export function renderMixedTextHtml(source?: string): string {
   const normalizedSource = source || "";
 
@@ -359,6 +458,10 @@ export function renderMixedTextHtml(source?: string): string {
     .join("<br/>");
 }
 
+/**
+ * KaTeX 渲染失败时的最后兜底。
+ * 它宁可展示一段未排版的文本，也不让页面直接空白或报错。
+ */
 function createFallbackResult(
   source: string,
   displayMode: boolean,
@@ -375,6 +478,10 @@ function createFallbackResult(
   };
 }
 
+/**
+ * 渲染 legacy 文本中的单行 mixed 内容。
+ * 这里会保留中英文标点，并只把真正可识别为公式的核心片段送去数学渲染。
+ */
 function renderMixedLineHtml(line: string): string {
   const segments = splitMixedTextSegments(line);
 
@@ -405,6 +512,10 @@ function renderMixedLineHtml(line: string): string {
     .join("");
 }
 
+/**
+ * 把一行 legacy 文本粗分成 text / math 片段。
+ * 这一步是启发式规则，不追求严格数学解析，重点是提升常见教学文本的可读性。
+ */
 function splitMixedTextSegments(line: string): MixedTextSegment[] {
   const rawSegments = line.match(/[\u4e00-\u9fa5]+|[^\u4e00-\u9fa5]+/g) || [line];
   const result: MixedTextSegment[] = [];
@@ -427,6 +538,10 @@ function splitMixedTextSegments(line: string): MixedTextSegment[] {
   return result;
 }
 
+/**
+ * 判断某个片段是否更像数学内容。
+ * 规则会优先识别 latex 命令、函数名、变量下标、比较符和简单坐标/表达式形式。
+ */
 function shouldRenderSegmentAsMath(segment: string): boolean {
   const candidate = segment
     .trim()
@@ -476,10 +591,22 @@ function shouldRenderSegmentAsMath(segment: string): boolean {
   return false;
 }
 
+/**
+ * 纯文本转 HTML，同时保留空格。
+ * 主要用于 mixed-text 渲染时不丢失句内 spacing。
+ */
 function escapeTextForHtml(input: string): string {
   return escapeHtml(input).replace(/ /g, "&nbsp;");
 }
 
+/**
+ * KaTeX tree -> 小程序 HTML 的核心序列化入口。
+ *
+ * 这是整条数学渲染链里最关键的函数之一：
+ * - 普通文本节点走 `serializeTextNode`
+ * - SVG 节点走 `serializeSvgNode`
+ * - 其余 span 类节点递归处理 children 并拼装 style / attributes
+ */
 function serializeMathTree(node: KatexTreeNode, context: SerializeContext): string {
   if (typeof node.text === "string") {
     return serializeTextNode(node, context);
@@ -512,6 +639,10 @@ function serializeMathTree(node: KatexTreeNode, context: SerializeContext): stri
   return `<span${attributes}>${children}</span>`;
 }
 
+/**
+ * 文本节点序列化。
+ * 这里除了普通转义，还会先做 glyph 归一化，修复私有字形在小程序中的显示问题。
+ */
 function serializeTextNode(node: KatexTreeNode, context: SerializeContext): string {
   const classes = getClassList(node);
   const styles = resolveNodeStyles(node, classes, context);
@@ -524,6 +655,10 @@ function serializeTextNode(node: KatexTreeNode, context: SerializeContext): stri
   return `<span style="${styleMapToString(styles)}">${text}</span>`;
 }
 
+/**
+ * 将 KaTeX 中某些私有字形映射为标准 Unicode。
+ * 这样即使小程序环境无法正确识别 KaTeX 私有字体，也能尽量显示成可读字符。
+ */
 function normalizeMathGlyphs(input: string): string {
   let normalized = "";
 
@@ -535,6 +670,12 @@ function normalizeMathGlyphs(input: string): string {
   return normalized;
 }
 
+/**
+ * 处理像 `\\neq` 这类依赖“叠加”实现的关系符。
+ *
+ * 微信上的 rich-text 对 overlay 结构支持不稳定，
+ * 所以这里在识别出典型复合关系符后，直接收口成一个稳定字符。
+ */
 function serializeCompositeRelation(
   node: KatexTreeNode,
   classes: string[],
@@ -560,6 +701,9 @@ function serializeCompositeRelation(
   return `<span${attributes}>\u2260</span>`;
 }
 
+/**
+ * 收集一个节点子树里的归一化文本，用于辅助判断复合关系符等特殊场景。
+ */
 function collectNormalizedText(node: KatexTreeNode): string {
   if (typeof node.text === "string") {
     return normalizeMathGlyphs(node.text || "");
@@ -570,6 +714,16 @@ function collectNormalizedText(node: KatexTreeNode): string {
     .join("");
 }
 
+/**
+ * SVG 节点序列化。
+ *
+ * 大多数 KaTeX SVG 可以直接转 `<svg><path/></svg>`，
+ * 但某些结构在微信里不稳定，比如：
+ * - 绝对值的竖线 delimiter
+ * - 根号路径
+ *
+ * 这些特殊情况会先走专用 fallback。
+ */
 function serializeSvgNode(node: KatexTreeNode): string {
   if ((node.children || []).some((child) => child.pathName === "vert")) {
     return serializeVerticalDelimiterFallback(node);
@@ -608,6 +762,10 @@ function serializeSvgNode(node: KatexTreeNode): string {
   return `<svg${stringifyAttributes(attributes)}>${children}</svg>`;
 }
 
+/**
+ * 竖线 delimiter 的稳定 fallback。
+ * 主要服务绝对值、范数、大括号旁的竖线等结构。
+ */
 function serializeVerticalDelimiterFallback(node: KatexTreeNode): string {
   const width = String(node.attributes?.width || "0.333em");
   const height = String(node.attributes?.height || "1em");
@@ -629,6 +787,16 @@ function serializeVerticalDelimiterFallback(node: KatexTreeNode): string {
   return `<span style="${containerStyle}"><span style="${barStyle}"></span></span>`;
 }
 
+/**
+ * 根号的稳定 fallback。
+ *
+ * 原因：
+ * - 某些 KaTeX 根号 SVG 在微信 rich-text 中会消失、错位或比例异常。
+ *
+ * 处理方式：
+ * - 用一个可控的根号字形 + 一条手工 overline 组合出更稳定的显示结果。
+ * - 高度、字号和横线位置都参考原始 SVG 尺寸做估算。
+ */
 function serializeSqrtFallback(node: KatexTreeNode): string {
   const height = String(node.attributes?.height || "1em");
   const heightEm = parseEmSize(height, 1);
@@ -664,6 +832,9 @@ function serializeSqrtFallback(node: KatexTreeNode): string {
   return `<span style="${containerStyle}"><span style="${radicalStyle}">&#8730;</span><span style="${overlineStyle}"></span></span>`;
 }
 
+/**
+ * 解析形如 `1.2em` 的尺寸值，失败时返回 fallback。
+ */
 function parseEmSize(value: string, fallback: number): number {
   const match = String(value).match(/^([0-9.]+)em$/);
 
@@ -675,6 +846,13 @@ function parseEmSize(value: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+/**
+ * 根据 KaTeX class 和当前上下文，推导节点应该带上的内联样式。
+ *
+ * 这里是把浏览器 DOM 语义压缩到小程序 rich-text 能承受的关键一步：
+ * - 既要尽量还原 KaTeX 排版结构；
+ * - 又要避免微信环境里不稳定的默认布局行为。
+ */
 function resolveNodeStyles(
   node: KatexTreeNode,
   classes: string[],
@@ -767,6 +945,10 @@ function resolveNodeStyles(
   return styles;
 }
 
+/**
+ * 以下是一组“样式与属性拼装工具函数”。
+ * 它们没有业务含义，主要负责把 style/object 安全地转成 HTML 属性字符串。
+ */
 function normalizeStyleObject(input?: Record<string, string | number>): StyleMap {
   const result: StyleMap = {};
 

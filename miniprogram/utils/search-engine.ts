@@ -1,6 +1,32 @@
+/**
+ * 本地搜索引擎。
+ *
+ * 这个文件负责消费 `data/index/search_bundle.js`，并提供搜索页需要的几种能力：
+ * - 初始化索引
+ * - 读取搜索库元信息
+ * - 联想建议
+ * - 查询结果
+ * - 调试信息输出
+ *
+ * 设计目标：
+ * 1. 保持搜索页调用简单，页面只关心“给我 suggestions / results / debug”。
+ * 2. 保持搜索逻辑完全本地化，不依赖网络。
+ * 3. 兼顾可解释性，所以除了结果，还额外保留匹配原因与命中字段。
+ *
+ * 推荐阅读顺序：
+ * 1. `initSearchEngine`
+ * 2. `searchWithDebug`
+ * 3. `collectSuggestions`
+ * 4. `mergeIndexEntries`
+ * 5. `finalizeResults`
+ */
 type SearchIndexTuple = [string, number, number];
 type SearchSuggestionTuple = [string, string, number];
 
+/**
+ * `SearchDoc` 表示搜索索引中的单个文档。
+ * 搜索页最终展示的标题、摘要、分类、核心公式等，基本都来自这里。
+ */
 export interface SearchDoc {
   id: string;
   module: string;
@@ -98,6 +124,13 @@ type DebugWx = WechatMiniprogram.Wx & {
   debugSearchEngine?: SearchResponse;
 };
 
+/**
+ * 这些常量控制搜索体验：
+ * - 联想词最多显示多少条
+ * - 最终结果最多保留多少条
+ * - 单个 token 最多扫描多少条索引记录
+ * - prefix 匹配和 suggestion fallback 的权重
+ */
 const MAX_SUGGEST = 8;
 const MAX_RESULTS = 20;
 const MAX_INDEX_SCAN = 32;
@@ -107,6 +140,9 @@ const SUGGESTION_FALLBACK_WEIGHT = 0.9;
 let SEARCH_BUNDLE: SearchBundle | null = null;
 let FIELD_MASK_ENTRIES: Array<{ name: string; mask: number }> = [];
 
+/**
+ * 校验加载到的搜索 bundle 是否至少具备搜索所需的核心字段。
+ */
 function isValidSearchBundle(bundle: Partial<SearchBundle> | null): bundle is SearchBundle {
   return !!bundle
     && !!bundle.docs
@@ -116,6 +152,17 @@ function isValidSearchBundle(bundle: Partial<SearchBundle> | null): bundle is Se
     && !!bundle.fieldMaskLegend;
 }
 
+/**
+ * 初始化搜索引擎。
+ *
+ * 主要职责：
+ * 1. 加载构建产物 `search_bundle.js`。
+ * 2. 验证 bundle 结构是否可用。
+ * 3. 缓存 bundle，避免重复 require。
+ * 4. 把 field mask legend 整理成更适合运行时解码的数组。
+ *
+ * 这是搜索页第一次进入时最先调用的函数。
+ */
 export function initSearchEngine() {
   if (SEARCH_BUNDLE) {
     return;
@@ -148,6 +195,14 @@ export function initSearchEngine() {
   }
 }
 
+/**
+ * 返回搜索库元信息。
+ *
+ * 使用场景：
+ * - 搜索页头部统计
+ * - 分类 tab 初始化
+ * - 展示搜索库生成时间等信息
+ */
 export function getSearchMeta(): SearchMeta {
   const bundle = getBundle();
 
@@ -192,6 +247,10 @@ export function getSearchMeta(): SearchMeta {
   };
 }
 
+/**
+ * 按 id 获取搜索文档原始信息。
+ * 主要用于需要从搜索索引里读取某条文档元数据的场景。
+ */
 export function getSearchDocument(id: string): SearchDoc | null {
   const bundle = getBundle();
 
@@ -202,6 +261,12 @@ export function getSearchDocument(id: string): SearchDoc | null {
   return bundle.docs[id];
 }
 
+/**
+ * 联想建议入口。
+ *
+ * 输出的是建议词列表，不做最终结果排序。
+ * 通常用于搜索框下方的 suggestion 区域。
+ */
 export function suggest(query: string): SearchSuggestion[] {
   const bundle = getBundle();
   const normalizedQuery = normalize(query);
@@ -213,10 +278,34 @@ export function suggest(query: string): SearchSuggestion[] {
   return collectSuggestions(bundle, normalizedQuery, MAX_SUGGEST);
 }
 
+/**
+ * 面向简单调用者的搜索入口，只返回结果 id 列表。
+ * 更完整的页面场景通常使用 `searchWithDebug`。
+ */
 export function search(query: string): string[] {
   return searchWithDebug(query).results.map((item) => item.id);
 }
 
+/**
+ * 搜索主入口。
+ *
+ * 输入：
+ * - `query`：用户原始输入。
+ *
+ * 输出：
+ * - `SearchResponse`
+ *   - `suggestions`：联想词
+ *   - `results`：排序后的命中文档
+ *   - `debug`：命中 token、命中次数、fallback 情况、top matches 等调试信息
+ *
+ * 处理流程：
+ * 1. 归一化 query。
+ * 2. 基于 query 先收集 suggestions。
+ * 3. 构建 lookup tokens，同时查 termIndex 和 prefixIndex。
+ * 4. 把命中信息合并进 accumulator。
+ * 5. 若完全没有结果，则退回 suggestion fallback。
+ * 6. 排序并裁剪结果。
+ */
 export function searchWithDebug(query: string): SearchResponse {
   const bundle = getBundle();
   const normalizedQuery = normalize(query);
@@ -279,6 +368,10 @@ export function searchWithDebug(query: string): SearchResponse {
   return response;
 }
 
+/**
+ * 构造一个空结果响应。
+ * 用于搜索引擎尚未初始化成功，或用户输入为空时的统一返回结构。
+ */
 function createEmptyResponse(query: string, normalizedQuery: string): SearchResponse {
   return {
     query,
@@ -299,6 +392,10 @@ function createEmptyResponse(query: string, normalizedQuery: string): SearchResp
   };
 }
 
+/**
+ * 获取已初始化的 bundle。
+ * 如果尚未初始化，则尝试惰性初始化一次。
+ */
 function getBundle(): SearchBundle | null {
   if (!SEARCH_BUNDLE) {
     initSearchEngine();
@@ -307,6 +404,14 @@ function getBundle(): SearchBundle | null {
   return SEARCH_BUNDLE;
 }
 
+/**
+ * 根据当前 query 收集联想建议。
+ *
+ * 规则：
+ * - 对 suggestions 列表逐项计算匹配 bonus。
+ * - 对同一 `(text, docId)` 做去重。
+ * - 最终按得分和文本长度排序。
+ */
 function collectSuggestions(bundle: SearchBundle, normalizedQuery: string, limit: number): SearchSuggestion[] {
   const normalizedNeedles = buildLookupTokens(normalizedQuery);
   const seen: Record<string, true> = {};
@@ -350,6 +455,10 @@ function collectSuggestions(bundle: SearchBundle, normalizedQuery: string, limit
   return matches.slice(0, limit);
 }
 
+/**
+ * 计算 suggestion 相对于 query 的匹配加分。
+ * 完全匹配 > 前缀匹配 > 包含匹配。
+ */
 function getSuggestionMatchBonus(normalizedText: string, needles: string[]): number {
   for (let index = 0; index < needles.length; index += 1) {
     const needle = needles[index];
@@ -374,6 +483,16 @@ function getSuggestionMatchBonus(normalizedText: string, needles: string[]): num
   return 0;
 }
 
+/**
+ * 从一个 query 构建查索引时使用的 token 集合。
+ *
+ * 例如：
+ * - 原始归一化 query
+ * - 去掉空格后的紧凑版本
+ * - 按空格拆开的多个片段
+ *
+ * 这样可以同时兼顾完整短语匹配和分词匹配。
+ */
 function buildLookupTokens(normalizedQuery: string): string[] {
   const parts = normalizedQuery.split(/\s+/);
   const compact = normalizedQuery.replace(/\s+/g, "");
@@ -395,6 +514,14 @@ function buildLookupTokens(normalizedQuery: string): string[] {
   return result;
 }
 
+/**
+ * 将 term / prefix 索引命中结果合并进 accumulator。
+ *
+ * accumulator 的作用：
+ * - 以 docId 为键累积分数；
+ * - 记录命中的字段；
+ * - 保留少量可解释的原因，便于调试和排序回溯。
+ */
 function mergeIndexEntries(
   accumulatorMap: Record<string, SearchAccumulator>,
   bundle: SearchBundle,
@@ -437,6 +564,10 @@ function mergeIndexEntries(
   }
 }
 
+/**
+ * 当 term/prefix 完全没有结果时，使用 suggestion 结果做弱兜底。
+ * 这样用户至少还能看到“比较接近的条目”，而不是一个空白结果页。
+ */
 function mergeSuggestionEntries(
   accumulatorMap: Record<string, SearchAccumulator>,
   bundle: SearchBundle,
@@ -472,6 +603,9 @@ function mergeSuggestionEntries(
   }
 }
 
+/**
+ * 获取或创建某个文档对应的 accumulator。
+ */
 function getAccumulator(
   accumulatorMap: Record<string, SearchAccumulator>,
   docId: string,
@@ -490,6 +624,15 @@ function getAccumulator(
   return accumulatorMap[docId];
 }
 
+/**
+ * 汇总并排序最终结果。
+ *
+ * 排序优先级：
+ * 1. 搜索分数
+ * 2. 业务 rank
+ * 3. 热度 hotScore
+ * 4. id 字典序（作为最后稳定兜底）
+ */
 function finalizeResults(accumulatorMap: Record<string, SearchAccumulator>): SearchResult[] {
   const results: SearchResult[] = [];
 
@@ -531,6 +674,10 @@ function finalizeResults(accumulatorMap: Record<string, SearchAccumulator>): Sea
   return results.slice(0, MAX_RESULTS);
 }
 
+/**
+ * 生成调试面板中展示的 top matches。
+ * 这是给开发者看的摘要信息，不参与真实搜索排序。
+ */
 function buildTopMatches(results: SearchResult[]): SearchDebugMatch[] {
   return results.slice(0, 5).map((result) => ({
     id: result.id,
@@ -543,6 +690,9 @@ function buildTopMatches(results: SearchResult[]): SearchDebugMatch[] {
   }));
 }
 
+/**
+ * 将多个匹配原因压缩成一行可读摘要，便于调试面板快速查看。
+ */
 function summarizeReasons(reasons: SearchMatchReason[]): string {
   if (reasons.length === 0) {
     return "no-reason";
@@ -560,6 +710,10 @@ function summarizeReasons(reasons: SearchMatchReason[]): string {
     .join(" | ");
 }
 
+/**
+ * 将索引里的字段位掩码解码为字段名列表。
+ * 这样页面或调试工具就能知道“这条结果到底命中了标题、标签还是摘要”。
+ */
 function decodeFieldMask(fieldMask: number): string[] {
   const fields: string[] = [];
 
@@ -574,6 +728,10 @@ function decodeFieldMask(fieldMask: number): string[] {
   return fields;
 }
 
+/**
+ * 统一 query 归一化规则。
+ * 当前策略比较保守：trim、转小写、压缩多余空格。
+ */
 function normalize(query: string): string {
   return query.trim().toLowerCase().replace(/\s+/g, " ");
 }
