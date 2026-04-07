@@ -399,7 +399,7 @@ Page({
     clearTimeout(this.inertiaId);
   },
 
-  onArticleScroll(e: WechatMiniprogram.ScrollViewScrollEvent) {
+  onArticleScroll(e: WechatMiniprogram.ScrollViewScroll) {
     if (this.scale > 1.01) {
       return;
     }
