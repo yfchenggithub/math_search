@@ -33,7 +33,7 @@
           </view>
         </view>
 
-        <view wx:if="{{block.kind === 'formula'}}" class="formula-card">
+        <view wx:if="{{block.kind === 'formula'}}" class="formula-card formula-card--align-{{block.formulaAlign || 'center'}}">
           <scroll-view scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
             <view class="formula-track">
               <rich-text class="formula-rich" nodes="{{block.formulaHtml}}"></rich-text>
@@ -58,7 +58,7 @@
           <view wx:elif="{{block.desc}}" class="theorem-desc">
             {{block.desc}}
           </view>
-          <view wx:if="{{block.formulaHtml}}" class="formula-card inner">
+          <view wx:if="{{block.formulaHtml}}" class="formula-card inner formula-card--align-{{block.formulaAlign || 'center'}}">
             <scroll-view scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
               <view class="formula-track">
                 <rich-text class="formula-rich" nodes="{{block.formulaHtml}}"></rich-text>

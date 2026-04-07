@@ -107,6 +107,7 @@ export interface DetailInlineSegmentView {
 export interface DetailBlockView {
   id: string;
   kind: "text" | "bullet" | "formula" | "theorem" | "mixed";
+  formulaAlign?: "center" | "left";
   title?: string;
   titleHtml?: string;
   desc?: string;
@@ -628,11 +629,18 @@ function buildStructuredSections(sections: RawStructuredSection[]): DetailSectio
 
     for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
       const rawItem = items[itemIndex];
-      const block = buildStructuredBlock(viewSection, rawItem, itemIndex);
+      const blocks = buildStructuredBlocks(viewSection, rawItem, itemIndex);
 
-      if (block) {
-        viewSection.blocks.push(block);
+      if (!blocks) {
+        continue;
       }
+
+      if (Array.isArray(blocks)) {
+        viewSection.blocks.push(...blocks);
+        continue;
+      }
+
+      viewSection.blocks.push(blocks);
     }
 
     if (viewSection.blocks.length > 0) {
@@ -643,11 +651,11 @@ function buildStructuredSections(sections: RawStructuredSection[]): DetailSectio
   return result;
 }
 
-function buildStructuredBlock(
+function buildStructuredBlocks(
   section: DetailSectionView,
   rawItem: string | RawStructuredItem,
   itemIndex: number,
-): DetailBlockView | null {
+): DetailBlockView | DetailBlockView[] | null {
   const blockId = `${section.key}-${itemIndex + 1}`;
 
   if (typeof rawItem === "string") {
@@ -665,7 +673,7 @@ function buildStructuredBlock(
   }
 
   if (Array.isArray(rawItem.segments) && rawItem.segments.length > 0) {
-    return createStructuredSegmentBlock(section, blockId, rawItem.segments);
+    return createStructuredSegmentBlocks(section, blockId, rawItem.segments);
   }
 
   if (normalizeText(rawItem.latex)) {
@@ -733,14 +741,79 @@ function createStructuredLatexBlock(
   };
 }
 
-function createStructuredSegmentBlock(
+function createStructuredSegmentBlocks(
   section: DetailSectionView,
   blockId: string,
   segments: RawStructuredSegment[],
-): DetailBlockView | null {
+): DetailBlockView | DetailBlockView[] | null {
   // The builder has already separated plain text and math spans for v2 data.
   // Keeping that boundary here avoids regressing back to legacy formula guessing.
-  const normalizedSegments = buildStructuredSegments(segments, blockId);
+  const normalizedSource = normalizeInlineSegments(segments);
+
+  if (normalizedSource.length === 0) {
+    return null;
+  }
+
+  if (!normalizedSource.some((segment) => isStructuredDisplayMathSegment(segment))) {
+    return createStructuredInlineSegmentBlock(section, blockId, normalizedSource);
+  }
+
+  const result: DetailBlockView[] = [];
+  let inlineBuffer: RawStructuredSegment[] = [];
+  let fragmentIndex = 0;
+
+  const flushInlineBuffer = () => {
+    if (inlineBuffer.length === 0) {
+      return;
+    }
+
+    fragmentIndex += 1;
+    const block = createStructuredInlineSegmentBlock(
+      section,
+      `${blockId}-inline-${fragmentIndex}`,
+      inlineBuffer,
+    );
+
+    inlineBuffer = [];
+
+    if (block) {
+      result.push(block);
+    }
+  };
+
+  for (let index = 0; index < normalizedSource.length; index += 1) {
+    const segment = normalizedSource[index];
+
+    if (isStructuredDisplayMathSegment(segment)) {
+      flushInlineBuffer();
+      fragmentIndex += 1;
+      result.push(
+        createStructuredFormulaBlock(
+          `${blockId}-formula-${fragmentIndex}`,
+          segment.latex || "",
+        ),
+      );
+      continue;
+    }
+
+    inlineBuffer.push(segment);
+  }
+
+  flushInlineBuffer();
+
+  if (result.length === 0) {
+    return null;
+  }
+
+  return result;
+}
+
+function createStructuredInlineSegmentBlock(
+  section: DetailSectionView,
+  blockId: string,
+  sourceSegments: RawStructuredSegment[],
+): DetailBlockView | null {
+  const normalizedSegments = buildStructuredSegments(sourceSegments, blockId);
   const inlineHtml = composeInlineSegmentHtml(normalizedSegments);
 
   if (normalizedSegments.length === 0) {
@@ -761,6 +834,18 @@ function createStructuredSegmentBlock(
     kind: "mixed",
     html: inlineHtml,
     segments: normalizedSegments,
+  };
+}
+
+function createStructuredFormulaBlock(blockId: string, latex: string): DetailBlockView {
+  const mathResult = renderMath(latex, true, { align: "left" });
+
+  return {
+    id: blockId,
+    kind: "formula",
+    formulaAlign: "left",
+    formulaText: mathResult.source,
+    formulaHtml: mathResult.html,
   };
 }
 
@@ -877,6 +962,23 @@ function normalizeInlineSegments(segments: RawStructuredSegment[]): RawStructure
 
 function normalizeInlineText(text?: string): string {
   return (text || "").replace(/\r\n?/g, "\n");
+}
+
+function isStructuredDisplayMathSegment(segment: RawStructuredSegment): boolean {
+  if (segment.type !== "math") {
+    return false;
+  }
+
+  const latex = normalizeText(segment.latex);
+  if (!latex) {
+    return false;
+  }
+
+  return (
+    /\n/.test(latex)
+    || /\\\\/.test(latex)
+    || /\\begin\{(?:aligned|align\*?|gather\*?|cases|array|matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|split)\}/.test(latex)
+  );
 }
 
 function parseStatementContent(statement: string): DetailSectionView[] {

@@ -178,7 +178,7 @@
   border-radius: 22rpx;
   background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
   border: 1rpx solid #dbeafe;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .formula-card {
@@ -188,7 +188,7 @@
   border-radius: 18rpx;
   background: #f8fafc;
   border: 1rpx solid #e2e8f0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .formula-card.inner {
@@ -199,7 +199,7 @@
   width: 100%;
   min-height: 72rpx;
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .formula-track {
@@ -213,7 +213,7 @@
 .formula-rich {
   display: inline-block;
   min-width: 100%;
-  overflow: visible;
+  overflow: hidden;
   vertical-align: top;
 }
 

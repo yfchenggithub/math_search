@@ -23,10 +23,17 @@ type KatexRenderer = {
 
 type StyleMap = Record<string, string>;
 
+type RenderMathAlign = "left" | "center";
+
+type RenderMathOptions = {
+  align?: RenderMathAlign;
+};
+
 type SerializeContext = {
   parentClasses: string[];
   grandParentClasses: string[];
   parentIsVlistChild: boolean;
+  displayAlign: RenderMathAlign;
 };
 
 export interface RenderMathResult {
@@ -46,7 +53,6 @@ const CLASS_STYLE_MAP: Record<string, StyleMap> = {
   "katex-display": {
     display: "inline-block",
     "min-width": "100%",
-    "text-align": "center",
   },
   katex: {
     "font-family": "KaTeX_Main, Times New Roman, serif",
@@ -167,6 +173,7 @@ const EMPTY_CONTEXT: SerializeContext = {
   parentClasses: [],
   grandParentClasses: [],
   parentIsVlistChild: false,
+  displayAlign: "center",
 };
 
 const PRIVATE_USE_GLYPH_MAP: Record<string, string> = {
@@ -270,8 +277,13 @@ function hasExplicitLatex(input: string): boolean {
   return /\\[A-Za-z]+/.test(input) || /\\[,;!]/.test(input);
 }
 
-export function renderMath(source?: string, displayMode = false): RenderMathResult {
+export function renderMath(
+  source?: string,
+  displayMode = false,
+  options: RenderMathOptions = {},
+): RenderMathResult {
   const normalizedSource = normalizeLegacyMath(source);
+  const displayAlign = options.align || (displayMode ? "center" : "left");
 
   if (!normalizedSource) {
     return {
@@ -299,18 +311,25 @@ export function renderMath(source?: string, displayMode = false): RenderMathResu
     });
 
     return {
-      html: serializeMathTree(tree, EMPTY_CONTEXT),
+      html: serializeMathTree(tree, {
+        ...EMPTY_CONTEXT,
+        displayAlign,
+      }),
       rendered: true,
       source: normalizedSource,
     };
   } catch (error) {
     console.warn("KaTeX render fallback", error);
-    return createFallbackResult(normalizedSource, displayMode);
+    return createFallbackResult(normalizedSource, displayMode, displayAlign);
   }
 }
 
-export function renderMathHtml(source?: string, displayMode = false): string {
-  return renderMath(source, displayMode).html;
+export function renderMathHtml(
+  source?: string,
+  displayMode = false,
+  options: RenderMathOptions = {},
+): string {
+  return renderMath(source, displayMode, options).html;
 }
 
 export function renderPlainTextHtml(source?: string, inline = false): string {
@@ -340,12 +359,17 @@ export function renderMixedTextHtml(source?: string): string {
     .join("<br/>");
 }
 
-function createFallbackResult(source: string, displayMode: boolean): RenderMathResult {
+function createFallbackResult(
+  source: string,
+  displayMode: boolean,
+  align: RenderMathAlign,
+): RenderMathResult {
   const tag = displayMode ? "div" : "span";
   const display = displayMode ? "block" : "inline-block";
+  const textAlign = displayMode ? align : "left";
 
   return {
-    html: `<${tag} style="display:${display};white-space:nowrap;color:#475569;">${escapeHtml(source)}</${tag}>`,
+    html: `<${tag} style="display:${display};white-space:nowrap;color:#475569;text-align:${textAlign};">${escapeHtml(source)}</${tag}>`,
     rendered: false,
     source,
   };
@@ -651,8 +675,14 @@ function resolveNodeStyles(
     mergeStyles(styles, {
       display: "inline-block",
       "min-width": "100%",
-      "text-align": "center",
+      "text-align": context.displayAlign,
       "white-space": "nowrap",
+    });
+  }
+
+  if (classes.includes("katex-display")) {
+    mergeStyles(styles, {
+      "text-align": context.displayAlign,
     });
   }
 
