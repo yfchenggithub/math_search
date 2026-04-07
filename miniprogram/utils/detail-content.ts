@@ -990,16 +990,20 @@ function isStructuredLongEquationChain(latex: string): boolean {
   }
 
   const relationTokenCount =
-    (normalized.match(/\\(?:Rightarrow|Longrightarrow|Leftrightarrow|iff|implies|geq|leq|neq|approx|sim)/g) || []).length
+    (normalized.match(/\\(?:Rightarrow|Longrightarrow|Leftrightarrow|iff|implies|ge|geq|le|leq|neq|approx|sim|to|mapsto)/g) || []).length
     + (normalized.match(/[=<>]/g) || []).length;
 
   if (relationTokenCount >= 2 && normalized.length >= 28) {
     return true;
   }
 
+  if (relationTokenCount >= 1 && normalized.length >= 40) {
+    return true;
+  }
+
   return (
     normalized.length >= 34
-    && /(=|\\Rightarrow|\\Longrightarrow|\\left|\\right|\\frac|\\cdot|\\quad)/.test(normalized)
+    && /(=|\\Rightarrow|\\Longrightarrow|\\left|\\right|\\frac|\\cdot|\\quad|\\ge|\\geq|\\le|\\leq|\\neq)/.test(normalized)
   );
 }
 
