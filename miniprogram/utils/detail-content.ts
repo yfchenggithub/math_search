@@ -978,6 +978,28 @@ function isStructuredDisplayMathSegment(segment: RawStructuredSegment): boolean 
     /\n/.test(latex)
     || /\\\\/.test(latex)
     || /\\begin\{(?:aligned|align\*?|gather\*?|cases|array|matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|split)\}/.test(latex)
+    || isStructuredLongEquationChain(latex)
+  );
+}
+
+function isStructuredLongEquationChain(latex: string): boolean {
+  const normalized = latex.replace(/\s+/g, " ").trim();
+
+  if (normalized.length < 24) {
+    return false;
+  }
+
+  const relationTokenCount =
+    (normalized.match(/\\(?:Rightarrow|Longrightarrow|Leftrightarrow|iff|implies|geq|leq|neq|approx|sim)/g) || []).length
+    + (normalized.match(/[=<>]/g) || []).length;
+
+  if (relationTokenCount >= 2 && normalized.length >= 28) {
+    return true;
+  }
+
+  return (
+    normalized.length >= 34
+    && /(=|\\Rightarrow|\\Longrightarrow|\\left|\\right|\\frac|\\cdot|\\quad)/.test(normalized)
   );
 }
 
