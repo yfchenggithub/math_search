@@ -575,7 +575,7 @@ function serializeSvgNode(node: KatexTreeNode): string {
     return serializeVerticalDelimiterFallback(node);
   }
 
-  if ((node.children || []).some((child) => child.pathName === "sqrtMain")) {
+  if ((node.children || []).some((child) => /^sqrt/.test(child.pathName || ""))) {
     return serializeSqrtFallback(node);
   }
 
@@ -631,29 +631,48 @@ function serializeVerticalDelimiterFallback(node: KatexTreeNode): string {
 
 function serializeSqrtFallback(node: KatexTreeNode): string {
   const height = String(node.attributes?.height || "1em");
+  const heightEm = parseEmSize(height, 1);
+  const radicalFontSize = Math.max(1.08, heightEm * 0.96);
+  const radicalTop = -Math.max(0.04, heightEm * 0.13);
+  const overlineLeft = Math.max(0.42, radicalFontSize * 0.33);
+  const overlineTop = Math.max(0.08, heightEm * 0.07);
+  const overlineThickness = Math.max(1, Math.round(heightEm * 0.56)) / 2;
+
   const containerStyle = styleMapToString({
     display: "block",
     position: "relative",
     width: "100%",
     height,
+    overflow: "visible",
   });
   const radicalStyle = styleMapToString({
     position: "absolute",
     left: "0",
-    top: "-0.02em",
-    "font-size": "1.08em",
+    top: `${radicalTop}em`,
+    "font-size": `${radicalFontSize}em`,
     "line-height": "1",
   });
   const overlineStyle = styleMapToString({
     position: "absolute",
-    left: "0.42em",
+    left: `${overlineLeft}em`,
     right: "0",
-    top: "0.12em",
+    top: `${overlineTop}em`,
     height: "0",
-    "border-top": "1px solid currentColor",
+    "border-top": `${overlineThickness}px solid currentColor`,
   });
 
   return `<span style="${containerStyle}"><span style="${radicalStyle}">&#8730;</span><span style="${overlineStyle}"></span></span>`;
+}
+
+function parseEmSize(value: string, fallback: number): number {
+  const match = String(value).match(/^([0-9.]+)em$/);
+
+  if (!match) {
+    return fallback;
+  }
+
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function resolveNodeStyles(
