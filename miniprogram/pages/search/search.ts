@@ -1,25 +1,26 @@
 /**
- * 搜索页页面控制器。
+ * 搜索页控制器。
  *
- * 这个文件负责把“本地搜索索引返回的数据”整理成页面可以直接消费的展示结构，
- * 同时承接搜索输入、联想建议、分类筛选、调试面板和结果跳转。
+ * 当前页面采用“后端优先，本地降级”的请求策略：
+ * 1. 优先调用 REST `/search` 和 `/suggest`
+ * 2. 如果后端暂未就绪、域名未配置或接口报错，则自动回退到本地搜索索引
+ * 3. 页面层始终只消费统一的 `SearchCardItem[]`
  *
- * 在当前仓库中的职责分工：
- * - 本文件：页面状态管理、事件响应、结果展示层适配。
- * - `search-engine.ts`：本地索引初始化、查询、排序、调试信息生成。
- * - `math-render.ts`：把搜索结果中的核心公式渲染成可在小程序中展示的 HTML。
- *
- * 推荐阅读顺序：
- * 1. `onLoad`：搜索页初始化做了什么。
- * 2. `onInput` / `executeSearch`：搜索请求如何从输入流转到页面结果。
- * 3. `buildResults`：搜索引擎结果如何被包装成 UI 卡片。
- * 4. `filterResults` / `highlightSegments`：页面层的二次展示处理。
+ * 这样做的好处是：
+ * - 现在就能验证后端搜索链路
+ * - 后端不稳定时不影响 MVP 联调
+ * - 后续真正迁移到后端时，不需要重做页面结构
  */
 const appInstance = getApp<IAppOption>();
 
+import { getSuggestions, searchConclusions } from "../../api/search";
+import type { SearchItem } from "../../types/api";
 import type { ResultItem } from "../../types/search";
+import { renderMath, renderMixedTextHtml } from "../../utils/math-render";
+import { getErrorMessage } from "../../utils/request";
 import type {
   SearchDebugInfo,
+  SearchDebugMatch,
   SearchResult,
   SearchSuggestion,
 } from "../../utils/search-engine";
@@ -28,11 +29,40 @@ import {
   initSearchEngine,
   searchWithDebug,
 } from "../../utils/search-engine";
-import { renderMath } from "../../utils/math-render";
 
 type HighlightSegment = {
   text: string;
   highlight: boolean;
+};
+
+type SearchInputEvent = {
+  detail: {
+    value?: string;
+  };
+};
+
+type SearchTextTapEvent = {
+  currentTarget: {
+    dataset: {
+      text?: string;
+    };
+  };
+};
+
+type SearchTabTapEvent = {
+  currentTarget: {
+    dataset: {
+      tab?: string;
+    };
+  };
+};
+
+type SearchDetailTapEvent = {
+  currentTarget: {
+    dataset: {
+      id?: string;
+    };
+  };
 };
 
 interface SearchCardItem extends ResultItem {
@@ -43,19 +73,12 @@ interface SearchCardItem extends ResultItem {
   formulaText: string;
 }
 
-// 输入防抖计时器。
-// 搜索是本地索引查询，但在连续输入时仍然会触发一整套结果构建和 setData，
-// 这里做轻量防抖可以减少无意义刷新，让输入手感更稳定。
+/**
+ * 输入防抖计时器。
+ * 搜索页改成远端请求后，需要避免连续输入时反复发请求。
+ */
 let timer: number | null = null;
 
-/**
- * 搜索页的整体流程：
- * 1. 页面加载时初始化搜索引擎，并读取搜索库的统计信息。
- * 2. 用户输入后经过极短防抖，统一进入 `executeSearch`。
- * 3. `executeSearch` 从搜索引擎拿到 suggestions / results / debug。
- * 4. 页面把原始 `SearchResult` 转成更贴近 UI 的 `SearchCardItem`。
- * 5. 点击 tab 只在前端过滤已有结果，不重复查询索引。
- */
 Page({
   data: {
     query: "",
@@ -79,11 +102,18 @@ Page({
   },
 
   /**
+   * 当前搜索任务序号。
+   *
+   * 远端搜索是异步的，用户连续输入时可能出现旧请求比新请求更晚返回。
+   * 这里用自增序号只接纳最后一次请求，避免页面被过期结果覆盖。
+   */
+  searchTaskId: 0,
+
+  /**
    * 页面初始化。
    *
-   * 主要用途：
-   * - 预热本地搜索索引，避免第一次输入时才初始化导致卡顿。
-   * - 获取搜索库元信息，用于头部统计和分类 tab。
+   * 这里仍然复用本地索引的元信息来渲染顶部统计和默认 tab，
+   * 这样即使后端元信息接口还没准备好，页面也能先工作。
    */
   onLoad() {
     initSearchEngine();
@@ -105,17 +135,14 @@ Page({
   },
 
   /**
-   * 输入框实时输入事件。
+   * 输入框实时输入。
    *
-   * 输入：
-   * - `e.detail.value`：当前输入框中的原始文本。
-   *
-   * 输出：
-   * - 更新 query / 清空按钮状态。
-   * - 通过短防抖触发搜索。
+   * 行为保持和以前一致：
+   * - 先更新输入框文本和清空按钮状态
+   * - 再经过很短的防抖窗口发起搜索
    */
-  onInput(e: any) {
-    const value = e.detail.value as string;
+  onInput(e: SearchInputEvent) {
+    const value = String(e.detail.value || "");
 
     this.setData({
       query: value,
@@ -127,38 +154,36 @@ Page({
     }
 
     timer = setTimeout(() => {
-      this.executeSearch(value);
+      void this.executeSearch(value);
     }, 80);
   },
 
   /**
-   * 点击联想建议时，以建议词直接执行搜索。
-   * 这里会顺带收起建议列表，让结果页更聚焦。
+   * 点击联想建议后，直接用建议词发起搜索，并收起建议列表。
    */
-  onSuggestionTap(e: any) {
-    const text = e.currentTarget.dataset.text as string;
-    this.executeSearch(text, true);
+  onSuggestionTap(e: SearchTextTapEvent) {
+    const text = String(e.currentTarget.dataset.text || "");
+    void this.executeSearch(text, true);
   },
 
   /**
    * 键盘确认搜索。
-   * 与点击联想词一样，都会隐藏建议列表，直接进入结果态。
    */
   onConfirm() {
-    this.executeSearch(this.data.query, true);
+    void this.executeSearch(this.data.query, true);
   },
 
   /**
-   * 清空搜索状态。
-   *
-   * 这里会把输入、联想、结果和调试信息一起清掉，
-   * 让页面恢复到“尚未开始搜索”的初始状态。
+   * 清空搜索状态并回到初始界面。
    */
   onClear() {
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
     }
+
+    // 推进任务序号，让仍在飞行中的旧请求失效。
+    this.createSearchTaskId();
 
     this.setData({
       query: "",
@@ -172,10 +197,7 @@ Page({
   },
 
   /**
-   * 调试面板展开/收起。
-   *
-   * 搜索引擎会返回命中 token、排序原因等信息，
-   * 这个开关主要服务开发和调试阶段。
+   * 展开或收起调试面板。
    */
   onToggleDebug() {
     this.setData({
@@ -184,13 +206,12 @@ Page({
   },
 
   /**
-   * 分类 tab 切换。
+   * 切换分类 tab。
    *
-   * 注意：这里不会重新调用搜索引擎，而是对 `allResults` 做前端过滤。
-   * 这样可以减少重复计算，并保持切换 tab 的即时反馈。
+   * 这里只对已有结果做前端过滤，不重复发请求。
    */
-  onTabTap(e: any) {
-    const tab = e.currentTarget.dataset.tab as string;
+  onTabTap(e: SearchTabTapEvent) {
+    const tab = String(e.currentTarget.dataset.tab || "全部");
     const filteredResults = this.filterResults(this.data.allResults as SearchCardItem[], tab);
 
     this.setData({
@@ -200,13 +221,10 @@ Page({
   },
 
   /**
-   * 结果卡片跳转详情页。
-   *
-   * 输入：
-   * - 卡片 dataset 中透出的条目 id。
+   * 打开详情页。
    */
-  onDetailTap(e: any) {
-    const id = e.currentTarget.dataset.id as string;
+  onDetailTap(e: SearchDetailTapEvent) {
+    const id = String(e.currentTarget.dataset.id || "");
 
     if (!id) {
       return;
@@ -218,65 +236,138 @@ Page({
   },
 
   /**
-   * 搜索页的核心调度函数。
+   * 搜索主入口。
    *
-   * 为什么单独抽出来：
-   * - 输入实时搜索、点击建议词、点击确认键，本质上都要走同一条搜索链。
-   * - 把空查询、建议词显示策略、结果构建逻辑收敛到一个函数里，页面会更好维护。
-   *
-   * 输入：
-   * - `query`：用户当前输入的原始文本。
-   * - `hideSuggestions`：本次搜索完成后是否立即隐藏建议列表。
-   *
-   * 输出：
-   * - 更新页面 data 中的结果列表、联想建议和调试信息。
+   * 执行策略：
+   * 1. 非空查询时先请求后端 `/search` 和 `/suggest`
+   * 2. 只要后端链路失败，就自动回退到本地搜索引擎
+   * 3. 不论结果来自哪里，最终都统一适配成页面使用的数据结构
    */
-  executeSearch(query: string, hideSuggestions = false) {
-    const rawQuery = query || "";
+  async executeSearch(query: string, hideSuggestions = false) {
+    const rawQuery = String(query || "");
     const trimmedQuery = rawQuery.trim();
+    const searchTaskId = this.createSearchTaskId();
 
     if (!trimmedQuery) {
-      this.setData({
-        query: rawQuery,
-        showClear: rawQuery.length > 0,
-        suggestions: [],
-        allResults: [],
-        results: [],
-        debugInfo: null,
-      });
+      this.applyEmptySearchState(rawQuery);
       return;
     }
 
-    const response = searchWithDebug(rawQuery);
-    const allResults = this.buildResults(response.results, rawQuery);
-    const filteredResults = this.filterResults(allResults, this.data.activeTab);
+    if (hideSuggestions) {
+      this.setData({
+        query: rawQuery,
+        focus: false,
+        showClear: true,
+        suggestions: [],
+      });
+    }
+
+    try {
+      const [searchResponse, suggestResponse] = await Promise.all([
+        searchConclusions({
+          q: rawQuery,
+          limit: 20,
+          offset: 0,
+        }),
+        hideSuggestions
+          ? Promise.resolve({ suggestions: [] })
+          : getSuggestions(rawQuery),
+      ]);
+
+      if (!this.isLatestSearchTask(searchTaskId)) {
+        return;
+      }
+
+      const suggestions = this.buildRemoteSuggestions(suggestResponse.suggestions);
+      const allResults = this.buildRemoteResults(searchResponse.list, rawQuery);
+      const debugInfo = this.buildRemoteDebugInfo(rawQuery, suggestions, searchResponse.list);
+
+      this.applySearchState(rawQuery, hideSuggestions, allResults, suggestions, debugInfo);
+    } catch (error) {
+      console.warn("后端搜索失败，已回退到本地搜索索引", getErrorMessage(error), error);
+
+      if (!this.isLatestSearchTask(searchTaskId)) {
+        return;
+      }
+
+      this.executeLocalSearch(rawQuery, hideSuggestions, true);
+    }
+  },
+
+  /**
+   * 本地降级搜索。
+   *
+   * 当后端接口不可用时，继续复用原来的本地索引能力，
+   * 这样页面层不会因为联调阶段的网络问题而中断。
+   */
+  executeLocalSearch(query: string, hideSuggestions = false, forceFallbackFlag = false) {
+    const response = searchWithDebug(query);
+    const allResults = this.buildLocalResults(response.results, query);
+    const debugInfo: SearchDebugInfo = forceFallbackFlag
+      ? {
+          ...response.debug,
+          fallbackUsed: true,
+        }
+      : response.debug;
+
+    this.applySearchState(
+      query,
+      hideSuggestions,
+      allResults,
+      hideSuggestions ? [] : response.suggestions,
+      debugInfo,
+    );
+  },
+
+  /**
+   * 把搜索状态统一写回页面。
+   *
+   * 这里额外做两件事：
+   * 1. 把结果中出现的新分类并入 tabs，避免后端分类扩展后前端 tab 丢失
+   * 2. 如果当前 activeTab 在新结果里不存在，则自动回到“全部”
+   */
+  applySearchState(
+    rawQuery: string,
+    hideSuggestions: boolean,
+    allResults: SearchCardItem[],
+    suggestions: SearchSuggestion[],
+    debugInfo: SearchDebugInfo,
+  ) {
+    const tabs = this.extendTabsWithResultCategories(allResults);
+    const nextActiveTab = tabs.includes(this.data.activeTab) ? this.data.activeTab : "全部";
+    const filteredResults = this.filterResults(allResults, nextActiveTab);
 
     this.setData({
       query: rawQuery,
       focus: false,
-      showClear: true,
-      suggestions: hideSuggestions ? [] : response.suggestions,
+      showClear: rawQuery.length > 0,
+      suggestions: hideSuggestions ? [] : suggestions,
       allResults,
       results: filteredResults,
-      debugInfo: response.debug,
+      debugInfo,
+      tabs,
+      activeTab: nextActiveTab,
     });
   },
 
   /**
-   * 将搜索引擎结果转换为页面卡片数据。
-   *
-   * 这一层是“页面展示适配层”：
-   * - 搜索引擎返回的是通用检索结果，强调 score / reasons / matchedFields。
-   * - 搜索页需要的是标题高亮、公式 HTML、标签、难度、频率等展示字段。
-   *
-   * 输入：
-   * - `results`：搜索引擎返回的排序结果。
-   * - `highlightQuery`：当前查询词，用于标题高亮。
-   *
-   * 输出：
-   * - 供 WXML 直接渲染的 `SearchCardItem[]`。
+   * 空查询时的统一清理逻辑。
    */
-  buildResults(results: SearchResult[], highlightQuery: string): SearchCardItem[] {
+  applyEmptySearchState(rawQuery: string) {
+    this.setData({
+      query: rawQuery,
+      showClear: rawQuery.length > 0,
+      suggestions: [],
+      allResults: [],
+      results: [],
+      debugInfo: null,
+    });
+  },
+
+  /**
+   * 把本地搜索引擎结果适配成页面卡片数据。
+   */
+  buildLocalResults(results: SearchResult[], highlightQuery: string): SearchCardItem[] {
     return results.map((result) => {
       const doc = result.doc;
       const summary = doc.summary || (doc.tags || []).join(" / ");
@@ -305,14 +396,193 @@ Page({
   },
 
   /**
-   * 按当前分类筛选结果。
+   * 把后端 `/search` 返回结果适配成页面卡片数据。
    *
-   * 输入：
-   * - `results`：完整结果集。
-   * - `activeTab`：当前激活的分类名。
+   * 说明：
+   * - 后端当前返回 `title/module/snippet/score`
+   * - 现有卡片还需要公式区、难度、频率等字段
+   * - MVP 阶段先用 snippet 填充预览区，其它暂缺字段用占位值兜底
+   */
+  buildRemoteResults(results: SearchItem[], highlightQuery: string): SearchCardItem[] {
+    return results.map((item) => {
+      const previewText = String(item.snippet || item.title || "").trim();
+      const category = String(item.module || "").trim() || this.getModuleLabel(item.module || "");
+      const normalizedScore = this.normalizeSearchScore(item.score);
+
+      return {
+        id: item.id,
+        title: item.title,
+        titleSegments: this.highlightSegments(item.title, highlightQuery),
+        summary: previewText,
+        formula: previewText,
+        formulaHtml: renderMixedTextHtml(previewText || item.title),
+        formulaText: previewText,
+        module: category,
+        category,
+        tags: category ? [category] : [],
+        level: "-",
+        freq: "-",
+        score: normalizedScore,
+        searchScore: normalizedScore,
+        recentScore: 0,
+        weight: normalizedScore,
+        usage: previewText || "后端结果暂无补充摘要",
+      };
+    });
+  },
+
+  /**
+   * 把后端建议词适配成现有建议列表结构。
+   *
+   * 建议接口目前只返回字符串数组，因此这里补一个轻量的占位 id/score，
+   * 让现有 WXML 无需改动。
+   */
+  buildRemoteSuggestions(suggestions: string[]): SearchSuggestion[] {
+    const seen: Record<string, true> = {};
+
+    return suggestions.reduce<SearchSuggestion[]>((result, text, index) => {
+      const normalizedText = String(text || "").trim();
+
+      if (!normalizedText || seen[normalizedText]) {
+        return result;
+      }
+
+      seen[normalizedText] = true;
+
+      result.push({
+        text: normalizedText,
+        id: "API",
+        score: suggestions.length - index,
+      });
+
+      return result;
+    }, []);
+  },
+
+  /**
+   * 为后端结果构造一份最小可用的调试信息。
+   *
+   * 这样既能保留现有调试面板，也能明确区分这批结果来自 REST API。
+   */
+  buildRemoteDebugInfo(
+    query: string,
+    suggestions: SearchSuggestion[],
+    results: SearchItem[],
+  ): SearchDebugInfo {
+    const normalizedQuery = query.trim().toLowerCase().replace(/\s+/g, " ");
+    const topMatches: SearchDebugMatch[] = results.slice(0, 5).map((item) => ({
+      id: item.id,
+      title: item.title,
+      score: this.normalizeSearchScore(item.score),
+      matchedFieldsLabel: "server-result",
+      reasonSummary: this.buildRemoteReasonSummary(item),
+    }));
+
+    return {
+      normalizedQuery,
+      lookupTokens: this.buildLookupTokens(normalizedQuery),
+      termHitCount: 0,
+      prefixHitCount: 0,
+      suggestionHitCount: suggestions.length,
+      resultCount: results.length,
+      fallbackUsed: false,
+      topSuggestions: suggestions.slice(0, 5),
+      topMatches,
+    };
+  },
+
+  /**
+   * 后端结果的简易命中摘要。
+   */
+  buildRemoteReasonSummary(item: SearchItem): string {
+    if (item.snippet) {
+      return "由 REST 搜索接口返回，预览内容来自 snippet";
+    }
+
+    return "由 REST 搜索接口返回";
+  },
+
+  /**
+   * 给调试面板构造一组稳定的 lookup tokens。
+   */
+  buildLookupTokens(normalizedQuery: string): string[] {
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    const compact = normalizedQuery.replace(/\s+/g, "");
+    const parts = normalizedQuery.split(/\s+/);
+    const tokens = [normalizedQuery, compact].concat(parts);
+    const seen: Record<string, true> = {};
+    const result: string[] = [];
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+
+      if (!token || seen[token]) {
+        continue;
+      }
+
+      seen[token] = true;
+      result.push(token);
+    }
+
+    return result;
+  },
+
+  /**
+   * 将结果中出现的分类并入当前 tabs。
+   */
+  extendTabsWithResultCategories(results: SearchCardItem[]): string[] {
+    const nextTabs = this.data.tabs.slice();
+    const seen: Record<string, true> = {};
+
+    nextTabs.forEach((tab) => {
+      seen[tab] = true;
+    });
+
+    results.forEach((item) => {
+      const category = String(item.category || "").trim();
+
+      if (!category || seen[category]) {
+        return;
+      }
+
+      seen[category] = true;
+      nextTabs.push(category);
+    });
+
+    return nextTabs;
+  },
+
+  /**
+   * 生成新的搜索任务序号。
+   */
+  createSearchTaskId(): number {
+    this.searchTaskId += 1;
+    return this.searchTaskId;
+  },
+
+  /**
+   * 判断一个异步搜索结果是否仍然有效。
+   */
+  isLatestSearchTask(taskId: number): boolean {
+    return taskId === this.searchTaskId;
+  },
+
+  /**
+   * 按当前分类过滤结果。
+   *
+   * 如果当前 tab 已不在本轮结果中，则回退显示全部结果，
+   * 避免后端分类和本地 tab 命名暂时不完全一致时出现“明明有结果但列表为空”。
    */
   filterResults(results: SearchCardItem[], activeTab: string): SearchCardItem[] {
     if (activeTab === "全部") {
+      return results;
+    }
+
+    const hasMatchedCategory = results.some((item) => item.category === activeTab);
+    if (!hasMatchedCategory) {
       return results;
     }
 
@@ -320,13 +590,7 @@ Page({
   },
 
   /**
-   * 将标题拆成“普通片段 + 高亮片段”。
-   *
-   * 使用场景：
-   * - 搜索结果标题高亮命中词。
-   *
-   * 输出：
-   * - 按原顺序排列的片段数组，不会改变原始文本内容，只增加高亮标记。
+   * 把标题拆成普通片段和高亮片段，供 WXML 逐段渲染。
    */
   highlightSegments(text: string, keyword: string): HighlightSegment[] {
     const searchKeyword = keyword.trim();
@@ -370,8 +634,7 @@ Page({
   },
 
   /**
-   * 把难度值格式化为稳定的展示文案。
-   * 这里顺手做了取整和范围夹紧，避免异常数据把 UI 撑坏。
+   * 难度字段格式化。
    */
   formatDifficulty(difficulty?: number): string {
     const value = Math.max(1, Math.min(5, Math.round(difficulty || 1)));
@@ -379,21 +642,27 @@ Page({
   },
 
   /**
-   * 将考试频率的小数值转为百分比字符串。
+   * 频率字段格式化。
    */
   formatFrequency(examFrequency?: number): string {
     return `${Math.round((examFrequency || 0) * 100)}%`;
   },
 
   /**
-   * 计算头部统计的百分比。
-   *
-   * 输入：
-   * - `count`：命中数量。
-   * - `total`：总数量。
-   *
-   * 输出：
-   * - 四舍五入后的整数百分比。
+   * 将后端分数统一收敛成适合页面显示的小数格式。
+   */
+  normalizeSearchScore(score?: number): number {
+    const numericScore = Number(score || 0);
+
+    if (!Number.isFinite(numericScore)) {
+      return 0;
+    }
+
+    return Math.round(numericScore * 10) / 10;
+  },
+
+  /**
+   * 计算头部统计区的百分比。
    */
   calculateRate(count: number, total: number): number {
     if (total <= 0) {
@@ -404,10 +673,7 @@ Page({
   },
 
   /**
-   * 模块代号兜底映射。
-   *
-   * 有些搜索结果没有独立 category 时，会退回到模块名展示。
-   * 这个函数的作用就是把搜索索引里的内部模块代号转换成适合页面展示的文案。
+   * 模块英文代号到中文展示文案的兜底映射。
    */
   getModuleLabel(module: string): string {
     if (module === "function") {

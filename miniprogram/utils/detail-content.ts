@@ -172,7 +172,7 @@ export interface DetailDocumentView {
   pdfUrl: string;
   hasPdf: boolean;
   sections: DetailSectionView[];
-  sourceType: "structured" | "legacy" | "meta";
+  sourceType: "structured" | "legacy" | "meta" | "api";
 }
 
 let detailContentCache: RawDetailMap | null = null;
@@ -770,7 +770,6 @@ function buildStructuredSections(sections: RawStructuredSection[]): DetailSectio
       });
     }
 
-    const layout = section.layout || "text";
     const items = section.items || [];
 
     for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {

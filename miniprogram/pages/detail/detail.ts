@@ -16,8 +16,14 @@
  * 3. `onToggleZoom / zoomTo / rebound`：放大缩小是如何工作的。
  * 4. `onTouchStart / onTouchMove / onTouchEnd`：手势链路如何接管整页阅读。
  */
-import type { DetailSectionView } from "../../utils/detail-content";
+import { getConclusionDetail } from "../../api/search";
+import type {
+  DetailDocumentView,
+  DetailSectionView,
+} from "../../utils/detail-content";
+import { buildApiDetailDocument } from "../../utils/detail-api";
 import { getDetailDocument } from "../../utils/detail-content";
+import { getErrorMessage } from "../../utils/request";
 import { handleInvalidAccess } from "../../utils/router";
 
 type TouchPoint = {
@@ -105,6 +111,90 @@ Page({
   },
 
   /**
+   * 详情页的数据加载入口。
+   *
+   * 当前采用“后端优先，本地降级”的策略：
+   * 1. 先请求后端 `/conclusion/{id}`；
+   * 2. 如果接口不可用，则自动回退到本地静态内容；
+   * 3. 页面交互层继续只消费统一的 `DetailDocumentView`。
+   */
+  async loadDetail(options: Record<string, string | undefined>) {
+    const id = String(options.id || "").trim();
+
+    if (!id) {
+      handleInvalidAccess("缺少结论 ID");
+      return;
+    }
+
+    wx.showLoading({
+      title: "加载中...",
+    });
+
+    try {
+      const detail = await this.resolveDetailDocument(id);
+
+      if (!detail) {
+        handleInvalidAccess("未找到对应内容");
+        return;
+      }
+
+      this.applyDetailDocument(detail);
+    } catch (error) {
+      handleInvalidAccess(getErrorMessage(error, "详情加载失败"));
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  /**
+   * 优先读取后端详情，失败后回退本地内容。
+   */
+  async resolveDetailDocument(id: string): Promise<DetailDocumentView | null> {
+    try {
+      const remoteDetail = await getConclusionDetail(id);
+      return buildApiDetailDocument(remoteDetail);
+    } catch (error) {
+      console.warn("后端详情加载失败，已回退到本地详情内容", error);
+
+      const localDetail = getDetailDocument(id);
+      if (localDetail) {
+        return localDetail;
+      }
+
+      throw error;
+    }
+  },
+
+  /**
+   * 将统一的详情 view model 应用到页面。
+   *
+   * 这里顺手重置缩放和滚动状态，避免从上一个条目残留交互状态。
+   */
+  applyDetailDocument(detail: DetailDocumentView) {
+    this.resetTransform(false);
+    this.articleScrollTop = 0;
+
+    this.setData({
+      id: detail.id,
+      title: detail.title,
+      category: detail.category,
+      summary: detail.summary,
+      summaryHtml: detail.summaryHtml,
+      coreFormulaHtml: detail.coreFormulaHtml,
+      sections: detail.sections,
+      pdfUrl: detail.pdfUrl,
+      hasPdf: detail.hasPdf,
+      sourceType: detail.sourceType,
+      articleScrollTop: 0,
+      transformStyle: this.buildTransformStyle(),
+      zoomActive: false,
+      scaleLabel: "100%",
+    }, () => {
+      this.scheduleMeasure();
+    });
+  },
+
+  /**
    * 详情页入口。
    *
    * 输入：
@@ -116,6 +206,13 @@ Page({
    * - 重置所有缩放/拖拽状态，确保从上一个详情页切过来时不会残留交互状态。
    */
   onLoad(options: Record<string, string | undefined>) {
+    // 详情页现阶段优先走远端接口；后面的旧本地加载逻辑暂时保留，
+    // 作为迁移阶段的参考代码，实际运行不会再走到。
+    void this.loadDetail(options);
+    void this.loadDetail(options);
+    return;
+
+    /*
     const id = (options.id || "").trim();
     const detail = getDetailDocument(id);
 
@@ -145,6 +242,7 @@ Page({
     }, () => {
       this.scheduleMeasure();
     });
+    */
   },
 
   /**

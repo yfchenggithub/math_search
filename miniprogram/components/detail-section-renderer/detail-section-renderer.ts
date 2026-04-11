@@ -30,7 +30,7 @@ Component({
   properties: {
     section: {
       type: Object,
-      value: null,
+      value: {},
     },
     zoomActive: {
       type: Boolean,
