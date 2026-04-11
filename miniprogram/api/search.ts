@@ -19,7 +19,10 @@ function sanitizeOptionalText(value?: string): string | undefined {
   return normalizedValue || undefined;
 }
 
-function sanitizeInteger(value: number | undefined, minimum: number): number | undefined {
+function sanitizeInteger(
+  value: number | undefined,
+  minimum: number,
+): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return undefined;
   }
@@ -59,7 +62,9 @@ function buildSearchParams(params: SearchParams): SearchParams {
  * 搜索结论列表。
  * 为空关键词直接返回空结果，避免页面层额外判断。
  */
-export function searchConclusions(params: SearchParams): Promise<SearchResponse> {
+export function searchConclusions(
+  params: SearchParams,
+): Promise<SearchResponse> {
   const requestParams = buildSearchParams(params);
 
   if (!requestParams.q) {
@@ -72,7 +77,7 @@ export function searchConclusions(params: SearchParams): Promise<SearchResponse>
   return request<SearchResponse>({
     url: "/search",
     method: "GET",
-    data: requestParams,
+    query: { ...requestParams },
   });
 }
 
@@ -92,7 +97,7 @@ export function getSuggestions(q: string): Promise<SuggestResponse> {
   return request<SuggestResponse>({
     url: "/suggest",
     method: "GET",
-    data: {
+    query: {
       q: keyword,
     },
   });
@@ -110,7 +115,7 @@ export function getConclusionDetail(id: string): Promise<ConclusionDetail> {
   }
 
   return request<ConclusionDetail>({
-    url: `/conclusion/${encodeURIComponent(normalizedId)}`,
+    url: `/api/v1/conclusions/${encodeURIComponent(normalizedId)}`,
     method: "GET",
   });
 }

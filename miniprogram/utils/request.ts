@@ -1,9 +1,13 @@
 import { API_CONFIG } from "../config/api";
 import type {
   ApiBusinessMeta,
-  RequestHeader,
+  ApiEnvelope,
   RequestData,
+  RequestHeader,
+  RequestMethod,
   RequestOptions,
+  RequestQuery,
+  RequestQueryPrimitive,
 } from "../types/api";
 
 type ErrorCode = number | string;
@@ -15,10 +19,8 @@ interface RequestErrorOptions {
 }
 
 /**
- * 统一的请求异常对象。
- *
- * 页面层只需要拿 message 做 toast，
- * 如果后续要做埋点或更细的错误分流，也能拿到状态码和原始数据。
+ * Unified request error.
+ * UI layer can read message directly for toast rendering.
  */
 export class RequestError extends Error {
   statusCode?: number;
@@ -36,6 +38,23 @@ export class RequestError extends Error {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function hasOwnProperty(target: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(target, key);
+}
+
+function isApiEnvelope(value: unknown): value is ApiEnvelope<unknown> {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+
+  const hasCodeOrSuccess = hasOwnProperty(value, "code") || hasOwnProperty(value, "success");
+  const hasDataAndMessage =
+    hasOwnProperty(value, "data")
+    && (hasOwnProperty(value, "message") || hasOwnProperty(value, "msg"));
+
+  return hasCodeOrSuccess || hasDataAndMessage;
 }
 
 function getMessageFromPayload(data: unknown): string {
@@ -70,40 +89,37 @@ function getCodeFromPayload(data: unknown): ErrorCode | undefined {
   return undefined;
 }
 
+function isBusinessCodeSuccess(code: ErrorCode | undefined): boolean {
+  if (code === undefined || code === "") {
+    return true;
+  }
+
+  if (typeof code === "number") {
+    return code === 0 || code === 200;
+  }
+
+  return code === "0" || code === "200";
+}
+
 function resolveHttpErrorMessage(statusCode: number, data: unknown): string {
   const payloadMessage = getMessageFromPayload(data);
-
   if (payloadMessage) {
     return payloadMessage;
   }
 
-  return `请求失败（HTTP ${statusCode}）`;
+  return `Request failed (HTTP ${statusCode})`;
 }
 
 function resolveBusinessError(data: unknown): RequestError | null {
-  if (!isPlainObject(data)) {
+  if (!isApiEnvelope(data)) {
     return null;
   }
 
   const success = data.success;
   const code = getCodeFromPayload(data);
-  const message = getMessageFromPayload(data) || "接口返回业务异常";
+  const message = getMessageFromPayload(data) || "Business error";
 
-  if (success === false) {
-    return new RequestError(message, {
-      code,
-      data,
-    });
-  }
-
-  if (typeof code === "number" && code !== 0 && code !== 200) {
-    return new RequestError(message, {
-      code,
-      data,
-    });
-  }
-
-  if (typeof code === "string" && code !== "" && code !== "0" && code !== "200") {
+  if (success === false || !isBusinessCodeSuccess(code)) {
     return new RequestError(message, {
       code,
       data,
@@ -113,19 +129,77 @@ function resolveBusinessError(data: unknown): RequestError | null {
   return null;
 }
 
-function resolveRequestUrl(url: string): string {
+function normalizeQueryPrimitive(value: RequestQueryPrimitive): string {
+  return String(value);
+}
+
+function appendQueryEntry(
+  pairs: string[],
+  key: string,
+  value: RequestQueryPrimitive,
+) {
+  const encodedKey = encodeURIComponent(key);
+  const encodedValue = encodeURIComponent(normalizeQueryPrimitive(value));
+  pairs.push(`${encodedKey}=${encodedValue}`);
+}
+
+function buildQueryString(query?: RequestQuery): string {
+  if (!query) {
+    return "";
+  }
+
+  const pairs: string[] = [];
+  const keys = Object.keys(query);
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+    const value = query[key];
+
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      for (let arrayIndex = 0; arrayIndex < value.length; arrayIndex += 1) {
+        appendQueryEntry(pairs, key, value[arrayIndex]);
+      }
+      continue;
+    }
+
+    appendQueryEntry(pairs, key, value);
+  }
+
+  return pairs.join("&");
+}
+
+function appendQueryToUrl(url: string, query?: RequestQuery): string {
+  const queryString = buildQueryString(query);
+  if (!queryString) {
+    return url;
+  }
+
+  const connector = url.includes("?") ? "&" : "?";
+  return `${url}${connector}${queryString}`;
+}
+
+function resolveRequestUrl(url: string, query?: RequestQuery): string {
   const normalizedUrl = url.trim();
 
+  if (!normalizedUrl) {
+    throw new RequestError("Request URL is empty");
+  }
+
   if (/^https?:\/\//i.test(normalizedUrl)) {
-    return normalizedUrl;
+    return appendQueryToUrl(normalizedUrl, query);
   }
 
   const baseURL = API_CONFIG.baseURL.trim().replace(/\/+$/, "");
   if (!baseURL) {
-    throw new RequestError("API baseURL 未配置");
+    throw new RequestError("API baseURL is not configured");
   }
 
-  return `${baseURL}/${normalizedUrl.replace(/^\/+/, "")}`;
+  const mergedUrl = `${baseURL}/${normalizedUrl.replace(/^\/+/, "")}`;
+  return appendQueryToUrl(mergedUrl, query);
 }
 
 function resolveRequestHeader(header?: RequestHeader): RequestHeader {
@@ -139,26 +213,56 @@ function resolveNetworkErrorMessage(errMsg?: string): string {
   const message = String(errMsg || "").toLowerCase();
 
   if (message.includes("timeout")) {
-    return "请求超时，请稍后重试";
+    return "Request timeout, please retry";
   }
 
   if (message.includes("abort")) {
-    return "请求已取消";
+    return "Request aborted";
   }
 
   if (message.includes("fail")) {
-    return "网络请求失败，请检查网络或接口域名配置";
+    return "Network request failed";
   }
 
-  return "网络请求失败，请稍后重试";
+  return "Network request failed";
 }
 
-/**
- * 把未知异常转换成适合页面直接提示的可读文本。
- */
+function resolveGetQuery(
+  method: RequestMethod,
+  query: RequestQuery | undefined,
+  data: unknown,
+): RequestQuery | undefined {
+  if (method !== "GET") {
+    return query;
+  }
+
+  // Backward compatible: allow old GET callers to pass query in `data`.
+  if (query) {
+    return query;
+  }
+
+  if (isPlainObject(data)) {
+    return data as RequestQuery;
+  }
+
+  return undefined;
+}
+
+function unwrapResponseData<TResponse>(data: unknown, unwrapData: boolean): TResponse {
+  if (!unwrapData) {
+    return data as TResponse;
+  }
+
+  if (isApiEnvelope(data) && hasOwnProperty(data, "data")) {
+    return data.data as TResponse;
+  }
+
+  return data as TResponse;
+}
+
 export function getErrorMessage(
   error: unknown,
-  fallback = "请求失败，请稍后重试",
+  fallback = "Request failed, please retry",
 ): string {
   if (error instanceof RequestError && error.message) {
     return error.message;
@@ -172,38 +276,43 @@ export function getErrorMessage(
 }
 
 /**
- * 小程序通用请求封装。
- *
- * 设计原则：
- * 1. 只保留当前阶段真正需要的能力
- * 2. 页面层直接拿 data，不再重复解包
- * 3. HTTP 异常和基础业务异常统一在这里收口
+ * Unified request entrance:
+ * 1. merge baseURL + query params
+ * 2. handle HTTP/network/business errors
+ * 3. auto-unwrap `{ code, message, data }` by default
  */
-export function request<TResponse extends RequestData>(
-  options: RequestOptions,
+export function request<TResponse>(
+  options: RequestOptions = { url: "" },
 ): Promise<TResponse> {
   const {
     url,
     method = "GET",
     data,
+    query,
     header,
     timeout = API_CONFIG.timeout,
+    unwrapData = true,
   } = options;
 
   return new Promise<TResponse>((resolve, reject) => {
     let requestUrl = "";
 
     try {
-      requestUrl = resolveRequestUrl(url);
+      const resolvedQuery = resolveGetQuery(method, query, data);
+      requestUrl = resolveRequestUrl(url, resolvedQuery);
     } catch (error) {
       reject(error);
       return;
     }
 
-    wx.request<TResponse>({
+    const requestData = method === "GET"
+      ? undefined
+      : (data as RequestData | undefined);
+
+    wx.request<RequestData>({
       url: requestUrl,
       method,
-      data,
+      data: requestData,
       timeout,
       header: resolveRequestHeader(header),
       success: (response) => {
@@ -218,7 +327,7 @@ export function request<TResponse extends RequestData>(
         }
 
         if (responseData === null || responseData === undefined) {
-          reject(new RequestError("服务端返回为空"));
+          reject(new RequestError("Empty response body"));
           return;
         }
 
@@ -228,7 +337,7 @@ export function request<TResponse extends RequestData>(
           return;
         }
 
-        resolve(responseData);
+        resolve(unwrapResponseData<TResponse>(responseData, unwrapData));
       },
       fail: (error) => {
         reject(new RequestError(resolveNetworkErrorMessage(error.errMsg)));

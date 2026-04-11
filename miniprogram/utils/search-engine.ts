@@ -1,3 +1,7 @@
+import { SEARCH_API_CONFIG } from "../config/api";
+import { loadSearchBundleFallback } from "./data-loader";
+import { request } from "./request";
+
 /**
  * 本地搜索引擎。
  *
@@ -42,6 +46,7 @@ export interface SearchDoc {
   hotScore?: number;
   examFrequency?: number;
   examScore?: number;
+  isFavorited?: boolean;
 }
 
 interface SearchBundle {
@@ -111,6 +116,91 @@ export interface SearchMeta {
   generatedAt: string;
 }
 
+export type SearchSource = "remote" | "local";
+
+export interface SearchFacetBucket<TValue extends string | number = string | number> {
+  value: TValue;
+  count: number;
+}
+
+export type SearchFacets = Record<string, SearchFacetBucket[]> & {
+  module?: SearchFacetBucket<string>[];
+  difficulty?: SearchFacetBucket<number>[];
+  tags?: SearchFacetBucket<string>[];
+};
+
+export interface SearchViewItem {
+  id: string;
+  title: string;
+  module: string;
+  moduleDir: string;
+  category: string;
+  tags: string[];
+  summary: string;
+  snippet: string;
+  coreFormula: string;
+  difficulty?: number;
+  rank?: number;
+  searchBoost?: number;
+  hotScore?: number;
+  examFrequency?: number;
+  examScore?: number;
+  searchScore: number;
+  moduleLabel: string;
+  difficultyLabel: string;
+  badgeList: string[];
+  isFavorited: boolean;
+}
+
+export interface SearchFacadeResponse {
+  query: string;
+  normalizedQuery: string;
+  total: number;
+  page: number;
+  pageSize: number;
+  items: SearchViewItem[];
+  facets: SearchFacets;
+  suggestions: SearchSuggestion[];
+  debug: SearchDebugInfo;
+  source: SearchSource;
+}
+
+interface RemoteSearchFacetBucketRaw {
+  value?: string | number;
+  count?: number;
+}
+
+interface RemoteSearchItemRaw {
+  id?: string;
+  module?: string;
+  moduleDir?: string;
+  title?: string;
+  summary?: string;
+  statement_clean?: string;
+  snippet?: string;
+  category?: string;
+  tags?: string[];
+  coreFormula?: string;
+  rank?: number;
+  difficulty?: number;
+  searchBoost?: number;
+  hotScore?: number;
+  examFrequency?: number;
+  examScore?: number;
+  score?: number;
+  is_favorited?: boolean;
+  isFavorited?: boolean;
+}
+
+interface RemoteSearchDataRaw {
+  query?: string;
+  total?: number;
+  page?: number;
+  page_size?: number;
+  items?: RemoteSearchItemRaw[];
+  facets?: Record<string, RemoteSearchFacetBucketRaw[]>;
+}
+
 interface SearchAccumulator {
   id: string;
   score: number;
@@ -169,7 +259,7 @@ export function initSearchEngine() {
   }
 
   try {
-    const loadedBundle = require("../data/index/search_bundle.js") as Partial<SearchBundle>;
+    const loadedBundle = loadSearchBundleFallback() as Partial<SearchBundle> | null;
 
     if (!isValidSearchBundle(loadedBundle)) {
       throw new Error("Invalid search bundle payload");
@@ -366,6 +456,532 @@ export function searchWithDebug(query: string): SearchResponse {
   }
 
   return response;
+}
+
+/**
+ * 统一搜索入口（页面层应优先使用这个方法）。
+ *
+ * 行为：
+ * 1. `USE_REMOTE_API=true` 时优先请求后端；失败后自动回退本地索引。
+ * 2. `USE_REMOTE_API=false` 时只走本地索引。
+ * 3. 不把后端原始结构暴露给页面，只返回统一的前端模型。
+ */
+export async function searchWithFacade(query: string): Promise<SearchFacadeResponse> {
+  const normalizedQuery = normalize(query);
+
+  if (!normalizedQuery) {
+    return createEmptyFacadeResponse(query);
+  }
+
+  if (!SEARCH_API_CONFIG.USE_REMOTE_API) {
+    const localResponse = buildLocalFacadeResponse(query);
+    if (localResponse) {
+      return localResponse;
+    }
+
+    throw new Error("本地搜索索引不可用，请检查 search_bundle.js");
+  }
+
+  try {
+    return await searchRemoteFacade(query);
+  } catch (error) {
+    console.warn("远程搜索失败，准备回退到本地索引", error);
+
+    const localResponse = buildLocalFacadeResponse(query, true);
+    if (localResponse) {
+      return localResponse;
+    }
+
+    throw error;
+  }
+}
+
+function createEmptyFacadeResponse(query: string): SearchFacadeResponse {
+  const normalizedQuery = normalize(query);
+
+  return {
+    query,
+    normalizedQuery,
+    total: 0,
+    page: 1,
+    pageSize: SEARCH_API_CONFIG.PAGE_SIZE,
+    items: [],
+    facets: {},
+    suggestions: [],
+    debug: {
+      normalizedQuery,
+      lookupTokens: normalizedQuery ? buildLookupTokens(normalizedQuery) : [],
+      termHitCount: 0,
+      prefixHitCount: 0,
+      suggestionHitCount: 0,
+      resultCount: 0,
+      fallbackUsed: false,
+      topSuggestions: [],
+      topMatches: [],
+    },
+    source: SEARCH_API_CONFIG.USE_REMOTE_API ? "remote" : "local",
+  };
+}
+
+async function searchRemoteFacade(query: string): Promise<SearchFacadeResponse> {
+  const normalizedQuery = normalize(query);
+
+  const remoteData = await request<RemoteSearchDataRaw>({
+    url: SEARCH_API_CONFIG.SEARCH_PATH,
+    method: "GET",
+    query: {
+      q: query.trim(),
+      page: 1,
+      page_size: SEARCH_API_CONFIG.PAGE_SIZE,
+    },
+  });
+
+  const remoteItems = Array.isArray(remoteData.items) ? remoteData.items : [];
+  const items = remoteItems.map((item, index) => adaptRemoteSearchItem(item, index));
+  const facets = normalizeRemoteFacets(remoteData.facets, items);
+
+  const suggestions = buildRemoteSuggestions(items, normalizedQuery);
+  if (suggestions.length === 0) {
+    const fallbackSuggestions = suggest(query).slice(0, MAX_SUGGEST);
+    suggestions.push(...fallbackSuggestions);
+  }
+
+  const total = normalizeInteger(remoteData.total, 0) ?? items.length;
+  const page = normalizeInteger(remoteData.page, 1) ?? 1;
+  const pageSize = normalizeInteger(remoteData.page_size, 1)
+    ?? SEARCH_API_CONFIG.PAGE_SIZE;
+
+  return {
+    query,
+    normalizedQuery,
+    total,
+    page,
+    pageSize,
+    items,
+    facets,
+    suggestions,
+    debug: buildRemoteDebugInfo(query, suggestions, items),
+    source: "remote",
+  };
+}
+
+function buildLocalFacadeResponse(query: string, fallbackUsed = false): SearchFacadeResponse | null {
+  const bundle = getBundle();
+  if (!bundle) {
+    return null;
+  }
+
+  const response = searchWithDebug(query);
+  const items = response.results.map((result) => adaptLocalSearchResult(result));
+  const facets = buildFacetsFromItems(items);
+
+  return {
+    query,
+    normalizedQuery: response.normalizedQuery,
+    total: response.results.length,
+    page: 1,
+    pageSize: MAX_RESULTS,
+    items,
+    facets,
+    suggestions: response.suggestions,
+    debug: fallbackUsed
+      ? {
+          ...response.debug,
+          fallbackUsed: true,
+        }
+      : response.debug,
+    source: "local",
+  };
+}
+
+function adaptLocalSearchResult(result: SearchResult): SearchViewItem {
+  const doc = result.doc;
+  const moduleLabel = getModuleLabel(doc.module);
+  const category = normalizeText(doc.category) || moduleLabel;
+  const tags = normalizeTags(doc.tags);
+  const summary = resolveSummaryText(normalizeText(doc.summary), tags, doc.title);
+  const difficulty = normalizeNumber(doc.difficulty);
+
+  return {
+    id: doc.id,
+    title: doc.title,
+    module: doc.module,
+    moduleDir: normalizeText(doc.moduleDir) || doc.module,
+    category,
+    tags,
+    summary,
+    snippet: summary,
+    coreFormula: normalizeText(doc.coreFormula),
+    difficulty: difficulty ?? undefined,
+    rank: normalizeNumber(doc.rank) ?? undefined,
+    searchBoost: normalizeNumber(doc.searchBoost) ?? undefined,
+    hotScore: normalizeNumber(doc.hotScore) ?? undefined,
+    examFrequency: normalizeNumber(doc.examFrequency) ?? undefined,
+    examScore: normalizeNumber(doc.examScore) ?? undefined,
+    searchScore: normalizeScore(result.score),
+    moduleLabel,
+    difficultyLabel: formatDifficultyLabel(difficulty),
+    badgeList: buildBadgeList(category, difficulty),
+    isFavorited: Boolean(doc.isFavorited),
+  };
+}
+
+function adaptRemoteSearchItem(item: RemoteSearchItemRaw, index: number): SearchViewItem {
+  const id = normalizeText(item.id) || `REMOTE_${index + 1}`;
+  const title = normalizeText(item.title) || id;
+  const module = normalizeText(item.module) || "inequality";
+  const moduleDir = normalizeText(item.moduleDir) || module;
+  const moduleLabel = getModuleLabel(module);
+  const tags = normalizeTags(item.tags);
+
+  const summary = resolveSummaryText(
+    normalizeText(item.summary),
+    tags,
+    normalizeText(item.statement_clean) || normalizeText(item.snippet) || title,
+  );
+
+  const difficulty = normalizeNumber(item.difficulty);
+  const rank = normalizeNumber(item.rank);
+  const searchBoost = normalizeNumber(item.searchBoost);
+  const hotScore = normalizeNumber(item.hotScore);
+  const score = normalizeScore(item.score ?? rank ?? searchBoost ?? hotScore ?? 0);
+
+  const category = normalizeText(item.category) || moduleLabel;
+
+  return {
+    id,
+    title,
+    module,
+    moduleDir,
+    category,
+    tags,
+    summary,
+    snippet: summary,
+    coreFormula: normalizeText(item.coreFormula),
+    difficulty: difficulty ?? undefined,
+    rank: rank ?? undefined,
+    searchBoost: searchBoost ?? undefined,
+    hotScore: hotScore ?? undefined,
+    examFrequency: normalizeNumber(item.examFrequency) ?? undefined,
+    examScore: normalizeNumber(item.examScore) ?? undefined,
+    searchScore: score,
+    moduleLabel,
+    difficultyLabel: formatDifficultyLabel(difficulty),
+    badgeList: buildBadgeList(category, difficulty),
+    isFavorited: Boolean(item.is_favorited ?? item.isFavorited),
+  };
+}
+
+function buildRemoteSuggestions(items: SearchViewItem[], normalizedQuery: string): SearchSuggestion[] {
+  const seen: Record<string, true> = {};
+  const suggestions: SearchSuggestion[] = [];
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const candidates = [item.title, item.category].concat(item.tags.slice(0, 2));
+
+    for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
+      const text = normalizeText(candidates[candidateIndex]);
+      if (!text || seen[text]) {
+        continue;
+      }
+
+      const normalizedCandidate = normalize(text);
+      const matched = !normalizedQuery
+        || normalizedCandidate.includes(normalizedQuery)
+        || normalizedQuery.includes(normalizedCandidate);
+
+      if (!matched) {
+        continue;
+      }
+
+      seen[text] = true;
+      suggestions.push({
+        text,
+        id: item.id,
+        score: items.length - index,
+      });
+
+      if (suggestions.length >= MAX_SUGGEST) {
+        return suggestions;
+      }
+    }
+  }
+
+  return suggestions;
+}
+
+function buildRemoteDebugInfo(
+  query: string,
+  suggestions: SearchSuggestion[],
+  items: SearchViewItem[],
+): SearchDebugInfo {
+  const normalizedQuery = normalize(query);
+
+  return {
+    normalizedQuery,
+    lookupTokens: buildLookupTokens(normalizedQuery),
+    termHitCount: 0,
+    prefixHitCount: 0,
+    suggestionHitCount: suggestions.length,
+    resultCount: items.length,
+    fallbackUsed: false,
+    topSuggestions: suggestions.slice(0, 5),
+    topMatches: items.slice(0, 5).map((item) => ({
+      id: item.id,
+      title: item.title,
+      score: item.searchScore,
+      matchedFieldsLabel: "remote",
+      reasonSummary: item.summary
+        ? "来自远程搜索接口，摘要字段为 summary"
+        : "来自远程搜索接口",
+    })),
+  };
+}
+
+function normalizeRemoteFacets(rawFacets: unknown, items: SearchViewItem[]): SearchFacets {
+  if (!isPlainObject(rawFacets)) {
+    return buildFacetsFromItems(items);
+  }
+
+  const normalizedFacets: SearchFacets = {};
+  const keys = Object.keys(rawFacets);
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+    const buckets = normalizeFacetBuckets(rawFacets[key]);
+
+    if (buckets.length > 0) {
+      normalizedFacets[key] = buckets;
+    }
+  }
+
+  if (Object.keys(normalizedFacets).length === 0) {
+    return buildFacetsFromItems(items);
+  }
+
+  return normalizedFacets;
+}
+
+function normalizeFacetBuckets(value: unknown): SearchFacetBucket[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const result: SearchFacetBucket[] = [];
+
+  for (let index = 0; index < value.length; index += 1) {
+    const bucket = value[index];
+    if (!isPlainObject(bucket)) {
+      continue;
+    }
+
+    const facetValue = bucket.value;
+    const count = normalizeInteger(bucket.count, 0);
+
+    if ((typeof facetValue !== "string" && typeof facetValue !== "number") || count === undefined) {
+      continue;
+    }
+
+    result.push({
+      value: facetValue,
+      count,
+    });
+  }
+
+  return result;
+}
+
+function buildFacetsFromItems(items: SearchViewItem[]): SearchFacets {
+  const moduleCount = createFacetCounter();
+  const difficultyCount = createFacetCounter();
+  const tagCount = createFacetCounter();
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+
+    const moduleValue = normalizeText(item.module) || normalizeText(item.moduleDir);
+    if (moduleValue) {
+      moduleCount[moduleValue] = (moduleCount[moduleValue] || 0) + 1;
+    }
+
+    if (typeof item.difficulty === "number") {
+      const difficulty = Math.round(item.difficulty);
+      difficultyCount[difficulty] = (difficultyCount[difficulty] || 0) + 1;
+    }
+
+    for (let tagIndex = 0; tagIndex < item.tags.length; tagIndex += 1) {
+      const tag = normalizeText(item.tags[tagIndex]);
+      if (!tag) {
+        continue;
+      }
+
+      tagCount[tag] = (tagCount[tag] || 0) + 1;
+    }
+  }
+
+  const facets: SearchFacets = {};
+  const moduleFacet = mapCounterToFacetBuckets(moduleCount);
+  const difficultyFacet = mapCounterToFacetBuckets(difficultyCount);
+  const tagFacet = mapCounterToFacetBuckets(tagCount);
+
+  if (moduleFacet.length > 0) {
+    facets.module = moduleFacet as SearchFacetBucket<string>[];
+  }
+
+  if (difficultyFacet.length > 0) {
+    facets.difficulty = difficultyFacet as SearchFacetBucket<number>[];
+  }
+
+  if (tagFacet.length > 0) {
+    facets.tags = tagFacet as SearchFacetBucket<string>[];
+  }
+
+  return facets;
+}
+
+type FacetCounter = Record<string, number>;
+
+function createFacetCounter(): FacetCounter {
+  return {};
+}
+
+function mapCounterToFacetBuckets<TValue extends string | number>(
+  counter: FacetCounter,
+): SearchFacetBucket<TValue>[] {
+  const keys = Object.keys(counter);
+
+  return keys
+    .map((key) => ({
+      value: castFacetValue<TValue>(key),
+      count: counter[key],
+    }))
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+
+      return String(left.value).localeCompare(String(right.value));
+    });
+}
+
+function castFacetValue<TValue extends string | number>(value: string): TValue {
+  const numeric = Number(value);
+
+  if (Number.isFinite(numeric) && String(numeric) === value) {
+    return numeric as TValue;
+  }
+
+  return value as TValue;
+}
+
+function resolveSummaryText(summary: string, tags: string[], fallbackText: string): string {
+  if (summary) {
+    return summary;
+  }
+
+  if (tags.length > 0) {
+    return tags.join(" / ");
+  }
+
+  return fallbackText;
+}
+
+function buildBadgeList(category: string, difficulty?: number | null): string[] {
+  const badges: string[] = [];
+
+  if (category) {
+    badges.push(category);
+  }
+
+  const difficultyLabel = formatDifficultyLabel(difficulty);
+  if (difficultyLabel) {
+    badges.push(difficultyLabel);
+  }
+
+  return badges;
+}
+
+function formatDifficultyLabel(difficulty?: number | null): string {
+  if (typeof difficulty !== "number" || !Number.isFinite(difficulty)) {
+    return "-";
+  }
+
+  const clamped = Math.max(1, Math.min(5, difficulty));
+  const rounded = Math.round(clamped * 10) / 10;
+  const displayText = Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
+
+  return `${displayText} / 5`;
+}
+
+function getModuleLabel(module: string): string {
+  if (module === "function") {
+    return "函数";
+  }
+
+  if (module === "trigonometry") {
+    return "三角函数";
+  }
+
+  if (module === "inequality") {
+    return "不等式";
+  }
+
+  return "数学";
+}
+
+function normalizeTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+
+  const seen: Record<string, true> = {};
+  const normalizedTags: string[] = [];
+
+  for (let index = 0; index < tags.length; index += 1) {
+    const tag = normalizeText(tags[index]);
+
+    if (!tag || seen[tag]) {
+      continue;
+    }
+
+    seen[tag] = true;
+    normalizedTags.push(tag);
+  }
+
+  return normalizedTags;
+}
+
+function normalizeText(value: unknown): string {
+  return String(value || "").trim();
+}
+
+function normalizeNumber(value: unknown): number | null {
+  if (typeof value !== "number") {
+    return null;
+  }
+
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+
+  return value;
+}
+
+function normalizeInteger(value: unknown, minimum: number): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return Math.max(minimum, Math.round(value));
+}
+
+function normalizeScore(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.round(value * 10) / 10;
 }
 
 /**
@@ -732,6 +1348,10 @@ function decodeFieldMask(fieldMask: number): string[] {
  * 统一 query 归一化规则。
  * 当前策略比较保守：trim、转小写、压缩多余空格。
  */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
 function normalize(query: string): string {
   return query.trim().toLowerCase().replace(/\s+/g, " ");
 }

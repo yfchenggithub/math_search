@@ -1,26 +1,41 @@
 /**
- * API 层通用类型定义。
- *
- * 这层的职责是把“接口契约”单独放出来，
- * 避免类型散落在页面和请求工具里，后续扩展接口也更容易维护。
+ * API 层公共类型定义。
  */
-export type RequestMethod = "GET" | "POST";
+export type RequestMethod = "GET" | "POST" | "DELETE";
 
 export type RequestHeader = Record<string, string>;
 
 export type RequestData = WechatMiniprogram.IAnyObject | string | ArrayBuffer;
 
-export interface RequestOptions<TData = RequestData> {
+export type RequestQueryPrimitive = string | number | boolean;
+
+export type RequestQueryValue =
+  | RequestQueryPrimitive
+  | null
+  | undefined
+  | RequestQueryPrimitive[];
+
+export type RequestQuery = Record<string, RequestQueryValue>;
+
+export interface RequestOptions<
+  TData = RequestData,
+  TQuery extends RequestQuery = RequestQuery,
+> {
   url: string;
   method?: RequestMethod;
   data?: TData;
+  query?: TQuery;
   header?: RequestHeader;
   timeout?: number;
+  /**
+   * 是否自动对 `{ code, message, data }` 结构做 data 解包。
+   * 默认 `true`。
+   */
+  unwrapData?: boolean;
 }
 
 /**
- * 兼容常见后端返回字段，供 request 层做基础业务异常兜底。
- * 当前不会强制页面依赖该结构，只在底层用于判错。
+ * request 层用于业务判错与自动解包的通用接口结构。
  */
 export interface ApiBusinessMeta {
   code?: number | string;
@@ -28,6 +43,10 @@ export interface ApiBusinessMeta {
   message?: string;
   msg?: string;
   error?: string;
+}
+
+export interface ApiEnvelope<TData = unknown> extends ApiBusinessMeta {
+  data?: TData;
 }
 
 export interface SearchParams {
@@ -65,4 +84,3 @@ export interface ConclusionDetail {
   traps?: string;
   summary?: string;
 }
-

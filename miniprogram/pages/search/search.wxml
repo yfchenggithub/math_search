@@ -3,31 +3,31 @@
     class="header"
     style="padding-top: calc({{statusBarHeight}}px + 20rpx);"
   >
-    <view class="title">数学搜索</view>
+    <view class="title">Math Search</view>
     <view class="sub">
-      共 {{total}} 条索引，热点考点 {{hotCount}} 条
+      {{total}} indexed items, {{hotCount}} hot points
     </view>
   </view>
 
   <view class="stats-card">
     <view class="stat-item">
       <view class="num">{{learned}}</view>
-      <view class="label">已入索引</view>
+      <view class="label">Indexed</view>
     </view>
 
     <view class="stat-item">
       <view class="num">{{rate1}}%</view>
-      <view class="label">高热度占比</view>
+      <view class="label">Hot Ratio</view>
     </view>
 
     <view class="stat-item">
       <view class="num">{{rate2}}%</view>
-      <view class="label">高频考点占比</view>
+      <view class="label">Exam Ratio</view>
     </view>
   </view>
 
   <view class="search-box">
-    <text class="search-prefix">检索</text>
+    <text class="search-prefix">Search</text>
     <input
       class="search-input"
       value="{{query}}"
@@ -35,7 +35,7 @@
       bindconfirm="onConfirm"
       confirm-type="search"
       focus="{{focus}}"
-      placeholder="搜索：柯西 / sin / lnx / 对数平均值"
+      placeholder="Try: Cauchy / sin / lnx / log mean"
     />
 
     <view wx:if="{{showClear}}" class="clear-btn" bindtap="onClear">
@@ -69,45 +69,45 @@
   </scroll-view>
 
   <view class="sort">
-    当前排序：term / prefix 聚合得分优先，其次参考条目 rank
+    Sort: term/prefix score first, then rank
   </view>
 
   <view wx:if="{{query && debugInfo}}" class="debug-card">
     <view class="debug-head" bindtap="onToggleDebug">
-      <text class="debug-title">搜索调试</text>
-      <text class="debug-toggle">{{debugExpanded ? '收起' : '展开'}}</text>
+      <text class="debug-title">Search Debug</text>
+      <text class="debug-toggle">{{debugExpanded ? 'Collapse' : 'Expand'}}</text>
     </view>
 
     <view wx:if="{{debugExpanded}}" class="debug-body">
       <view class="debug-metrics">
         <view class="debug-metric">
-          <text class="debug-label">规范化</text>
+          <text class="debug-label">Normalized</text>
           <text class="debug-value">{{debugInfo.normalizedQuery}}</text>
         </view>
 
         <view class="debug-metric">
-          <text class="debug-label">term 命中</text>
+          <text class="debug-label">Term Hits</text>
           <text class="debug-value">{{debugInfo.termHitCount}}</text>
         </view>
 
         <view class="debug-metric">
-          <text class="debug-label">prefix 命中</text>
+          <text class="debug-label">Prefix Hits</text>
           <text class="debug-value">{{debugInfo.prefixHitCount}}</text>
         </view>
 
         <view class="debug-metric">
-          <text class="debug-label">建议候选</text>
+          <text class="debug-label">Suggestions</text>
           <text class="debug-value">{{debugInfo.suggestionHitCount}}</text>
         </view>
 
         <view class="debug-metric">
-          <text class="debug-label">结果数</text>
+          <text class="debug-label">Result Count</text>
           <text class="debug-value">{{debugInfo.resultCount}}</text>
         </view>
 
         <view class="debug-metric">
-          <text class="debug-label">回退建议</text>
-          <text class="debug-value">{{debugInfo.fallbackUsed ? '是' : '否'}}</text>
+          <text class="debug-label">Local Fallback</text>
+          <text class="debug-value">{{debugInfo.fallbackUsed ? 'Yes' : 'No'}}</text>
         </view>
       </view>
 
@@ -125,7 +125,7 @@
       </view>
 
       <view wx:if="{{debugInfo.topSuggestions.length > 0}}" class="debug-section">
-        <view class="debug-section-title">建议候选</view>
+        <view class="debug-section-title">Top Suggestions</view>
         <block wx:for="{{debugInfo.topSuggestions}}" wx:key="index">
           <view class="debug-line">
             <text class="debug-line-main">{{item.text}}</text>
@@ -148,8 +148,16 @@
   </view>
 
   <scroll-view scroll-y class="list">
-    <view wx:if="{{query && results.length === 0}}" class="empty-state">
-      没有命中结果，试试更短的关键词或点上面的建议词。
+    <view wx:if="{{loading}}" class="state-box state-loading">
+      Searching...
+    </view>
+
+    <view wx:if="{{!loading && errorMessage}}" class="state-box state-error">
+      {{errorMessage}}
+    </view>
+
+    <view wx:if="{{query && !loading && !errorMessage && results.length === 0}}" class="empty-state">
+      No result found. Try shorter keywords or pick a suggestion.
     </view>
 
     <view
@@ -168,7 +176,7 @@
           </block>
         </view>
 
-        <view class="score">搜索 {{item.score}}</view>
+        <view class="score">Score {{item.score}}</view>
       </view>
 
       <view class="formula">
@@ -178,10 +186,10 @@
       </view>
 
       <view class="tags">
-        <text class="tag">分类：{{item.category}}</text>
-        <text class="tag">难度：{{item.level}}</text>
-        <text class="tag">频率：{{item.freq}}</text>
-        <text class="tag red">考分：{{item.recentScore}}</text>
+        <text class="tag">Category: {{item.category}}</text>
+        <text class="tag">Difficulty: {{item.level}}</text>
+        <text class="tag">Frequency: {{item.freq}}</text>
+        <text class="tag red">Exam Score: {{item.recentScore}}</text>
       </view>
 
       <view class="usage">
@@ -194,7 +202,7 @@
           catchtap="onDetailTap"
           data-id="{{item.id}}"
         >
-          查看详情
+          View Detail
         </view>
       </view>
     </view>

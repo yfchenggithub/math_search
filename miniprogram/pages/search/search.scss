@@ -280,6 +280,25 @@
   box-sizing: border-box;
 }
 
+.state-box {
+  margin-bottom: 20rpx;
+  padding: 32rpx 24rpx;
+  text-align: center;
+  background: #ffffff;
+  border-radius: 20rpx;
+  font-size: 26rpx;
+}
+
+.state-loading {
+  color: #475569;
+}
+
+.state-error {
+  color: #dc2626;
+  border: 2rpx solid #fecaca;
+  background: #fff1f2;
+}
+
 .empty-state {
   padding: 40rpx 24rpx;
   text-align: center;
