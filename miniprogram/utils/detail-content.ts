@@ -131,6 +131,8 @@ type RawDetailEntry = {
   coreSummary?: string;
   coreFormula?: string;
   pdfUrl?: string;
+  pdfFilename?: string;
+  pdfAvailable?: boolean;
   pdfPath?: string;
   is_favorited?: boolean | number | string;
   isFavorited?: boolean | number | string;
@@ -208,7 +210,8 @@ export interface DetailDocumentView {
   coreFormula: string;
   coreFormulaHtml: string;
   pdfUrl: string;
-  hasPdf: boolean;
+  pdfFilename: string;
+  pdfAvailable: boolean;
   sections: DetailSectionView[];
   sourceType: "structured" | "legacy" | "meta" | "api";
   legacyPlain?: DetailLegacyPlainView;
@@ -260,7 +263,8 @@ export function getDetailDocument(id: string): DetailDocumentView | null {
     coreFormula,
     coreFormulaHtml,
     pdfUrl: viewModel.pdfUrl,
-    hasPdf: viewModel.pdfUrl.length > 0,
+    pdfFilename: viewModel.pdfFilename,
+    pdfAvailable: viewModel.pdfAvailable,
     sections: viewModel.sections,
     sourceType: viewModel.sourceType,
   };
@@ -317,6 +321,8 @@ function buildCanonicalDetailDocument(
     || getFirstFormulaFromSections(sections);
   const coreFormulaHtml = coreFormula ? renderMath(coreFormula, true).html : "";
   const pdfUrl = normalizeCanonicalPdfUrl(detail);
+  const pdfFilename = normalizeCanonicalPdfFilename(detail, pdfUrl);
+  const pdfAvailable = normalizeCanonicalPdfAvailable(detail, pdfUrl);
 
   return {
     id: resolvedId,
@@ -336,7 +342,8 @@ function buildCanonicalDetailDocument(
     coreFormula,
     coreFormulaHtml,
     pdfUrl,
-    hasPdf: pdfUrl.length > 0,
+    pdfFilename,
+    pdfAvailable,
     sections,
     sourceType: "api",
     legacyPlain: normalizeCanonicalPlainFields(detail.content?.plain, sections, summary),
@@ -900,6 +907,23 @@ function normalizeCanonicalPdfUrl(detail: CanonicalConclusionDetail): string {
   );
 }
 
+function normalizeCanonicalPdfFilename(detail: CanonicalConclusionDetail, pdfUrl: string): string {
+  const directFilename = normalizeUnknownText(detail.pdf_filename);
+  if (directFilename) {
+    return directFilename;
+  }
+
+  return extractPdfFilenameFromUrl(pdfUrl);
+}
+
+function normalizeCanonicalPdfAvailable(detail: CanonicalConclusionDetail, pdfUrl: string): boolean {
+  if (typeof detail.pdf_available === "boolean") {
+    return detail.pdf_available;
+  }
+
+  return pdfUrl.length > 0;
+}
+
 /**
  * 统一生成详情页元信息展示字段：
  * - aliases / tags 做数组清洗
@@ -1266,6 +1290,7 @@ function buildDetailViewModel(rawEntry: RawDetailEntry, id: string) {
   const summary = getPreferredSummary(rawEntry);
   const sections = buildSections(rawEntry, summary);
   const pdfUrl = getPreferredPdfUrl(id, rawEntry);
+  const pdfFilename = getPreferredPdfFilename(rawEntry, pdfUrl);
   const metadata = buildLegacyDetailMetadata(rawEntry);
 
   return {
@@ -1280,6 +1305,10 @@ function buildDetailViewModel(rawEntry: RawDetailEntry, id: string) {
     showFavoriteStatus: metadata.showFavoriteStatus,
     favoriteStatusText: metadata.favoriteStatusText,
     pdfUrl,
+    pdfFilename,
+    pdfAvailable: typeof rawEntry.pdfAvailable === "boolean"
+      ? rawEntry.pdfAvailable
+      : pdfUrl.length > 0,
     sections,
     sourceType: detectSourceType(rawEntry),
   };
@@ -2636,6 +2665,27 @@ function getPreferredPdfUrl(id: string, rawEntry: RawDetailEntry): string {
 
   const numericId = extractNumericId(id);
   return numericId ? `/assets/svg/vector/${numericId}.pdf` : "";
+}
+
+function getPreferredPdfFilename(rawEntry: RawDetailEntry, pdfUrl: string): string {
+  const directFilename = normalizeText(rawEntry.pdfFilename);
+  if (directFilename) {
+    return directFilename;
+  }
+
+  return extractPdfFilenameFromUrl(pdfUrl);
+}
+
+function extractPdfFilenameFromUrl(pdfUrl: string): string {
+  const normalizedUrl = normalizeText(pdfUrl);
+  if (!normalizedUrl) {
+    return "";
+  }
+
+  const cleanUrl = normalizedUrl.split(/[?#]/, 1)[0];
+  const parts = cleanUrl.split("/").filter((part) => part.length > 0);
+
+  return parts.length > 0 ? parts[parts.length - 1] : "";
 }
 
 function resolvePdfUrl(rawValue: string, id: string): string {

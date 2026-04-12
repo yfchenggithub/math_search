@@ -15,8 +15,14 @@
       <button bindtap="onToggleZoom" class="toolbar-btn">
         {{zoomActive ? '退出缩放' : '缩放阅读'}}
       </button>
-      <button bindtap="openPdf" class="pdf-btn">
-        查看高清 PDF
+      <button
+        wx:if="{{pdfAvailable}}"
+        bindtap="openPdf"
+        class="pdf-btn"
+        loading="{{pdfOpening}}"
+        disabled="{{pdfOpening}}"
+      >
+        {{pdfOpening ? '打开中...' : '查看高清 PDF'}}
       </button>
     </view>
   </view>

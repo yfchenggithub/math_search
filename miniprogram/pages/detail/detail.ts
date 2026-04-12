@@ -20,6 +20,10 @@ import type {
   DetailDocumentView,
   DetailSectionView,
 } from "../../utils/detail-content";
+import {
+  buildAbsoluteApiUrl,
+  extractFilenameFromUrl,
+} from "../../utils/api-url";
 import { getDetailDocumentById } from "../../utils/detail-content";
 import { getErrorMessage } from "../../utils/request";
 
@@ -27,6 +31,21 @@ type TouchPoint = {
   pageX: number;
   pageY: number;
 };
+
+type PdfOperationStage = "download" | "save" | "open";
+
+class PdfOperationError extends Error {
+  stage: PdfOperationStage;
+
+  constructor(stage: PdfOperationStage, message: string) {
+    super(message);
+    this.name = "PdfOperationError";
+    this.stage = stage;
+  }
+}
+
+const DEFAULT_PDF_FILENAME = "hd-pdf.pdf";
+const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
 
 /**
  * 详情页的整体执行流程：
@@ -54,7 +73,9 @@ Page({
     coreFormulaHtml: "",
     sections: [] as DetailSectionView[],
     pdfUrl: "",
-    hasPdf: false,
+    pdfFilename: "",
+    pdfAvailable: false,
+    pdfOpening: false,
     sourceType: "meta",
     viewState: "idle" as "idle" | "loading" | "content" | "empty" | "error",
     viewMessage: "",
@@ -150,10 +171,10 @@ Page({
       }
 
       const hasContent = Boolean(
-        detail.title
-        || detail.summary
-        || detail.coreFormulaHtml
-        || (Array.isArray(detail.sections) && detail.sections.length > 0),
+        detail.title ||
+        detail.summary ||
+        detail.coreFormulaHtml ||
+        (Array.isArray(detail.sections) && detail.sections.length > 0),
       );
 
       if (!hasContent) {
@@ -183,34 +204,39 @@ Page({
     this.resetTransform(false);
     this.articleScrollTop = 0;
 
-    this.setData({
-      id: detail.id,
-      title: detail.title,
-      category: detail.category,
-      summary: detail.summary,
-      summaryHtml: detail.summaryHtml,
-      aliases: detail.aliases,
-      aliasesDisplay: detail.aliases.join(" / "),
-      tags: detail.tags,
-      hasDifficulty: detail.hasDifficulty,
-      difficultyLabel: detail.difficultyLabel,
-      isFavorited: detail.isFavorited,
-      showFavoriteStatus: detail.showFavoriteStatus,
-      favoriteStatusText: detail.favoriteStatusText,
-      coreFormulaHtml: detail.coreFormulaHtml,
-      sections: detail.sections,
-      pdfUrl: detail.pdfUrl,
-      hasPdf: detail.hasPdf,
-      sourceType: detail.sourceType,
-      viewState: "content",
-      viewMessage: "",
-      articleScrollTop: 0,
-      transformStyle: this.buildTransformStyle(),
-      zoomActive: false,
-      scaleLabel: "100%",
-    }, () => {
-      this.scheduleMeasure();
-    });
+    this.setData(
+      {
+        id: detail.id,
+        title: detail.title,
+        category: detail.category,
+        summary: detail.summary,
+        summaryHtml: detail.summaryHtml,
+        aliases: detail.aliases,
+        aliasesDisplay: detail.aliases.join(" / "),
+        tags: detail.tags,
+        hasDifficulty: detail.hasDifficulty,
+        difficultyLabel: detail.difficultyLabel,
+        isFavorited: detail.isFavorited,
+        showFavoriteStatus: detail.showFavoriteStatus,
+        favoriteStatusText: detail.favoriteStatusText,
+        coreFormulaHtml: detail.coreFormulaHtml,
+        sections: detail.sections,
+        pdfUrl: detail.pdfUrl,
+        pdfFilename: detail.pdfFilename,
+        pdfAvailable: detail.pdfAvailable,
+        pdfOpening: false,
+        sourceType: detail.sourceType,
+        viewState: "content",
+        viewMessage: "",
+        articleScrollTop: 0,
+        transformStyle: this.buildTransformStyle(),
+        zoomActive: false,
+        scaleLabel: "100%",
+      },
+      () => {
+        this.scheduleMeasure();
+      },
+    );
   },
 
   applyEmptyState(message: string) {
@@ -231,7 +257,9 @@ Page({
       coreFormulaHtml: "",
       sections: [],
       pdfUrl: "",
-      hasPdf: false,
+      pdfFilename: "",
+      pdfAvailable: false,
+      pdfOpening: false,
       sourceType: "meta",
       viewState: "empty",
       viewMessage: message,
@@ -260,7 +288,9 @@ Page({
       coreFormulaHtml: "",
       sections: [],
       pdfUrl: "",
-      hasPdf: false,
+      pdfFilename: "",
+      pdfAvailable: false,
+      pdfOpening: false,
       sourceType: "meta",
       viewState: "error",
       viewMessage: message,
@@ -366,7 +396,11 @@ Page({
       this.viewerLeft = viewer.left || 0;
       this.viewerTop = viewer.top || 0;
 
-      if (this.scale <= 1.01 || this.contentWidth === 0 || this.contentHeight === 0) {
+      if (
+        this.scale <= 1.01 ||
+        this.contentWidth === 0 ||
+        this.contentHeight === 0
+      ) {
         this.contentWidth = content.width || this.containerWidth;
         this.contentHeight = content.height || this.containerHeight;
       }
@@ -378,18 +412,211 @@ Page({
   },
 
   /**
+   * Build full PDF URL from API baseURL + pdf_url.
+   */
+  buildFullPdfUrl(pdfUrl: string): string {
+    return buildAbsoluteApiUrl(pdfUrl);
+  },
+
+  /**
+   * Resolve filename from field first, then url, then default.
+   */
+  resolvePdfFilename(): string {
+    const explicitFilename = String(this.data.pdfFilename || "").trim();
+    if (explicitFilename) {
+      return explicitFilename;
+    }
+
+    const filenameFromUrl = extractFilenameFromUrl(
+      String(this.data.pdfUrl || ""),
+    );
+    if (filenameFromUrl) {
+      return filenameFromUrl;
+    }
+
+    return DEFAULT_PDF_FILENAME;
+  },
+
+  /**
+   * Build stable cache key by `conclusion_id + pdf_url`.
+   */
+  buildPdfCacheKey(rawPdfUrl: string): string {
+    const conclusionId = String(this.data.id || this.currentDetailId || "").trim();
+    const normalizedPdfUrl = String(rawPdfUrl || "").trim();
+    if (!conclusionId || !normalizedPdfUrl) {
+      return "";
+    }
+
+    return `${conclusionId}::${normalizedPdfUrl}`;
+  },
+
+  getPdfCacheMap(): Record<string, string> {
+    try {
+      const rawCache = wx.getStorageSync(PDF_CACHE_STORAGE_KEY);
+      if (!rawCache || typeof rawCache !== "object" || Array.isArray(rawCache)) {
+        return {};
+      }
+
+      const normalized: Record<string, string> = {};
+      const entries = rawCache as Record<string, unknown>;
+      Object.keys(entries).forEach((key) => {
+        const value = entries[key];
+        if (typeof value === "string" && value.trim()) {
+          normalized[key] = value;
+        }
+      });
+
+      return normalized;
+    } catch (error) {
+      console.warn("Read PDF cache map failed", error);
+      return {};
+    }
+  },
+
+  getCachedPdfFilePath(cacheKey: string): string {
+    if (!cacheKey) {
+      return "";
+    }
+
+    const cacheMap = this.getPdfCacheMap();
+    return typeof cacheMap[cacheKey] === "string" ? cacheMap[cacheKey] : "";
+  },
+
+  setCachedPdfFilePath(cacheKey: string, savedFilePath: string) {
+    if (!cacheKey || !savedFilePath) {
+      return;
+    }
+
+    try {
+      const cacheMap = this.getPdfCacheMap();
+      cacheMap[cacheKey] = savedFilePath;
+      wx.setStorageSync(PDF_CACHE_STORAGE_KEY, cacheMap);
+    } catch (error) {
+      console.warn("Write PDF cache map failed", error);
+    }
+  },
+
+  removeCachedPdfFilePath(cacheKey: string) {
+    if (!cacheKey) {
+      return;
+    }
+
+    try {
+      const cacheMap = this.getPdfCacheMap();
+      if (!Object.prototype.hasOwnProperty.call(cacheMap, cacheKey)) {
+        return;
+      }
+
+      delete cacheMap[cacheKey];
+      wx.setStorageSync(PDF_CACHE_STORAGE_KEY, cacheMap);
+    } catch (error) {
+      console.warn("Remove PDF cache entry failed", error);
+    }
+  },
+
+  downloadPdfFile(url: string, pdfFilename: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      wx.downloadFile({
+        url,
+        success: (res) => {
+          if (res.statusCode !== 200 || !res.tempFilePath) {
+            reject(
+              new PdfOperationError(
+                "download",
+                `${pdfFilename} download failed (HTTP ${res.statusCode})`,
+              ),
+            );
+            return;
+          }
+
+          resolve(res.tempFilePath);
+        },
+        fail: (error) => {
+          reject(
+            new PdfOperationError(
+              "download",
+              `${pdfFilename} download failed: ${error.errMsg || ""}`.trim(),
+            ),
+          );
+        },
+      });
+    });
+  },
+
+  savePdfFile(tempFilePath: string, pdfFilename: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      wx.saveFile({
+        tempFilePath,
+        success: (res) => {
+          if (!res.savedFilePath) {
+            reject(
+              new PdfOperationError(
+                "save",
+                `${pdfFilename} save failed: empty savedFilePath`,
+              ),
+            );
+            return;
+          }
+
+          resolve(res.savedFilePath);
+        },
+        fail: (error) => {
+          reject(
+            new PdfOperationError(
+              "save",
+              `${pdfFilename} save failed: ${error.errMsg || ""}`.trim(),
+            ),
+          );
+        },
+      });
+    });
+  },
+
+  openPdfDocument(filePath: string, pdfFilename: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      wx.openDocument({
+        filePath,
+        fileType: "pdf",
+        showMenu: true,
+        success: () => {
+          resolve();
+        },
+        fail: (error) => {
+          reject(
+            new PdfOperationError(
+              "open",
+              `${pdfFilename} open failed: ${error.errMsg || ""}`.trim(),
+            ),
+          );
+        },
+      });
+    });
+  },
+
+  /**
    * 打开 PDF。
    *
    * 使用场景：
-   * - 条目提供远程 PDF：先下载到临时路径，再打开。
-   * - 条目提供本地/临时 PDF 路径：直接打开。
+   * - 命中缓存：直接打开本地 savedFilePath。
+   * - 缓存未命中：下载 -> 保存 -> 写入缓存 -> 打开。
    *
    * 这段逻辑不参与页面渲染，只负责阅读扩展入口。
    */
-  openPdf() {
-    const pdfUrl = String(this.data.pdfUrl || "");
+  async openPdf() {
+    if (this.data.pdfOpening) {
+      return;
+    }
 
-    if (!pdfUrl) {
+    if (!this.data.pdfAvailable) {
+      wx.showToast({
+        title: "PDF暂不可用",
+        icon: "none",
+      });
+      return;
+    }
+
+    const rawPdfUrl = String(this.data.pdfUrl || "").trim();
+    if (!rawPdfUrl) {
       wx.showToast({
         title: "暂无PDF资源",
         icon: "none",
@@ -397,49 +624,75 @@ Page({
       return;
     }
 
-    if (/^https?:\/\//i.test(pdfUrl)) {
-      wx.showLoading({ title: "加载中..." });
-
-      wx.downloadFile({
-        url: pdfUrl,
-        success: (res) => {
-          wx.hideLoading();
-
-          if (res.statusCode === 200) {
-            wx.openDocument({
-              filePath: res.tempFilePath,
-              fileType: "pdf",
-              showMenu: true,
-            });
-          } else {
-            wx.showToast({
-              title: "PDF下载失败",
-              icon: "none",
-            });
-          }
-        },
-        fail: () => {
-          wx.hideLoading();
-          wx.showToast({
-            title: "PDF打开失败",
-            icon: "none",
-          });
-        },
+    const fullPdfUrl = this.buildFullPdfUrl(rawPdfUrl);
+    if (!fullPdfUrl) {
+      wx.showToast({
+        title: "PDF地址无效",
+        icon: "none",
       });
       return;
     }
 
-    wx.openDocument({
-      filePath: pdfUrl,
-      fileType: "pdf",
-      showMenu: true,
-      fail: () => {
-        wx.showToast({
-          title: "PDF打开失败",
-          icon: "none",
-        });
-      },
+    const pdfFilename = this.resolvePdfFilename();
+    const cacheKey = this.buildPdfCacheKey(rawPdfUrl);
+
+    this.setData({
+      pdfOpening: true,
     });
+    wx.showLoading({
+      title: "加载中...",
+    });
+
+    try {
+      const cachedFilePath = this.getCachedPdfFilePath(cacheKey);
+      if (cachedFilePath) {
+        try {
+          await this.openPdfDocument(cachedFilePath, pdfFilename);
+          return;
+        } catch (error) {
+          this.removeCachedPdfFilePath(cacheKey);
+          console.warn("Open cached PDF failed, fallback to re-download", {
+            error,
+            cacheKey,
+            cachedFilePath,
+          });
+        }
+      }
+
+      const tempFilePath = await this.downloadPdfFile(fullPdfUrl, pdfFilename);
+      const savedFilePath = await this.savePdfFile(tempFilePath, pdfFilename);
+      this.setCachedPdfFilePath(cacheKey, savedFilePath);
+      await this.openPdfDocument(savedFilePath, pdfFilename);
+    } catch (error) {
+      const stage =
+        error instanceof PdfOperationError ? error.stage : "download";
+
+      if (stage === "open") {
+        this.removeCachedPdfFilePath(cacheKey);
+      }
+
+      wx.showToast({
+        title:
+          stage === "save"
+            ? "PDF保存失败"
+            : stage === "open"
+              ? "PDF打开失败"
+              : "PDF下载失败",
+        icon: "none",
+      });
+
+      console.error("Open PDF failed", {
+        stage,
+        error,
+        fullPdfUrl,
+        pdfFilename,
+      });
+    } finally {
+      wx.hideLoading();
+      this.setData({
+        pdfOpening: false,
+      });
+    }
   },
 
   /**
@@ -523,7 +776,10 @@ Page({
    */
   getRestoreScrollTop() {
     if (this.scale <= 1.01) {
-      return Math.min(this.getMaxScrollTop(), Math.max(0, this.articleScrollTop));
+      return Math.min(
+        this.getMaxScrollTop(),
+        Math.max(0, this.articleScrollTop),
+      );
     }
 
     const visibleTop = -this.translateY / Math.max(this.scale, 1);
@@ -552,12 +808,15 @@ Page({
     this.lastTranslateY = this.translateY;
     this.articleScrollTop = 0;
 
-    this.setData({
-      articleScrollTop: 0,
-      transformStyle: this.buildTransformStyle(),
-    }, () => {
-      callback?.();
-    });
+    this.setData(
+      {
+        articleScrollTop: 0,
+        transformStyle: this.buildTransformStyle(),
+      },
+      () => {
+        callback?.();
+      },
+    );
   },
 
   /**
@@ -653,8 +912,14 @@ Page({
    */
   rebound() {
     const bounds = this.calcBounds();
-    const targetX = Math.min(bounds.maxX, Math.max(bounds.minX, this.translateX));
-    const targetY = Math.min(bounds.maxY, Math.max(bounds.minY, this.translateY));
+    const targetX = Math.min(
+      bounds.maxX,
+      Math.max(bounds.minX, this.translateX),
+    );
+    const targetY = Math.min(
+      bounds.maxY,
+      Math.max(bounds.minY, this.translateY),
+    );
 
     const startX = this.translateX;
     const startY = this.translateY;
@@ -704,7 +969,10 @@ Page({
    * - `centerX / centerY`：缩放锚点，通常是双指中心或双击点。
    */
   zoomTo(targetScale: number, centerX: number, centerY: number) {
-    const clampedScale = Math.max(this.minScale, Math.min(targetScale, this.maxScale));
+    const clampedScale = Math.max(
+      this.minScale,
+      Math.min(targetScale, this.maxScale),
+    );
     const ratio = clampedScale / this.scale;
 
     this.translateX = centerX - ratio * (centerX - this.translateX);
@@ -759,10 +1027,10 @@ Page({
       const bounds = this.calcBounds();
 
       if (
-        this.translateX < bounds.minX
-        || this.translateX > bounds.maxX
-        || this.translateY < bounds.minY
-        || this.translateY > bounds.maxY
+        this.translateX < bounds.minX ||
+        this.translateX > bounds.maxX ||
+        this.translateY < bounds.minY ||
+        this.translateY > bounds.maxY
       ) {
         this.stopInertia();
         this.rebound();
@@ -863,7 +1131,8 @@ Page({
     this.raf(() => {
       if (touches.length === 2 && this.gesture.startDistance > 0) {
         const distance = this.getDistance(touches);
-        let nextScale = (distance / this.gesture.startDistance) * this.gesture.startScale;
+        let nextScale =
+          (distance / this.gesture.startDistance) * this.gesture.startScale;
         nextScale = Math.max(this.minScale, Math.min(nextScale, this.maxScale));
 
         const center = this.getCenter(touches);

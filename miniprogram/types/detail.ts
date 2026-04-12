@@ -149,6 +149,8 @@ export interface CanonicalConclusionDetail {
   ext?: CanonicalDetailExt;
   is_favorited?: boolean;
   pdf_url?: string | null;
+  pdf_filename?: string | null;
+  pdf_available?: boolean;
   [key: string]: unknown;
 }
 
