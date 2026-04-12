@@ -103,10 +103,10 @@ type RawDetailEntry = {
   title?: string;
   display_version?: number;
   module?: string;
-  alias?: string[];
-  difficulty?: number;
+  alias?: string[] | string;
+  difficulty?: number | string;
   category?: string;
-  tags?: string[];
+  tags?: string[] | string;
   core_summary?: string;
   core_formula?: string;
   related_formulas?: string[];
@@ -132,6 +132,8 @@ type RawDetailEntry = {
   coreFormula?: string;
   pdfUrl?: string;
   pdfPath?: string;
+  is_favorited?: boolean | number | string;
+  isFavorited?: boolean | number | string;
   statementLatex?: string;
   statement_latex?: string;
   sections?: RawStructuredSection[];
@@ -180,12 +182,29 @@ export interface DetailLegacyPlainView {
   summary: string;
 }
 
+interface DetailMetadataView {
+  aliases: string[];
+  tags: string[];
+  hasDifficulty: boolean;
+  difficultyLabel: string;
+  isFavorited: boolean;
+  showFavoriteStatus: boolean;
+  favoriteStatusText: string;
+}
+
 export interface DetailDocumentView {
   id: string;
   title: string;
   category: string;
   summary: string;
   summaryHtml: string;
+  aliases: string[];
+  tags: string[];
+  hasDifficulty: boolean;
+  difficultyLabel: string;
+  isFavorited: boolean;
+  showFavoriteStatus: boolean;
+  favoriteStatusText: string;
   coreFormula: string;
   coreFormulaHtml: string;
   pdfUrl: string;
@@ -231,6 +250,13 @@ export function getDetailDocument(id: string): DetailDocumentView | null {
     category: getPreferredCategory(rawEntry),
     summary: viewModel.summary,
     summaryHtml: viewModel.summaryHtml,
+    aliases: viewModel.aliases,
+    tags: viewModel.tags,
+    hasDifficulty: viewModel.hasDifficulty,
+    difficultyLabel: viewModel.difficultyLabel,
+    isFavorited: viewModel.isFavorited,
+    showFavoriteStatus: viewModel.showFavoriteStatus,
+    favoriteStatusText: viewModel.favoriteStatusText,
     coreFormula,
     coreFormulaHtml,
     pdfUrl: viewModel.pdfUrl,
@@ -285,6 +311,7 @@ function buildCanonicalDetailDocument(
   const resolvedId = normalizeText(detail.id) || fallbackId;
   const sections = buildCanonicalSections(detail);
   const summary = getCanonicalSummary(detail, sections);
+  const metadata = buildCanonicalDetailMetadata(detail);
   const coreFormula =
     normalizeText(detail.content?.primary_formula)
     || getFirstFormulaFromSections(sections);
@@ -299,6 +326,13 @@ function buildCanonicalDetailDocument(
       || getModuleLabel(detail.identity?.module),
     summary,
     summaryHtml: renderMixedTextHtml(summary),
+    aliases: metadata.aliases,
+    tags: metadata.tags,
+    hasDifficulty: metadata.hasDifficulty,
+    difficultyLabel: metadata.difficultyLabel,
+    isFavorited: metadata.isFavorited,
+    showFavoriteStatus: metadata.showFavoriteStatus,
+    favoriteStatusText: metadata.favoriteStatusText,
     coreFormula,
     coreFormulaHtml,
     pdfUrl,
@@ -866,6 +900,195 @@ function normalizeCanonicalPdfUrl(detail: CanonicalConclusionDetail): string {
   );
 }
 
+/**
+ * 统一生成详情页元信息展示字段：
+ * - aliases / tags 做数组清洗
+ * - difficulty 映射为稳定展示文案
+ * - is_favorited 规范成只读状态标签
+ */
+function buildCanonicalDetailMetadata(detail: CanonicalConclusionDetail): DetailMetadataView {
+  return buildDetailMetadata({
+    aliases: detail.meta?.aliases,
+    tags: detail.meta?.tags,
+    difficulty: detail.meta?.difficulty,
+    isFavorited: detail.is_favorited,
+  });
+}
+
+/**
+ * 本地模式沿用旧字段构造同一套元信息 view model，
+ * 页面层无需区分远程/本地数据结构。
+ */
+function buildLegacyDetailMetadata(rawEntry: RawDetailEntry): DetailMetadataView {
+  return buildDetailMetadata({
+    aliases: rawEntry.alias,
+    tags: rawEntry.tags,
+    difficulty: rawEntry.difficulty,
+    isFavorited: rawEntry.is_favorited ?? rawEntry.isFavorited,
+  });
+}
+
+function buildDetailMetadata(input: {
+  aliases: unknown;
+  tags: unknown;
+  difficulty: unknown;
+  isFavorited: unknown;
+}): DetailMetadataView {
+  const aliases = normalizeUnknownTextList(input.aliases);
+  const tags = normalizeUnknownTextList(input.tags);
+  const difficultyDisplay = normalizeDifficultyDisplay(input.difficulty);
+  const favoriteDisplay = normalizeFavoriteDisplay(input.isFavorited);
+
+  return {
+    aliases,
+    tags,
+    hasDifficulty: difficultyDisplay.hasDifficulty,
+    difficultyLabel: difficultyDisplay.difficultyLabel,
+    isFavorited: favoriteDisplay.isFavorited,
+    showFavoriteStatus: favoriteDisplay.showFavoriteStatus,
+    favoriteStatusText: favoriteDisplay.favoriteStatusText,
+  };
+}
+
+function normalizeUnknownTextList(value: unknown): string[] {
+  const source = Array.isArray(value) ? value : [value];
+  const dedupe = new Set<string>();
+  const result: string[] = [];
+
+  for (let index = 0; index < source.length; index += 1) {
+    const item = source[index];
+    const normalized = typeof item === "string" ? normalizeText(item) : "";
+
+    if (!normalized || dedupe.has(normalized)) {
+      continue;
+    }
+
+    dedupe.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+}
+
+function normalizeDifficultyDisplay(value: unknown): {
+  hasDifficulty: boolean;
+  difficultyLabel: string;
+} {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return formatNumericDifficulty(value);
+  }
+
+  if (typeof value === "string") {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+      return {
+        hasDifficulty: false,
+        difficultyLabel: "",
+      };
+    }
+
+    const numeric = Number(normalized);
+    if (Number.isFinite(numeric)) {
+      return formatNumericDifficulty(numeric);
+    }
+
+    return {
+      hasDifficulty: true,
+      difficultyLabel: normalized,
+    };
+  }
+
+  return {
+    hasDifficulty: false,
+    difficultyLabel: "",
+  };
+}
+
+function formatNumericDifficulty(value: number): {
+  hasDifficulty: boolean;
+  difficultyLabel: string;
+} {
+  const roundedLevel = Math.round(value);
+  const levelLabelMap: Record<number, string> = {
+    1: "入门",
+    2: "基础",
+    3: "中等",
+    4: "较难",
+    5: "困难",
+  };
+
+  if (
+    Number.isInteger(value)
+    && roundedLevel >= 1
+    && roundedLevel <= 5
+  ) {
+    return {
+      hasDifficulty: true,
+      difficultyLabel: `${levelLabelMap[roundedLevel]} (${roundedLevel})`,
+    };
+  }
+
+  return {
+    hasDifficulty: true,
+    difficultyLabel: `${value}`,
+  };
+}
+
+function normalizeFavoriteDisplay(value: unknown): {
+  isFavorited: boolean;
+  showFavoriteStatus: boolean;
+  favoriteStatusText: string;
+} {
+  const parsed = parseUnknownBoolean(value);
+
+  if (parsed === null) {
+    return {
+      isFavorited: false,
+      showFavoriteStatus: false,
+      favoriteStatusText: "",
+    };
+  }
+
+  return {
+    isFavorited: parsed,
+    showFavoriteStatus: true,
+    favoriteStatusText: parsed ? "已收藏" : "未收藏",
+  };
+}
+
+function parseUnknownBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    if (value === 1) {
+      return true;
+    }
+    if (value === 0) {
+      return false;
+    }
+    return null;
+  }
+
+  if (typeof value === "string") {
+    const normalized = normalizeText(value).toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized === "1" || normalized === "true") {
+      return true;
+    }
+
+    if (normalized === "0" || normalized === "false") {
+      return false;
+    }
+  }
+
+  return null;
+}
+
 function resolveCanonicalSectionTitle(
   section: CanonicalDetailSection,
   sectionIndex: number,
@@ -1043,11 +1266,19 @@ function buildDetailViewModel(rawEntry: RawDetailEntry, id: string) {
   const summary = getPreferredSummary(rawEntry);
   const sections = buildSections(rawEntry, summary);
   const pdfUrl = getPreferredPdfUrl(id, rawEntry);
+  const metadata = buildLegacyDetailMetadata(rawEntry);
 
   return {
     id: normalizeText(rawEntry.id) || id,
     summary,
     summaryHtml: renderMixedTextHtml(summary),
+    aliases: metadata.aliases,
+    tags: metadata.tags,
+    hasDifficulty: metadata.hasDifficulty,
+    difficultyLabel: metadata.difficultyLabel,
+    isFavorited: metadata.isFavorited,
+    showFavoriteStatus: metadata.showFavoriteStatus,
+    favoriteStatusText: metadata.favoriteStatusText,
     pdfUrl,
     sections,
     sourceType: detectSourceType(rawEntry),

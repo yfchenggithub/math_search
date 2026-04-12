@@ -69,6 +69,30 @@
               <view wx:elif="{{summary}}" class="article-summary">
                 {{summary}}
               </view>
+
+              <view
+                wx:if="{{hasDifficulty || showFavoriteStatus || (tags && tags.length)}}"
+                class="article-meta-chips"
+              >
+                <view wx:if="{{hasDifficulty}}" class="meta-chip meta-chip-difficulty">
+                  难度 {{difficultyLabel}}
+                </view>
+
+                <view
+                  wx:if="{{showFavoriteStatus}}"
+                  class="meta-chip {{isFavorited ? 'meta-chip-favorited' : 'meta-chip-unfavorited'}}"
+                >
+                  {{favoriteStatusText}}
+                </view>
+
+                <view wx:for="{{tags}}" wx:key="*this" wx:for-item="tag" class="meta-chip">
+                  {{tag}}
+                </view>
+              </view>
+
+              <view wx:if="{{aliasesDisplay}}" class="article-alias">
+                别名：{{aliasesDisplay}}
+              </view>
             </view>
 
             <view wx:if="{{coreFormulaHtml}}" class="hero-formula">
