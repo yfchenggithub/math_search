@@ -30,6 +30,16 @@ import {
   renderMixedTextHtml,
   renderPlainTextHtml,
 } from "./math-render";
+import { DETAIL_API_CONFIG } from "../config/api";
+import type {
+  CanonicalConclusionDetail,
+  CanonicalDetailBlock,
+  CanonicalDetailPlain,
+  CanonicalDetailSection,
+  CanonicalDetailToken,
+  CanonicalTheoremItem,
+} from "../types/detail";
+import { fetchConclusionDetail } from "./detail-api";
 
 /**
  * 以下 Raw* 类型描述的是“构建脚本输出的数据形态”。
@@ -161,6 +171,15 @@ export interface DetailSectionView {
   blocks: DetailBlockView[];
 }
 
+export interface DetailLegacyPlainView {
+  statement: string;
+  explanation: string;
+  proof: string;
+  examples: string;
+  traps: string;
+  summary: string;
+}
+
 export interface DetailDocumentView {
   id: string;
   title: string;
@@ -173,6 +192,7 @@ export interface DetailDocumentView {
   hasPdf: boolean;
   sections: DetailSectionView[];
   sourceType: "structured" | "legacy" | "meta" | "api";
+  legacyPlain?: DetailLegacyPlainView;
 }
 
 let detailContentCache: RawDetailMap | null = null;
@@ -218,6 +238,779 @@ export function getDetailDocument(id: string): DetailDocumentView | null {
     sections: viewModel.sections,
     sourceType: viewModel.sourceType,
   };
+}
+
+/**
+ * 详情统一入口（双模式）：
+ * 1. 远程模式：优先请求 canonical v2；
+ * 2. 本地模式：直接走历史 detail bundle；
+ * 3. 远程失败：按配置回退本地，保障线上可用性。
+ */
+export async function getDetailDocumentById(id: string): Promise<DetailDocumentView | null> {
+  const normalizedId = normalizeText(id);
+
+  if (!normalizedId) {
+    return null;
+  }
+
+  if (!DETAIL_API_CONFIG.USE_REMOTE_API) {
+    return getDetailDocument(normalizedId);
+  }
+
+  try {
+    const remoteDetail = await fetchConclusionDetail(normalizedId);
+    return buildCanonicalDetailDocument(remoteDetail, normalizedId);
+  } catch (error) {
+    if (!DETAIL_API_CONFIG.ENABLE_LOCAL_FALLBACK) {
+      throw error;
+    }
+
+    const localDetail = getDetailDocument(normalizedId);
+    if (localDetail) {
+      return localDetail;
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * 将 canonical v2 详情适配为当前 detail 页面可直接消费的统一模型。
+ * 重点是桥接 sections，尽量复用现有渲染与手势能力，不改页面协议。
+ */
+function buildCanonicalDetailDocument(
+  detail: CanonicalConclusionDetail,
+  fallbackId: string,
+): DetailDocumentView {
+  const resolvedId = normalizeText(detail.id) || fallbackId;
+  const sections = buildCanonicalSections(detail);
+  const summary = getCanonicalSummary(detail, sections);
+  const coreFormula =
+    normalizeText(detail.content?.primary_formula)
+    || getFirstFormulaFromSections(sections);
+  const coreFormulaHtml = coreFormula ? renderMath(coreFormula, true).html : "";
+  const pdfUrl = normalizeCanonicalPdfUrl(detail);
+
+  return {
+    id: resolvedId,
+    title: normalizeText(detail.meta?.title) || resolvedId,
+    category:
+      normalizeText(detail.meta?.category)
+      || getModuleLabel(detail.identity?.module),
+    summary,
+    summaryHtml: renderMixedTextHtml(summary),
+    coreFormula,
+    coreFormulaHtml,
+    pdfUrl,
+    hasPdf: pdfUrl.length > 0,
+    sections,
+    sourceType: "api",
+    legacyPlain: normalizeCanonicalPlainFields(detail.content?.plain, sections, summary),
+  };
+}
+
+function buildCanonicalSections(detail: CanonicalConclusionDetail): DetailSectionView[] {
+  const rawSections = normalizeCanonicalSections(detail.content?.sections);
+  const mappedSections: DetailSectionView[] = [];
+
+  for (let index = 0; index < rawSections.length; index += 1) {
+    const section = buildCanonicalSection(rawSections[index], index);
+    if (section) {
+      mappedSections.push(section);
+    }
+  }
+
+  if (mappedSections.length > 0) {
+    return mappedSections;
+  }
+
+  return buildCanonicalFallbackSections(detail);
+}
+
+function buildCanonicalSection(
+  section: CanonicalDetailSection,
+  sectionIndex: number,
+): DetailSectionView | null {
+  const key = normalizeText(section.key) || `section-${sectionIndex + 1}`;
+  const blocks = buildCanonicalSectionBlocks(key, normalizeCanonicalBlocks(section.blocks));
+
+  if (blocks.length === 0) {
+    return null;
+  }
+
+  return {
+    key,
+    title: resolveCanonicalSectionTitle(section, sectionIndex),
+    layout: resolveCanonicalSectionLayout(section, key, blocks),
+    blocks,
+  };
+}
+
+function buildCanonicalSectionBlocks(
+  sectionKey: string,
+  blocks: CanonicalDetailBlock[],
+): DetailBlockView[] {
+  const result: DetailBlockView[] = [];
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = buildCanonicalBlock(sectionKey, blocks[index], index);
+    if (!block) {
+      continue;
+    }
+
+    if (Array.isArray(block)) {
+      result.push(...block);
+      continue;
+    }
+
+    result.push(block);
+  }
+
+  return result;
+}
+
+function buildCanonicalBlock(
+  sectionKey: string,
+  block: CanonicalDetailBlock,
+  blockIndex: number,
+): DetailBlockView | DetailBlockView[] | null {
+  const blockType = normalizeUnknownText((block as { type?: unknown }).type);
+
+  if (blockType === "paragraph") {
+    return buildCanonicalParagraphBlock(
+      sectionKey,
+      block as CanonicalDetailBlock & { tokens?: CanonicalDetailToken[]; text?: string },
+      blockIndex,
+    );
+  }
+
+  if (blockType === "math_block") {
+    return buildCanonicalMathBlock(
+      sectionKey,
+      block as CanonicalDetailBlock & { latex?: string; align?: string },
+      blockIndex,
+    );
+  }
+
+  if (blockType === "theorem_group") {
+    return buildCanonicalTheoremBlocks(
+      sectionKey,
+      block as CanonicalDetailBlock & { items?: CanonicalTheoremItem[] },
+      blockIndex,
+    );
+  }
+
+  const fallbackTokens = normalizeCanonicalTokens(
+    (block as { tokens?: unknown }).tokens,
+  );
+  if (fallbackTokens.length > 0) {
+    return buildCanonicalParagraphBlock(
+      sectionKey,
+      {
+        ...block,
+        tokens: fallbackTokens,
+      },
+      blockIndex,
+    );
+  }
+
+  const fallbackLatex = normalizeUnknownText((block as { latex?: unknown }).latex);
+  if (fallbackLatex) {
+    return buildCanonicalMathBlock(
+      sectionKey,
+      {
+        ...block,
+        latex: fallbackLatex,
+      },
+      blockIndex,
+    );
+  }
+
+  const fallbackText =
+    normalizeUnknownText((block as { text?: unknown }).text)
+    || normalizeUnknownText((block as { title?: unknown }).title);
+  if (!fallbackText) {
+    return null;
+  }
+
+  return createCanonicalTextBlock(
+    sectionKey,
+    resolveCanonicalBlockId(sectionKey, block, blockIndex, "text"),
+    fallbackText,
+  );
+}
+
+function buildCanonicalParagraphBlock(
+  sectionKey: string,
+  block: CanonicalDetailBlock & { tokens?: CanonicalDetailToken[]; text?: string },
+  blockIndex: number,
+): DetailBlockView | null {
+  const blockId = resolveCanonicalBlockId(sectionKey, block, blockIndex, "paragraph");
+  const tokens = normalizeCanonicalTokens(block.tokens);
+
+  if (tokens.length === 0) {
+    const fallbackText = normalizeUnknownText(block.text);
+    if (!fallbackText) {
+      return null;
+    }
+
+    return createCanonicalTextBlock(sectionKey, blockId, fallbackText);
+  }
+
+  if (tokens.length === 1 && tokens[0].type === "math_inline" && !isCanonicalBulletSection(sectionKey)) {
+    return createStructuredFormulaBlock(blockId, normalizeUnknownText(tokens[0].latex));
+  }
+
+  const segments = buildCanonicalInlineSegments(tokens, blockId);
+  if (segments.length === 0) {
+    const fallbackText = composeCanonicalTokenPlainText(tokens);
+    return fallbackText ? createCanonicalTextBlock(sectionKey, blockId, fallbackText) : null;
+  }
+
+  const allPlainText = segments.every((segment) => segment.kind === "text");
+  if (allPlainText) {
+    const text = composeCanonicalTokenPlainText(tokens);
+    if (text) {
+      return createCanonicalTextBlock(sectionKey, blockId, text);
+    }
+  }
+
+  const html = composeInlineSegmentHtml(segments);
+
+  if (isCanonicalBulletSection(sectionKey)) {
+    return {
+      id: blockId,
+      kind: "bullet",
+      html,
+      segments,
+    };
+  }
+
+  return {
+    id: blockId,
+    kind: "mixed",
+    html,
+    segments,
+  };
+}
+
+function buildCanonicalMathBlock(
+  sectionKey: string,
+  block: CanonicalDetailBlock & { latex?: string; align?: string },
+  blockIndex: number,
+): DetailBlockView | null {
+  const latex = normalizeUnknownText(block.latex);
+  if (!latex) {
+    return null;
+  }
+
+  const blockId = resolveCanonicalBlockId(sectionKey, block, blockIndex, "math");
+
+  if (isCanonicalBulletSection(sectionKey)) {
+    const inlineHtml = renderMath(latex, false).html;
+    return {
+      id: blockId,
+      kind: "bullet",
+      html: inlineHtml,
+      segments: [
+        {
+          id: `${blockId}-math`,
+          kind: "math",
+          html: inlineHtml,
+        },
+      ],
+    };
+  }
+
+  const formulaAlign = block.align === "left" ? "left" : "center";
+  const mathResult = renderMath(latex, true, { align: formulaAlign });
+
+  return {
+    id: blockId,
+    kind: "formula",
+    formulaAlign,
+    formulaText: mathResult.source,
+    formulaHtml: mathResult.html,
+  };
+}
+
+function buildCanonicalTheoremBlocks(
+  sectionKey: string,
+  block: CanonicalDetailBlock & { items?: CanonicalTheoremItem[] },
+  blockIndex: number,
+): DetailBlockView[] {
+  const items = normalizeCanonicalTheoremItems(block.items);
+  const baseId = resolveCanonicalBlockId(sectionKey, block, blockIndex, "theorem");
+  const result: DetailBlockView[] = [];
+
+  for (let index = 0; index < items.length; index += 1) {
+    const theoremBlock = buildCanonicalTheoremBlock(items[index], `${baseId}-${index + 1}`);
+    if (theoremBlock) {
+      result.push(theoremBlock);
+    }
+  }
+
+  return result;
+}
+
+function buildCanonicalTheoremBlock(
+  item: CanonicalTheoremItem,
+  blockId: string,
+): DetailBlockView | null {
+  const title = normalizeUnknownText(item.title);
+  const descTokens = normalizeCanonicalTokens(item.desc_tokens);
+  const descText = descTokens.length > 0
+    ? composeCanonicalTokenPlainText(descTokens)
+    : normalizeUnknownText(item.desc);
+  const descSegments = descTokens.length > 0
+    ? buildCanonicalInlineSegments(descTokens, `${blockId}-desc`)
+    : [];
+  const descHtml = descSegments.length > 0
+    ? composeInlineSegmentHtml(descSegments)
+    : renderMixedTextHtml(descText);
+  const latex =
+    normalizeUnknownText(item.formula_latex)
+    || normalizeUnknownText(item.latex);
+  const mathResult = latex ? renderMath(latex, true) : null;
+
+  if (!title && !descText && !mathResult) {
+    return null;
+  }
+
+  return {
+    id: blockId,
+    kind: "theorem",
+    title,
+    titleHtml: title ? renderPlainTextHtml(title) : "",
+    desc: descText,
+    descHtml,
+    formulaText: mathResult?.source || "",
+    formulaHtml: mathResult?.html || "",
+  };
+}
+
+function buildCanonicalInlineSegments(
+  tokens: CanonicalDetailToken[],
+  blockId: string,
+): DetailInlineSegmentView[] {
+  const rawSegments: RawStructuredSegment[] = [];
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+
+    if (token.type === "math_inline") {
+      const latex = normalizeUnknownText(token.latex);
+      if (!latex) {
+        continue;
+      }
+
+      rawSegments.push({
+        type: "math",
+        latex,
+      });
+      continue;
+    }
+
+    const text = normalizeUnknownText(token.text);
+    if (text) {
+      rawSegments.push({
+        type: "text",
+        text,
+      });
+      continue;
+    }
+
+    const fallbackLatex = normalizeUnknownText(token.latex);
+    if (fallbackLatex) {
+      rawSegments.push({
+        type: "math",
+        latex: fallbackLatex,
+      });
+    }
+  }
+
+  return buildStructuredSegments(rawSegments, blockId);
+}
+
+function createCanonicalTextBlock(
+  sectionKey: string,
+  blockId: string,
+  text: string,
+): DetailBlockView {
+  if (isCanonicalBulletSection(sectionKey)) {
+    return {
+      id: blockId,
+      kind: "bullet",
+      text,
+      html: renderMixedTextHtml(text),
+    };
+  }
+
+  return {
+    id: blockId,
+    kind: "text",
+    text,
+    html: renderMixedTextHtml(text),
+  };
+}
+
+function buildCanonicalFallbackSections(detail: CanonicalConclusionDetail): DetailSectionView[] {
+  const plain = detail.content?.plain;
+  const conditions = buildCanonicalConditionList(detail.content?.conditions);
+  const conclusions = buildCanonicalConditionList(detail.content?.conclusions);
+  const relatedFormulas = Array.isArray(detail.ext?.extra?.related_formulas)
+    ? detail.ext?.extra?.related_formulas
+    : [];
+  const usage = detail.ext?.extra?.usage as RawUsage | undefined;
+  const relations = detail.ext?.relations as RawRelations | undefined;
+
+  const sections: DetailSectionView[] = [];
+  pushSection(
+    sections,
+    buildVariableSection(detail.content?.variables as RawDetailVariable[] | undefined),
+  );
+  pushSection(sections, createLooseSection("conditions", "适用条件", conditions));
+  pushSection(sections, createLooseSection("conclusions", "核心结论", conclusions));
+  pushSection(sections, buildRelatedFormulaSection(relatedFormulas));
+  pushSection(
+    sections,
+    createLooseSection("statement", "命题表述", normalizeUnknownText(plain?.statement)),
+  );
+  pushSection(
+    sections,
+    createLooseSection("explanation", "讲解", normalizeUnknownText(plain?.explanation)),
+  );
+  pushSection(
+    sections,
+    createLooseSection("proof", "证明", normalizeUnknownText(plain?.proof)),
+  );
+  pushSection(
+    sections,
+    createLooseSection("examples", "例题", normalizeUnknownText(plain?.examples)),
+  );
+  pushSection(
+    sections,
+    createLooseSection("traps", "易错点", normalizeUnknownText(plain?.traps)),
+  );
+  pushSection(
+    sections,
+    createLooseSection("summary", "总结", normalizeUnknownText(plain?.summary)),
+  );
+  pushSection(sections, buildUsageSection(usage));
+  pushSection(sections, buildRelationsSection(relations));
+
+  return decorateLegacySections(sections);
+}
+
+function buildCanonicalConditionList(rawItems: unknown): string[] {
+  if (!Array.isArray(rawItems)) {
+    return [];
+  }
+
+  const result: string[] = [];
+
+  for (let index = 0; index < rawItems.length; index += 1) {
+    const item = rawItems[index] as {
+      title?: unknown;
+      content?: unknown;
+    };
+    const title = normalizeUnknownText(item.title);
+    const contentText = composeCanonicalTokenPlainText(
+      normalizeCanonicalTokens(item.content),
+    );
+    const line = title && contentText ? `${title}：${contentText}` : (title || contentText);
+
+    if (line) {
+      result.push(line);
+    }
+  }
+
+  return result;
+}
+
+function normalizeCanonicalPlainFields(
+  plain: CanonicalDetailPlain | undefined,
+  sections: DetailSectionView[],
+  summary: string,
+): DetailLegacyPlainView {
+  const normalized: DetailLegacyPlainView = {
+    statement: normalizeUnknownText(plain?.statement),
+    explanation: normalizeUnknownText(plain?.explanation),
+    proof: normalizeUnknownText(plain?.proof),
+    examples: normalizeUnknownText(plain?.examples),
+    traps: normalizeUnknownText(plain?.traps),
+    summary: normalizeUnknownText(plain?.summary),
+  };
+
+  const derived = deriveLegacyPlainFromSections(sections);
+  if (!normalized.statement) {
+    normalized.statement = derived.statement;
+  }
+  if (!normalized.explanation) {
+    normalized.explanation = derived.explanation;
+  }
+  if (!normalized.proof) {
+    normalized.proof = derived.proof;
+  }
+  if (!normalized.examples) {
+    normalized.examples = derived.examples;
+  }
+  if (!normalized.traps) {
+    normalized.traps = derived.traps;
+  }
+  if (!normalized.summary) {
+    normalized.summary = derived.summary || summary;
+  }
+
+  return normalized;
+}
+
+function deriveLegacyPlainFromSections(sections: DetailSectionView[]): DetailLegacyPlainView {
+  return {
+    statement: getSectionPlainTextByKey(sections, "statement"),
+    explanation: getSectionPlainTextByKey(sections, "explanation"),
+    proof: getSectionPlainTextByKey(sections, "proof"),
+    examples: getSectionPlainTextByKey(sections, "examples"),
+    traps: getSectionPlainTextByKey(sections, "traps"),
+    summary: getSectionPlainTextByKey(sections, "summary"),
+  };
+}
+
+function getSectionPlainTextByKey(
+  sections: DetailSectionView[],
+  key: string,
+): string {
+  for (let index = 0; index < sections.length; index += 1) {
+    if (sections[index].key !== key) {
+      continue;
+    }
+
+    return extractSectionPlainText(sections[index]);
+  }
+
+  return "";
+}
+
+function extractSectionPlainText(section: DetailSectionView): string {
+  return section.blocks
+    .map((block) => extractBlockPlainText(block))
+    .filter((text) => text.length > 0)
+    .join("\n");
+}
+
+function extractBlockPlainText(block: DetailBlockView): string {
+  if (block.kind === "text" || block.kind === "bullet") {
+    return normalizeText(block.text) || stripHtmlTags(block.html);
+  }
+
+  if (block.kind === "mixed") {
+    if (Array.isArray(block.segments) && block.segments.length > 0) {
+      return block.segments
+        .map((segment) => stripHtmlTags(segment.html))
+        .filter((text) => text.length > 0)
+        .join("");
+    }
+
+    return stripHtmlTags(block.html);
+  }
+
+  if (block.kind === "formula") {
+    return normalizeText(block.formulaText) || stripHtmlTags(block.formulaHtml);
+  }
+
+  if (block.kind === "theorem") {
+    const parts = [
+      normalizeText(block.title),
+      normalizeText(block.desc),
+      normalizeText(block.formulaText),
+    ].filter((part) => part.length > 0);
+
+    return parts.join("\n");
+  }
+
+  return "";
+}
+
+function stripHtmlTags(html?: string): string {
+  if (!html) {
+    return "";
+  }
+
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, "\"")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getCanonicalSummary(
+  detail: CanonicalConclusionDetail,
+  sections: DetailSectionView[],
+): string {
+  return (
+    normalizeText(detail.meta?.summary)
+    || normalizeUnknownText(detail.content?.plain?.summary)
+    || getSectionPlainTextByKey(sections, "summary")
+  );
+}
+
+function normalizeCanonicalPdfUrl(detail: CanonicalConclusionDetail): string {
+  return (
+    normalizeUnknownText(detail.pdf_url)
+    || normalizeUnknownText(detail.assets?.pdf)
+  );
+}
+
+function resolveCanonicalSectionTitle(
+  section: CanonicalDetailSection,
+  sectionIndex: number,
+): string {
+  const title = normalizeText(section.title);
+  if (title) {
+    return title;
+  }
+
+  const key = normalizeText(section.key);
+  if (key) {
+    return key;
+  }
+
+  return `正文 ${sectionIndex + 1}`;
+}
+
+function resolveCanonicalSectionLayout(
+  section: CanonicalDetailSection,
+  sectionKey: string,
+  blocks: DetailBlockView[],
+): DetailSectionView["layout"] {
+  const blockType = normalizeText(section.block_type);
+
+  if (blockType === "theorem_group" || blocks.some((block) => block.kind === "theorem")) {
+    return "theorem-list";
+  }
+
+  if (isCanonicalBulletSection(sectionKey)) {
+    return "list";
+  }
+
+  return "text";
+}
+
+function isCanonicalBulletSection(sectionKey: string): boolean {
+  return (
+    sectionKey === "variables"
+    || sectionKey === "conditions"
+    || sectionKey === "conclusions"
+  );
+}
+
+function composeCanonicalTokenPlainText(tokens: CanonicalDetailToken[]): string {
+  return tokens
+    .map((token) => {
+      if (token.type === "math_inline") {
+        return normalizeUnknownText(token.latex);
+      }
+
+      return (
+        normalizeUnknownText(token.text)
+        || normalizeUnknownText(token.latex)
+      );
+    })
+    .filter((value) => value.length > 0)
+    .join("")
+    .trim();
+}
+
+function normalizeCanonicalSections(rawSections: unknown): CanonicalDetailSection[] {
+  if (!Array.isArray(rawSections)) {
+    return [];
+  }
+
+  return rawSections
+    .filter(
+      (item): item is CanonicalDetailSection =>
+        !!item
+        && typeof item === "object"
+        && !Array.isArray(item),
+    );
+}
+
+function normalizeCanonicalBlocks(rawBlocks: unknown): CanonicalDetailBlock[] {
+  if (!Array.isArray(rawBlocks)) {
+    return [];
+  }
+
+  return rawBlocks
+    .filter(
+      (item): item is CanonicalDetailBlock =>
+        !!item
+        && typeof item === "object"
+        && !Array.isArray(item),
+    );
+}
+
+function normalizeCanonicalTokens(rawTokens: unknown): CanonicalDetailToken[] {
+  if (!Array.isArray(rawTokens)) {
+    return [];
+  }
+
+  const result: CanonicalDetailToken[] = [];
+
+  for (let index = 0; index < rawTokens.length; index += 1) {
+    const token = rawTokens[index];
+
+    if (typeof token === "string") {
+      result.push({
+        type: "text",
+        text: token,
+      });
+      continue;
+    }
+
+    if (token && typeof token === "object" && !Array.isArray(token)) {
+      result.push(token as CanonicalDetailToken);
+    }
+  }
+
+  return result;
+}
+
+function normalizeCanonicalTheoremItems(rawItems: unknown): CanonicalTheoremItem[] {
+  if (!Array.isArray(rawItems)) {
+    return [];
+  }
+
+  return rawItems
+    .filter(
+      (item): item is CanonicalTheoremItem =>
+        !!item
+        && typeof item === "object"
+        && !Array.isArray(item),
+    );
+}
+
+function resolveCanonicalBlockId(
+  sectionKey: string,
+  block: CanonicalDetailBlock,
+  blockIndex: number,
+  suffix: string,
+): string {
+  const rawBlockId = normalizeUnknownText((block as { id?: unknown }).id);
+
+  if (rawBlockId) {
+    return rawBlockId;
+  }
+
+  return `${sectionKey}-${suffix}-${blockIndex + 1}`;
+}
+
+function normalizeUnknownText(value: unknown): string {
+  return typeof value === "string" ? normalizeText(value) : "";
 }
 
 /**

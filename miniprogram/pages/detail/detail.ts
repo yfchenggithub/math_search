@@ -16,15 +16,12 @@
  * 3. `onToggleZoom / zoomTo / rebound`：放大缩小是如何工作的。
  * 4. `onTouchStart / onTouchMove / onTouchEnd`：手势链路如何接管整页阅读。
  */
-import { getConclusionDetail } from "../../api/search";
 import type {
   DetailDocumentView,
   DetailSectionView,
 } from "../../utils/detail-content";
-import { buildApiDetailDocument } from "../../utils/detail-api";
-import { getDetailDocument } from "../../utils/detail-content";
+import { getDetailDocumentById } from "../../utils/detail-content";
 import { getErrorMessage } from "../../utils/request";
-import { handleInvalidAccess } from "../../utils/router";
 
 type TouchPoint = {
   pageX: number;
@@ -51,6 +48,8 @@ Page({
     pdfUrl: "",
     hasPdf: false,
     sourceType: "meta",
+    viewState: "idle" as "idle" | "loading" | "content" | "empty" | "error",
+    viewMessage: "",
     articleScrollTop: 0,
     transformStyle: "transform: translate3d(0px, 0px, 0) scale(1);",
     zoomActive: false,
@@ -99,6 +98,7 @@ Page({
   lastMoveY: 0,
   inertiaId: 0,
   measureTimer: 0,
+  currentDetailId: "",
 
   /**
    * 一个极简的 raf 替代品。
@@ -120,29 +120,42 @@ Page({
    */
   async loadDetail(options: Record<string, string | undefined>) {
     const id = String(options.id || "").trim();
+    this.currentDetailId = id;
 
     if (!id) {
-      handleInvalidAccess("缺少结论 ID");
+      this.applyErrorState("缺少结论 ID");
       return;
     }
 
-    wx.showLoading({
-      title: "加载中...",
+    this.setData({
+      id,
+      viewState: "loading",
+      viewMessage: "正在加载详情...",
     });
 
     try {
       const detail = await this.resolveDetailDocument(id);
 
       if (!detail) {
-        handleInvalidAccess("未找到对应内容");
+        this.applyEmptyState("未找到对应内容");
+        return;
+      }
+
+      const hasContent = Boolean(
+        detail.title
+        || detail.summary
+        || detail.coreFormulaHtml
+        || (Array.isArray(detail.sections) && detail.sections.length > 0),
+      );
+
+      if (!hasContent) {
+        this.applyEmptyState("当前结论暂无可展示内容");
         return;
       }
 
       this.applyDetailDocument(detail);
     } catch (error) {
-      handleInvalidAccess(getErrorMessage(error, "详情加载失败"));
-    } finally {
-      wx.hideLoading();
+      this.applyErrorState(getErrorMessage(error, "详情加载失败"));
     }
   },
 
@@ -150,19 +163,7 @@ Page({
    * 优先读取后端详情，失败后回退本地内容。
    */
   async resolveDetailDocument(id: string): Promise<DetailDocumentView | null> {
-    try {
-      const remoteDetail = await getConclusionDetail(id);
-      return buildApiDetailDocument(remoteDetail);
-    } catch (error) {
-      console.warn("后端详情加载失败，已回退到本地详情内容", error);
-
-      const localDetail = getDetailDocument(id);
-      if (localDetail) {
-        return localDetail;
-      }
-
-      throw error;
-    }
+    return getDetailDocumentById(id);
   },
 
   /**
@@ -185,12 +186,67 @@ Page({
       pdfUrl: detail.pdfUrl,
       hasPdf: detail.hasPdf,
       sourceType: detail.sourceType,
+      viewState: "content",
+      viewMessage: "",
       articleScrollTop: 0,
       transformStyle: this.buildTransformStyle(),
       zoomActive: false,
       scaleLabel: "100%",
     }, () => {
       this.scheduleMeasure();
+    });
+  },
+
+  applyEmptyState(message: string) {
+    this.resetTransform(false);
+    this.setData({
+      title: "",
+      category: "",
+      summary: "",
+      summaryHtml: "",
+      coreFormulaHtml: "",
+      sections: [],
+      pdfUrl: "",
+      hasPdf: false,
+      sourceType: "meta",
+      viewState: "empty",
+      viewMessage: message,
+      articleScrollTop: 0,
+      transformStyle: this.buildTransformStyle(),
+      zoomActive: false,
+      scaleLabel: "100%",
+    });
+  },
+
+  applyErrorState(message: string) {
+    this.resetTransform(false);
+    this.setData({
+      title: "",
+      category: "",
+      summary: "",
+      summaryHtml: "",
+      coreFormulaHtml: "",
+      sections: [],
+      pdfUrl: "",
+      hasPdf: false,
+      sourceType: "meta",
+      viewState: "error",
+      viewMessage: message,
+      articleScrollTop: 0,
+      transformStyle: this.buildTransformStyle(),
+      zoomActive: false,
+      scaleLabel: "100%",
+    });
+  },
+
+  onRetryLoad() {
+    if (!this.currentDetailId) {
+      this.applyErrorState("缺少结论 ID");
+      return;
+    }
+
+    void this.loadDetail({
+      id: this.currentDetailId,
     });
   },
 
@@ -206,43 +262,7 @@ Page({
    * - 重置所有缩放/拖拽状态，确保从上一个详情页切过来时不会残留交互状态。
    */
   onLoad(options: Record<string, string | undefined>) {
-    // 详情页现阶段优先走远端接口；后面的旧本地加载逻辑暂时保留，
-    // 作为迁移阶段的参考代码，实际运行不会再走到。
     void this.loadDetail(options);
-    void this.loadDetail(options);
-    return;
-
-    /*
-    const id = (options.id || "").trim();
-    const detail = getDetailDocument(id);
-
-    if (!detail) {
-      handleInvalidAccess("未找到对应内容");
-      return;
-    }
-
-    this.resetTransform(false);
-    this.articleScrollTop = 0;
-
-    this.setData({
-      id: detail.id,
-      title: detail.title,
-      category: detail.category,
-      summary: detail.summary,
-      summaryHtml: detail.summaryHtml,
-      coreFormulaHtml: detail.coreFormulaHtml,
-      sections: detail.sections,
-      pdfUrl: detail.pdfUrl,
-      hasPdf: detail.hasPdf,
-      sourceType: detail.sourceType,
-      articleScrollTop: 0,
-      transformStyle: this.buildTransformStyle(),
-      zoomActive: false,
-      scaleLabel: "100%",
-    }, () => {
-      this.scheduleMeasure();
-    });
-    */
   },
 
   /**

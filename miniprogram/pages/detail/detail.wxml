@@ -21,59 +21,78 @@
     </view>
   </view>
 
-  <view
-    class="viewer"
-    bindtouchstart="onTouchStart"
-    bindtouchmove="onTouchMove"
-    bindtouchend="onTouchEnd"
-  >
-    <scroll-view
-      class="article-scroll"
-      scroll-y="{{!zoomActive}}"
-      scroll-top="{{articleScrollTop}}"
-      enhanced="{{true}}"
-      show-scrollbar="{{false}}"
-      bindscroll="onArticleScroll"
+  <view class="viewer">
+    <view wx:if="{{viewState === 'loading'}}" class="state-card">
+      <view class="state-title">正在加载</view>
+      <view class="state-desc">{{viewMessage || '请稍候...'}}</view>
+    </view>
+
+    <view wx:elif="{{viewState === 'error'}}" class="state-card">
+      <view class="state-title">加载失败</view>
+      <view class="state-desc">{{viewMessage || '网络异常，请稍后重试'}}</view>
+      <button class="state-btn" bindtap="onRetryLoad">重试</button>
+    </view>
+
+    <view wx:elif="{{viewState === 'empty'}}" class="state-card">
+      <view class="state-title">暂无内容</view>
+      <view class="state-desc">{{viewMessage || '当前结论没有可展示信息'}}</view>
+    </view>
+
+    <view
+      wx:else
+      class="viewer-content"
+      bindtouchstart="onTouchStart"
+      bindtouchmove="onTouchMove"
+      bindtouchend="onTouchEnd"
     >
-      <view
-        id="articleWrapper"
-        class="article-wrapper"
-        style="{{transformStyle}}"
+      <scroll-view
+        class="article-scroll"
+        scroll-y="{{!zoomActive}}"
+        scroll-top="{{articleScrollTop}}"
+        enhanced="{{true}}"
+        show-scrollbar="{{false}}"
+        bindscroll="onArticleScroll"
       >
-        <view class="article-card">
-          <view class="article-header">
-            <view class="article-eyebrow">{{category}}</view>
-            <view class="article-id">条目 ID: {{id}}</view>
-            <view class="article-title">{{title}}</view>
-            <view wx:if="{{summaryHtml}}" class="article-summary rich-copy">
-              <rich-text nodes="{{summaryHtml}}"></rich-text>
-            </view>
-            <view wx:elif="{{summary}}" class="article-summary">
-              {{summary}}
-            </view>
-          </view>
-
-          <view wx:if="{{coreFormulaHtml}}" class="hero-formula">
-            <scroll-view scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
-              <view class="formula-track">
-                <rich-text class="formula-rich" nodes="{{coreFormulaHtml}}"></rich-text>
+        <view
+          id="articleWrapper"
+          class="article-wrapper"
+          style="{{transformStyle}}"
+        >
+          <view class="article-card">
+            <view class="article-header">
+              <view class="article-eyebrow">{{category}}</view>
+              <view class="article-id">条目 ID: {{id}}</view>
+              <view class="article-title">{{title}}</view>
+              <view wx:if="{{summaryHtml}}" class="article-summary rich-copy">
+                <rich-text nodes="{{summaryHtml}}"></rich-text>
               </view>
-            </scroll-view>
+              <view wx:elif="{{summary}}" class="article-summary">
+                {{summary}}
+              </view>
+            </view>
+
+            <view wx:if="{{coreFormulaHtml}}" class="hero-formula">
+              <scroll-view scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
+                <view class="formula-track">
+                  <rich-text class="formula-rich" nodes="{{coreFormulaHtml}}"></rich-text>
+                </view>
+              </scroll-view>
+            </view>
+
+            <detail-section-renderer
+              wx:for="{{sections}}"
+              wx:key="key"
+              wx:for-item="section"
+              section="{{section}}"
+              zoomActive="{{zoomActive}}"
+            ></detail-section-renderer>
           </view>
-
-          <detail-section-renderer
-            wx:for="{{sections}}"
-            wx:key="key"
-            wx:for-item="section"
-            section="{{section}}"
-            zoomActive="{{zoomActive}}"
-          ></detail-section-renderer>
         </view>
-      </view>
-    </scroll-view>
+      </scroll-view>
 
-    <view wx:if="{{zoomActive}}" class="zoom-hint">
-      双指缩放，单指拖动
+      <view wx:if="{{zoomActive}}" class="zoom-hint">
+        双指缩放，单指拖动
+      </view>
     </view>
   </view>
 </view>

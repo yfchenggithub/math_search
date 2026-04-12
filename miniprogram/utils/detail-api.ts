@@ -1,98 +1,54 @@
-import type { ConclusionDetail } from "../types/api";
+import { DETAIL_API_CONFIG } from "../config/api";
 import type {
-  DetailBlockView,
-  DetailDocumentView,
-  DetailSectionView,
-} from "./detail-content";
-import { renderMixedTextHtml } from "./math-render";
+  CanonicalConclusionDetail,
+  CanonicalConclusionDetailEnvelope,
+} from "../types/detail";
+import { RequestError, request } from "./request";
 
-/**
- * 将后端详情接口数据适配成详情页现有的 view model。
- *
- * 这样详情页仍然只消费统一的 `DetailDocumentView`，
- * 不需要知道数据究竟来自本地内容文件还是 REST API。
- */
-export function buildApiDetailDocument(detail: ConclusionDetail): DetailDocumentView {
-  const summary = normalizeDetailText(detail.summary);
-
-  return {
-    id: normalizeDetailText(detail.id),
-    title: normalizeDetailText(detail.title) || normalizeDetailText(detail.id),
-    category: normalizeDetailText(detail.module) || "未分类",
-    summary,
-    summaryHtml: renderMixedTextHtml(summary),
-    coreFormula: "",
-    coreFormulaHtml: "",
-    pdfUrl: "",
-    hasPdf: false,
-    sections: buildApiDetailSections(detail),
-    sourceType: "api",
-  };
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === "[object Object]";
 }
 
-/**
- * 将接口返回的各段正文映射成详情页的 section 列表。
- *
- * 当前先做最小适配：
- * - `statement` -> 结论
- * - `explanation` -> 理解
- * - `proof` -> 证明
- * - `examples` -> 例题/例子
- * - `traps` -> 易错点
- *
- * 后续如果后端返回更结构化的数据，再往这里升级即可。
- */
-function buildApiDetailSections(detail: ConclusionDetail): DetailSectionView[] {
-  const sections = [
-    createApiTextSection("statement", "结论", detail.statement),
-    createApiTextSection("explanation", "理解", detail.explanation),
-    createApiTextSection("proof", "证明", detail.proof),
-    createApiTextSection("examples", "例题/例子", detail.examples),
-    createApiTextSection("traps", "易错点", detail.traps),
-  ];
-
-  return sections.filter((section): section is DetailSectionView => section !== null);
+function normalizeId(id: string): string {
+  return String(id || "").trim();
 }
 
-/**
- * 构造一个纯文本 section。
- *
- * 这里用 `renderMixedTextHtml`，是为了兼容“中文说明 + 简单数学公式”的混排内容。
- */
-function createApiTextSection(
-  key: string,
-  title: string,
-  content?: string,
-): DetailSectionView | null {
-  const normalizedContent = normalizeDetailText(content);
+function buildDetailPath(id: string): string {
+  const normalizedId = normalizeId(id);
 
-  if (!normalizedContent) {
-    return null;
+  if (!normalizedId) {
+    throw new RequestError("详情 ID 不能为空");
   }
 
-  return {
-    key,
-    title,
-    layout: "legacy",
-    blocks: [createApiTextBlock(key, normalizedContent)],
-  };
+  const prefix = DETAIL_API_CONFIG.DETAIL_PATH_PREFIX.replace(/\/+$/, "");
+  return `${prefix}/${encodeURIComponent(normalizedId)}`;
+}
+
+function unwrapCanonicalDetailPayload(payload: unknown): CanonicalConclusionDetail {
+  if (!isPlainObject(payload)) {
+    throw new RequestError("详情接口返回格式错误");
+  }
+
+  const envelope = payload as CanonicalConclusionDetailEnvelope;
+
+  if (isPlainObject(envelope.data)) {
+    return envelope.data;
+  }
+
+  return payload as CanonicalConclusionDetail;
 }
 
 /**
- * 构造一个最小可用的正文 block。
+ * 拉取 canonical v2 详情。
+ * 注意这里只做请求与解包，页面适配统一放在 detail-content.ts。
  */
-function createApiTextBlock(key: string, content: string): DetailBlockView {
-  return {
-    id: `${key}-1`,
-    kind: "text",
-    text: content,
-    html: renderMixedTextHtml(content),
-  };
-}
+export async function fetchConclusionDetail(id: string): Promise<CanonicalConclusionDetail> {
+  const data = await request<unknown>({
+    url: buildDetailPath(id),
+    method: "GET",
+    // 有些后端会返回多层 data，这里关闭 request 默认解包，交给 detail-api 统一兜底。
+    unwrapData: false,
+  });
 
-/**
- * 统一做字符串清洗，避免把空白内容渲染成空 section。
- */
-function normalizeDetailText(value?: string): string {
-  return String(value || "").trim();
+  return unwrapCanonicalDetailPayload(data);
 }

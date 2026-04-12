@@ -56,3 +56,14 @@ export const SEARCH_API_CONFIG = {
   SEARCH_PATH: "/api/v1/search",
   PAGE_SIZE: 20,
 } as const;
+
+/**
+ * Detail runtime config.
+ * - USE_REMOTE_API=true: call canonical v2 detail API first.
+ * - ENABLE_LOCAL_FALLBACK=true: fallback to local detail bundle when remote fails.
+ */
+export const DETAIL_API_CONFIG = {
+  USE_REMOTE_API: true,
+  ENABLE_LOCAL_FALLBACK: true,
+  DETAIL_PATH_PREFIX: "/api/v1/conclusions",
+} as const;
