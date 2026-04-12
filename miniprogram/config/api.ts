@@ -54,6 +54,7 @@ export const API_CONFIG = {
 export const SEARCH_API_CONFIG = {
   USE_REMOTE_API: true,
   SEARCH_PATH: "/api/v1/search",
+  SUGGEST_PATH: "/api/v1/suggest",
   PAGE_SIZE: 20,
 } as const;
 

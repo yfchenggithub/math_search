@@ -11,6 +11,7 @@ import type {
 import {
   getSearchMeta,
   initSearchEngine,
+  suggestWithFacade,
   searchWithFacade,
 } from "../../utils/search-engine";
 
@@ -67,6 +68,8 @@ Page({
     focus: false,
     loading: false,
     errorMessage: "",
+    suggestLoading: false,
+    suggestErrorMessage: "",
 
     results: [] as SearchCardItem[],
     allResults: [] as SearchCardItem[],
@@ -87,6 +90,7 @@ Page({
   },
 
   searchTaskId: 0,
+  suggestTaskId: 0,
 
   onLoad() {
     initSearchEngine();
@@ -114,6 +118,7 @@ Page({
       query: value,
       showClear: value.length > 0,
       errorMessage: "",
+      suggestErrorMessage: "",
     });
 
     if (timer !== null) {
@@ -121,16 +126,46 @@ Page({
     }
 
     timer = setTimeout(() => {
-      void this.executeSearch(value);
+      void this.executeInputFlow(value);
     }, 80);
   },
 
   onSuggestionTap(e: SearchTextTapEvent) {
     const text = String(e.currentTarget.dataset.text || "");
+    if (!text.trim()) {
+      return;
+    }
+
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+
+    this.createSuggestTaskId();
+    this.setData({
+      query: text,
+      showClear: text.length > 0,
+      focus: false,
+      suggestions: [],
+      suggestLoading: false,
+      suggestErrorMessage: "",
+    });
+
     void this.executeSearch(text, true);
   },
 
   onConfirm() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+
+    this.createSuggestTaskId();
+    this.setData({
+      suggestions: [],
+      suggestLoading: false,
+      suggestErrorMessage: "",
+    });
     void this.executeSearch(this.data.query, true);
   },
 
@@ -141,12 +176,15 @@ Page({
     }
 
     this.createSearchTaskId();
+    this.createSuggestTaskId();
 
     this.setData({
       query: "",
       focus: true,
       loading: false,
       errorMessage: "",
+      suggestLoading: false,
+      suggestErrorMessage: "",
       showClear: false,
       suggestions: [],
       allResults: [],
@@ -186,6 +224,67 @@ Page({
     });
   },
 
+  async executeInputFlow(query: string) {
+    const rawQuery = String(query || "");
+    const trimmedQuery = rawQuery.trim();
+
+    if (!trimmedQuery) {
+      this.createSuggestTaskId();
+      this.createSearchTaskId();
+      this.applyEmptySearchState(rawQuery);
+      return;
+    }
+
+    await Promise.allSettled([
+      this.executeSuggest(rawQuery),
+      this.executeSearch(rawQuery),
+    ]);
+  },
+
+  async executeSuggest(query: string) {
+    const rawQuery = String(query || "");
+    const trimmedQuery = rawQuery.trim();
+    const suggestTaskId = this.createSuggestTaskId();
+
+    if (!trimmedQuery) {
+      this.setData({
+        suggestions: [],
+        suggestLoading: false,
+        suggestErrorMessage: "",
+      });
+      return;
+    }
+
+    this.setData({
+      suggestLoading: true,
+      suggestErrorMessage: "",
+    });
+
+    try {
+      const response = await suggestWithFacade(rawQuery);
+
+      if (!this.isLatestSuggestTask(suggestTaskId)) {
+        return;
+      }
+
+      this.setData({
+        suggestions: response.suggestions,
+        suggestLoading: false,
+        suggestErrorMessage: "",
+      });
+    } catch (error) {
+      if (!this.isLatestSuggestTask(suggestTaskId)) {
+        return;
+      }
+
+      this.setData({
+        suggestions: [],
+        suggestLoading: false,
+        suggestErrorMessage: getErrorMessage(error, "Suggest failed"),
+      });
+    }
+  },
+
   async executeSearch(query: string, hideSuggestions = false) {
     const rawQuery = String(query || "");
     const trimmedQuery = rawQuery.trim();
@@ -202,7 +301,6 @@ Page({
       showClear: rawQuery.length > 0,
       loading: true,
       errorMessage: "",
-      suggestions: hideSuggestions ? [] : this.data.suggestions,
     });
 
     try {
@@ -213,13 +311,10 @@ Page({
       }
 
       const allResults = this.buildSearchCards(response.items, rawQuery);
-      const suggestions = hideSuggestions ? [] : response.suggestions;
 
       this.applySearchState(
         rawQuery,
-        hideSuggestions,
         allResults,
-        suggestions,
         response.debug,
       );
     } catch (error) {
@@ -236,9 +331,7 @@ Page({
 
   applySearchState(
     rawQuery: string,
-    hideSuggestions: boolean,
     allResults: SearchCardItem[],
-    suggestions: SearchSuggestion[],
     debugInfo: SearchDebugInfo,
   ) {
     const tabs = this.extendTabsWithResultCategories(allResults);
@@ -253,7 +346,6 @@ Page({
       loading: false,
       errorMessage: "",
       showClear: rawQuery.length > 0,
-      suggestions: hideSuggestions ? [] : suggestions,
       allResults,
       results: filteredResults,
       debugInfo,
@@ -269,7 +361,6 @@ Page({
       loading: false,
       errorMessage,
       showClear: rawQuery.length > 0,
-      suggestions: [],
       allResults: [],
       results: [],
       debugInfo: null,
@@ -282,6 +373,8 @@ Page({
       query: rawQuery,
       loading: false,
       errorMessage: "",
+      suggestLoading: false,
+      suggestErrorMessage: "",
       showClear: rawQuery.length > 0,
       suggestions: [],
       allResults: [],
@@ -385,6 +478,15 @@ Page({
 
   isLatestSearchTask(taskId: number): boolean {
     return taskId === this.searchTaskId;
+  },
+
+  createSuggestTaskId(): number {
+    this.suggestTaskId += 1;
+    return this.suggestTaskId;
+  },
+
+  isLatestSuggestTask(taskId: number): boolean {
+    return taskId === this.suggestTaskId;
   },
 
   filterResults(

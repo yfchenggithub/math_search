@@ -63,6 +63,16 @@ export interface SearchSuggestion {
   text: string;
   id: string;
   score: number;
+  title?: string;
+  subtitle?: string;
+  route?: string;
+  module?: string;
+  difficulty?: number;
+  tags?: string[];
+  matchType?: string;
+  matchField?: string;
+  matchedText?: string;
+  badge?: string;
 }
 
 export interface SearchMatchReason {
@@ -160,8 +170,16 @@ export interface SearchFacadeResponse {
   pageSize: number;
   items: SearchViewItem[];
   facets: SearchFacets;
-  suggestions: SearchSuggestion[];
   debug: SearchDebugInfo;
+  source: SearchSource;
+}
+
+export interface SuggestFacadeResponse {
+  query: string;
+  normalizedQuery: string;
+  total: number;
+  emptyHint: string;
+  suggestions: SearchSuggestion[];
   source: SearchSource;
 }
 
@@ -199,6 +217,28 @@ interface RemoteSearchDataRaw {
   page_size?: number;
   items?: RemoteSearchItemRaw[];
   facets?: Record<string, RemoteSearchFacetBucketRaw[]>;
+}
+
+interface RemoteSuggestItemRaw {
+  id?: string;
+  title?: string;
+  subtitle?: string;
+  route?: string;
+  module?: string;
+  difficulty?: number;
+  tags?: string[];
+  match_type?: string;
+  match_field?: string;
+  matched_text?: string;
+  score?: number;
+  badge?: string;
+}
+
+interface RemoteSuggestDataRaw {
+  query?: string;
+  total?: number;
+  empty_hint?: string;
+  items?: RemoteSuggestItemRaw[];
 }
 
 interface SearchAccumulator {
@@ -466,6 +506,28 @@ export function searchWithDebug(query: string): SearchResponse {
  * 2. `USE_REMOTE_API=false` 时只走本地索引。
  * 3. 不把后端原始结构暴露给页面，只返回统一的前端模型。
  */
+/**
+ * 统一 suggest 入口（与 search 解耦）。
+ */
+export async function suggestWithFacade(query: string): Promise<SuggestFacadeResponse> {
+  const normalizedQuery = normalize(query);
+
+  if (!normalizedQuery) {
+    return createEmptySuggestFacadeResponse(query);
+  }
+
+  if (!SEARCH_API_CONFIG.USE_REMOTE_API) {
+    return buildLocalSuggestFacadeResponse(query);
+  }
+
+  try {
+    return await suggestRemoteFacade(query);
+  } catch (error) {
+    console.warn("远程 suggest 失败，准备回退到本地索引", error);
+    return buildLocalSuggestFacadeResponse(query);
+  }
+}
+
 export async function searchWithFacade(query: string): Promise<SearchFacadeResponse> {
   const normalizedQuery = normalize(query);
 
@@ -496,6 +558,79 @@ export async function searchWithFacade(query: string): Promise<SearchFacadeRespo
   }
 }
 
+function createEmptySuggestFacadeResponse(query: string): SuggestFacadeResponse {
+  return {
+    query,
+    normalizedQuery: normalize(query),
+    total: 0,
+    emptyHint: "",
+    suggestions: [],
+    source: SEARCH_API_CONFIG.USE_REMOTE_API ? "remote" : "local",
+  };
+}
+
+function buildLocalSuggestFacadeResponse(query: string): SuggestFacadeResponse {
+  const normalizedQuery = normalize(query);
+  const suggestions = suggest(query).slice(0, MAX_SUGGEST);
+
+  return {
+    query,
+    normalizedQuery,
+    total: suggestions.length,
+    emptyHint: "",
+    suggestions,
+    source: "local",
+  };
+}
+
+async function suggestRemoteFacade(query: string): Promise<SuggestFacadeResponse> {
+  const normalizedQuery = normalize(query);
+
+  const remoteData = await request<RemoteSuggestDataRaw>({
+    url: SEARCH_API_CONFIG.SUGGEST_PATH,
+    method: "GET",
+    query: {
+      q: query.trim(),
+    },
+  });
+
+  const remoteItems = Array.isArray(remoteData.items) ? remoteData.items : [];
+  const suggestions = remoteItems
+    .map((item, index) => adaptRemoteSuggestItem(item, index))
+    .filter((item) => Boolean(item.text))
+    .slice(0, MAX_SUGGEST);
+
+  return {
+    query,
+    normalizedQuery,
+    total: normalizeInteger(remoteData.total, 0) ?? suggestions.length,
+    emptyHint: normalizeText(remoteData.empty_hint),
+    suggestions,
+    source: "remote",
+  };
+}
+
+function adaptRemoteSuggestItem(item: RemoteSuggestItemRaw, index: number): SearchSuggestion {
+  const title = normalizeText(item.title);
+  const id = normalizeText(item.id) || `REMOTE_SUGGEST_${index + 1}`;
+
+  return {
+    text: title || normalizeText(item.matched_text) || id,
+    id,
+    score: normalizeScore(item.score),
+    title: title || undefined,
+    subtitle: normalizeText(item.subtitle) || undefined,
+    route: normalizeText(item.route) || undefined,
+    module: normalizeText(item.module) || undefined,
+    difficulty: normalizeNumber(item.difficulty) ?? undefined,
+    tags: normalizeTags(item.tags),
+    matchType: normalizeText(item.match_type) || undefined,
+    matchField: normalizeText(item.match_field) || undefined,
+    matchedText: normalizeText(item.matched_text) || undefined,
+    badge: normalizeText(item.badge) || undefined,
+  };
+}
+
 function createEmptyFacadeResponse(query: string): SearchFacadeResponse {
   const normalizedQuery = normalize(query);
 
@@ -507,7 +642,6 @@ function createEmptyFacadeResponse(query: string): SearchFacadeResponse {
     pageSize: SEARCH_API_CONFIG.PAGE_SIZE,
     items: [],
     facets: {},
-    suggestions: [],
     debug: {
       normalizedQuery,
       lookupTokens: normalizedQuery ? buildLookupTokens(normalizedQuery) : [],
@@ -540,12 +674,6 @@ async function searchRemoteFacade(query: string): Promise<SearchFacadeResponse> 
   const items = remoteItems.map((item, index) => adaptRemoteSearchItem(item, index));
   const facets = normalizeRemoteFacets(remoteData.facets, items);
 
-  const suggestions = buildRemoteSuggestions(items, normalizedQuery);
-  if (suggestions.length === 0) {
-    const fallbackSuggestions = suggest(query).slice(0, MAX_SUGGEST);
-    suggestions.push(...fallbackSuggestions);
-  }
-
   const total = normalizeInteger(remoteData.total, 0) ?? items.length;
   const page = normalizeInteger(remoteData.page, 1) ?? 1;
   const pageSize = normalizeInteger(remoteData.page_size, 1)
@@ -559,8 +687,7 @@ async function searchRemoteFacade(query: string): Promise<SearchFacadeResponse> 
     pageSize,
     items,
     facets,
-    suggestions,
-    debug: buildRemoteDebugInfo(query, suggestions, items),
+    debug: buildRemoteDebugInfo(query, items),
     source: "remote",
   };
 }
@@ -583,7 +710,6 @@ function buildLocalFacadeResponse(query: string, fallbackUsed = false): SearchFa
     pageSize: MAX_RESULTS,
     items,
     facets,
-    suggestions: response.suggestions,
     debug: fallbackUsed
       ? {
           ...response.debug,
@@ -672,48 +798,8 @@ function adaptRemoteSearchItem(item: RemoteSearchItemRaw, index: number): Search
   };
 }
 
-function buildRemoteSuggestions(items: SearchViewItem[], normalizedQuery: string): SearchSuggestion[] {
-  const seen: Record<string, true> = {};
-  const suggestions: SearchSuggestion[] = [];
-
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    const candidates = [item.title, item.category].concat(item.tags.slice(0, 2));
-
-    for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
-      const text = normalizeText(candidates[candidateIndex]);
-      if (!text || seen[text]) {
-        continue;
-      }
-
-      const normalizedCandidate = normalize(text);
-      const matched = !normalizedQuery
-        || normalizedCandidate.includes(normalizedQuery)
-        || normalizedQuery.includes(normalizedCandidate);
-
-      if (!matched) {
-        continue;
-      }
-
-      seen[text] = true;
-      suggestions.push({
-        text,
-        id: item.id,
-        score: items.length - index,
-      });
-
-      if (suggestions.length >= MAX_SUGGEST) {
-        return suggestions;
-      }
-    }
-  }
-
-  return suggestions;
-}
-
 function buildRemoteDebugInfo(
   query: string,
-  suggestions: SearchSuggestion[],
   items: SearchViewItem[],
 ): SearchDebugInfo {
   const normalizedQuery = normalize(query);
@@ -723,10 +809,10 @@ function buildRemoteDebugInfo(
     lookupTokens: buildLookupTokens(normalizedQuery),
     termHitCount: 0,
     prefixHitCount: 0,
-    suggestionHitCount: suggestions.length,
+    suggestionHitCount: 0,
     resultCount: items.length,
     fallbackUsed: false,
-    topSuggestions: suggestions.slice(0, 5),
+    topSuggestions: [],
     topMatches: items.slice(0, 5).map((item) => ({
       id: item.id,
       title: item.title,
