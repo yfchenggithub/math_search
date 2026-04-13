@@ -122,7 +122,7 @@
         </block>
 
         <!-- 列表 -->
-        <view class="favorites-list" wx:else>
+        <view class="favorites-list {{isManaging ? 'favorites-list--with-manage' : ''}}" wx:else>
           <block wx:for="{{filteredFavoriteList}}" wx:key="id" wx:for-item="favorite">
             <view class="favorite-card">
               <!-- 管理态复选 -->
@@ -187,24 +187,26 @@
         </view>
 
         <!-- 管理态底部操作栏 -->
-        <view class="favorites-manage-bar" wx:if="{{isManaging}}">
-          <view class="favorites-manage-bar__info">
-            <text>已选择 {{selectedCount}} 条</text>
-          </view>
+        <view class="favorites-manage-shell" wx:if="{{isManaging}}">
+          <view class="favorites-manage-bar">
+            <view class="favorites-manage-bar__info">
+              <text>已选择 {{selectedCount}} 条</text>
+            </view>
 
-          <view class="favorites-manage-bar__actions">
-            <button
-              class="favorites-manage-bar__button favorites-manage-bar__button--danger"
-              bindtap="handleBatchRemoveTap"
-            >
-              取消收藏
-            </button>
-            <button
-              class="favorites-manage-bar__button"
-              bindtap="handleBatchExportTap"
-            >
-              导出 PDF
-            </button>
+            <view class="favorites-manage-bar__actions">
+              <button
+                class="favorites-manage-bar__button favorites-manage-bar__button--danger"
+                bindtap="handleBatchRemoveTap"
+              >
+                取消收藏
+              </button>
+              <button
+                class="favorites-manage-bar__button"
+                bindtap="handleBatchExportTap"
+              >
+                导出 PDF
+              </button>
+            </view>
           </view>
         </view>
       </block>

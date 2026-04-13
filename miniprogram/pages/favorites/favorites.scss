@@ -11,6 +11,7 @@ page {
 .favorites-page__container {
   box-sizing: border-box;
   min-height: 100vh;
+  padding: 32rpx 24rpx calc(40rpx + constant(safe-area-inset-bottom));
   padding: 32rpx 24rpx calc(40rpx + env(safe-area-inset-bottom));
 }
 
@@ -202,7 +203,13 @@ page {
 
 .favorites-list {
   margin-top: 24rpx;
-  padding-bottom: 160rpx;
+  padding-bottom: calc(120rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+}
+
+.favorites-list--with-manage {
+  padding-bottom: calc(260rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(260rpx + env(safe-area-inset-bottom));
 }
 
 .favorite-card {
@@ -315,38 +322,55 @@ page {
   border-color: #111827;
 }
 
-.favorites-manage-bar {
+.favorites-manage-shell {
   position: fixed;
-  left: 24rpx;
-  right: 24rpx;
-  bottom: calc(24rpx + env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 30;
+  padding: 0 24rpx calc(24rpx + constant(safe-area-inset-bottom));
+  padding: 0 24rpx calc(24rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.favorites-manage-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24rpx;
+  gap: 20rpx;
   padding: 22rpx 24rpx;
+  pointer-events: auto;
 }
 
 .favorites-manage-bar__info {
-  min-width: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
   font-size: 26rpx;
+  line-height: 1.4;
   color: #111827;
 }
 
 .favorites-manage-bar__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 0;
+  min-width: 0;
   gap: 12rpx;
-  flex-shrink: 0;
 }
 
 .favorites-manage-bar__button {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 1 1 0;
+  min-width: 136rpx;
+  max-width: 220rpx;
   height: 64rpx;
-  padding: 0 26rpx;
+  padding: 0 18rpx;
+  white-space: nowrap;
+  line-height: 1;
   color: #111827;
   background: #f3f4f6;
 }
