@@ -1,20 +1,20 @@
-/**
- * 详情页页面控制器。
+﻿/**
+ * 璇︽儏椤甸〉闈㈡帶鍒跺櫒銆?
  *
- * 这个文件主要解决两件事：
- * 1. 接住 `detail-content.ts` 产出的详情 view model，并把它放到页面 data 中。
- * 2. 管理详情页的阅读交互，尤其是滚动、双击放大、双指缩放、拖拽和平滑回弹。
+ * 杩欎釜鏂囦欢涓昏瑙ｅ喅涓や欢浜嬶細
+ * 1. 鎺ヤ綇 `detail-content.ts` 浜у嚭鐨勮鎯?view model锛屽苟鎶婂畠鏀惧埌椤甸潰 data 涓€?
+ * 2. 绠＄悊璇︽儏椤电殑闃呰浜や簰锛屽挨鍏舵槸婊氬姩銆佸弻鍑绘斁澶с€佸弻鎸囩缉鏀俱€佹嫋鎷藉拰骞虫粦鍥炲脊銆?
  *
- * 在整个详情链路中的位置：
- * - `detail-content.ts` 负责“数据适配”，把原始 record 转成页面可消费结构。
- * - 本文件负责“页面状态与交互控制”，不关心原始 schema 的细节。
- * - `detail.wxml / detail.scss` 负责最终视图呈现。
+ * 鍦ㄦ暣涓鎯呴摼璺腑鐨勪綅缃細
+ * - `detail-content.ts` 璐熻矗鈥滄暟鎹€傞厤鈥濓紝鎶婂師濮?record 杞垚椤甸潰鍙秷璐圭粨鏋勩€?
+ * - 鏈枃浠惰礋璐ｂ€滈〉闈㈢姸鎬佷笌浜や簰鎺у埗鈥濓紝涓嶅叧蹇冨師濮?schema 鐨勭粏鑺傘€?
+ * - `detail.wxml / detail.scss` 璐熻矗鏈€缁堣鍥惧憟鐜般€?
  *
- * 推荐阅读顺序：
- * 1. `onLoad`：详情数据如何进入页面。
- * 2. `scheduleMeasure / measureContent`：页面为什么要测量容器与内容尺寸。
- * 3. `onToggleZoom / zoomTo / rebound`：放大缩小是如何工作的。
- * 4. `onTouchStart / onTouchMove / onTouchEnd`：手势链路如何接管整页阅读。
+ * 鎺ㄨ崘闃呰椤哄簭锛?
+ * 1. `onLoad`锛氳鎯呮暟鎹浣曡繘鍏ラ〉闈€?
+ * 2. `scheduleMeasure / measureContent`锛氶〉闈负浠€涔堣娴嬮噺瀹瑰櫒涓庡唴瀹瑰昂瀵搞€?
+ * 3. `onToggleZoom / zoomTo / rebound`锛氭斁澶х缉灏忔槸濡備綍宸ヤ綔鐨勩€?
+ * 4. `onTouchStart / onTouchMove / onTouchEnd`锛氭墜鍔块摼璺浣曟帴绠℃暣椤甸槄璇汇€?
  */
 import type {
   DetailDocumentView,
@@ -32,28 +32,82 @@ type TouchPoint = {
   pageY: number;
 };
 
-type PdfOperationStage = "download" | "save" | "open";
+type PdfOperationStage = "validate" | "cache" | "download" | "save" | "open";
+type PdfStatusStage =
+  | "idle"
+  | "preparing"
+  | "cacheHit"
+  | "downloading"
+  | "saving"
+  | "opening"
+  | "success"
+  | "error";
+type PdfStatusTone = "neutral" | "success" | "error";
+
+type PdfStatusView = {
+  visible: boolean;
+  stage: PdfStatusStage;
+  tone: PdfStatusTone;
+  stageLabel: string;
+  title: string;
+  message: string;
+  showProgress: boolean;
+  progress: number;
+  progressText: string;
+  canRetry: boolean;
+};
+
+type PdfOpenContext = {
+  rawPdfUrl: string;
+  fullPdfUrl: string;
+  pdfFilename: string;
+  cacheKey: string;
+};
+
+type PdfErrorPresentation = {
+  title: string;
+  message: string;
+  stageLabel: string;
+};
 
 class PdfOperationError extends Error {
   stage: PdfOperationStage;
+  originalError: unknown;
 
-  constructor(stage: PdfOperationStage, message: string) {
+  constructor(stage: PdfOperationStage, message: string, originalError: unknown = null) {
     super(message);
     this.name = "PdfOperationError";
     this.stage = stage;
+    this.originalError = originalError;
   }
 }
 
 const DEFAULT_PDF_FILENAME = "hd-pdf.pdf";
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
+const PDF_STATUS_AUTO_HIDE_MS = 900;
+
+function createIdlePdfStatus(): PdfStatusView {
+  return {
+    visible: false,
+    stage: "idle",
+    tone: "neutral",
+    stageLabel: "",
+    title: "",
+    message: "",
+    showProgress: false,
+    progress: 0,
+    progressText: "",
+    canRetry: false,
+  };
+}
 
 /**
- * 详情页的整体执行流程：
- * 1. `onLoad` 根据路由参数读取详情数据，并把基础内容放入页面 data。
- * 2. 页面渲染完成后，调用 `scheduleMeasure` / `measureContent` 获取容器和正文尺寸。
- * 3. 正常状态下由 `scroll-view` 负责纵向阅读滚动。
- * 4. 一旦进入缩放态，页面会改为由 transform + 手势控制视口位置。
- * 5. 缩放结束后，通过 `resetTransform` / `getRestoreScrollTop` 尽量保持阅读位置连续。
+ * 璇︽儏椤电殑鏁翠綋鎵ц娴佺▼锛?
+ * 1. `onLoad` 鏍规嵁璺敱鍙傛暟璇诲彇璇︽儏鏁版嵁锛屽苟鎶婂熀纭€鍐呭鏀惧叆椤甸潰 data銆?
+ * 2. 椤甸潰娓叉煋瀹屾垚鍚庯紝璋冪敤 `scheduleMeasure` / `measureContent` 鑾峰彇瀹瑰櫒鍜屾鏂囧昂瀵搞€?
+ * 3. 姝ｅ父鐘舵€佷笅鐢?`scroll-view` 璐熻矗绾靛悜闃呰婊氬姩銆?
+ * 4. 涓€鏃﹁繘鍏ョ缉鏀炬€侊紝椤甸潰浼氭敼涓虹敱 transform + 鎵嬪娍鎺у埗瑙嗗彛浣嶇疆銆?
+ * 5. 缂╂斁缁撴潫鍚庯紝閫氳繃 `resetTransform` / `getRestoreScrollTop` 灏介噺淇濇寔闃呰浣嶇疆杩炵画銆?
  */
 Page({
   data: {
@@ -75,7 +129,9 @@ Page({
     pdfUrl: "",
     pdfFilename: "",
     pdfAvailable: false,
-    pdfOpening: false,
+    pdfActionBusy: false,
+    pdfActionLabel: "",
+    pdfStatus: createIdlePdfStatus() as PdfStatusView,
     sourceType: "meta",
     viewState: "idle" as "idle" | "loading" | "content" | "empty" | "error",
     viewMessage: "",
@@ -85,21 +141,21 @@ Page({
     scaleLabel: "100%",
   },
 
-  // 当前缩放比例及上一次稳定缩放比例。
+  // 褰撳墠缂╂斁姣斾緥鍙婁笂涓€娆＄ǔ瀹氱缉鏀炬瘮渚嬨€?
   scale: 1,
   lastScale: 1,
 
-  // 当前平移量及上一次稳定平移量。
+  // 褰撳墠骞崇Щ閲忓強涓婁竴娆＄ǔ瀹氬钩绉婚噺銆?
   translateX: 0,
   translateY: 0,
   lastTranslateX: 0,
   lastTranslateY: 0,
 
-  // 允许的缩放范围。最小值保持 1，代表默认阅读态。
+  // 鍏佽鐨勭缉鏀捐寖鍥淬€傛渶灏忓€间繚鎸?1锛屼唬琛ㄩ粯璁ら槄璇绘€併€?
   minScale: 1,
   maxScale: 4,
 
-  // 手势中间态。这里保存一次触控过程开始时的关键数据，方便 move 阶段计算增量。
+  // 鎵嬪娍涓棿鎬併€傝繖閲屼繚瀛樹竴娆¤Е鎺ц繃绋嬪紑濮嬫椂鐨勫叧閿暟鎹紝鏂逛究 move 闃舵璁＄畻澧為噺銆?
   gesture: {
     startDistance: 0,
     startScale: 1,
@@ -110,8 +166,8 @@ Page({
   lastTapTime: 0,
   ticking: false,
 
-  // 视口与正文尺寸信息。
-  // 这些数据是后续计算缩放边界、拖拽范围和回弹目标的基础。
+  // 瑙嗗彛涓庢鏂囧昂瀵镐俊鎭€?
+  // 杩欎簺鏁版嵁鏄悗缁绠楃缉鏀捐竟鐣屻€佹嫋鎷借寖鍥村拰鍥炲脊鐩爣鐨勫熀纭€銆?
   containerWidth: 0,
   containerHeight: 0,
   contentWidth: 0,
@@ -127,25 +183,27 @@ Page({
   lastMoveY: 0,
   inertiaId: 0,
   measureTimer: 0,
+  pdfStatusTimer: 0,
+  pdfDownloadTask: null as WechatMiniprogram.DownloadTask | null,
   currentDetailId: "",
 
   /**
-   * 一个极简的 raf 替代品。
+   * 涓€涓瀬绠€鐨?raf 鏇夸唬鍝併€?
    *
-   * 小程序环境里并不是每处都方便直接使用浏览器原生 `requestAnimationFrame`，
-   * 这里统一用 16ms 定时器模拟一帧，服务回弹和惯性动画。
+   * 灏忕▼搴忕幆澧冮噷骞朵笉鏄瘡澶勯兘鏂逛究鐩存帴浣跨敤娴忚鍣ㄥ師鐢?`requestAnimationFrame`锛?
+   * 杩欓噷缁熶竴鐢?16ms 瀹氭椂鍣ㄦā鎷熶竴甯э紝鏈嶅姟鍥炲脊鍜屾儻鎬у姩鐢汇€?
    */
   raf(callback: Function) {
     return setTimeout(() => callback(), 16);
   },
 
   /**
-   * 详情页的数据加载入口。
+   * 璇︽儏椤电殑鏁版嵁鍔犺浇鍏ュ彛銆?
    *
-   * 当前采用“后端优先，本地降级”的策略：
-   * 1. 先请求后端 `/conclusion/{id}`；
-   * 2. 如果接口不可用，则自动回退到本地静态内容；
-   * 3. 页面交互层继续只消费统一的 `DetailDocumentView`。
+   * 褰撳墠閲囩敤鈥滃悗绔紭鍏堬紝鏈湴闄嶇骇鈥濈殑绛栫暐锛?
+   * 1. 鍏堣姹傚悗绔?`/conclusion/{id}`锛?
+   * 2. 濡傛灉鎺ュ彛涓嶅彲鐢紝鍒欒嚜鍔ㄥ洖閫€鍒版湰鍦伴潤鎬佸唴瀹癸紱
+   * 3. 椤甸潰浜や簰灞傜户缁彧娑堣垂缁熶竴鐨?`DetailDocumentView`銆?
    */
   async loadDetail(options: Record<string, string | undefined>) {
     const id = String(options.id || "").trim();
@@ -189,19 +247,21 @@ Page({
   },
 
   /**
-   * 优先读取后端详情，失败后回退本地内容。
+   * 浼樺厛璇诲彇鍚庣璇︽儏锛屽け璐ュ悗鍥為€€鏈湴鍐呭銆?
    */
   async resolveDetailDocument(id: string): Promise<DetailDocumentView | null> {
     return getDetailDocumentById(id);
   },
 
   /**
-   * 将统一的详情 view model 应用到页面。
+   * 灏嗙粺涓€鐨勮鎯?view model 搴旂敤鍒伴〉闈€?
    *
-   * 这里顺手重置缩放和滚动状态，避免从上一个条目残留交互状态。
+   * 杩欓噷椤烘墜閲嶇疆缂╂斁鍜屾粴鍔ㄧ姸鎬侊紝閬垮厤浠庝笂涓€涓潯鐩畫鐣欎氦浜掔姸鎬併€?
    */
   applyDetailDocument(detail: DetailDocumentView) {
     this.resetTransform(false);
+    this.clearPdfStatusTimer();
+    this.abortPdfDownloadTask();
     this.articleScrollTop = 0;
 
     this.setData(
@@ -224,7 +284,9 @@ Page({
         pdfUrl: detail.pdfUrl,
         pdfFilename: detail.pdfFilename,
         pdfAvailable: detail.pdfAvailable,
-        pdfOpening: false,
+        pdfActionBusy: false,
+        pdfActionLabel: "",
+        pdfStatus: createIdlePdfStatus(),
         sourceType: detail.sourceType,
         viewState: "content",
         viewMessage: "",
@@ -241,6 +303,8 @@ Page({
 
   applyEmptyState(message: string) {
     this.resetTransform(false);
+    this.clearPdfStatusTimer();
+    this.abortPdfDownloadTask();
     this.setData({
       title: "",
       category: "",
@@ -259,7 +323,9 @@ Page({
       pdfUrl: "",
       pdfFilename: "",
       pdfAvailable: false,
-      pdfOpening: false,
+      pdfActionBusy: false,
+      pdfActionLabel: "",
+      pdfStatus: createIdlePdfStatus(),
       sourceType: "meta",
       viewState: "empty",
       viewMessage: message,
@@ -272,6 +338,8 @@ Page({
 
   applyErrorState(message: string) {
     this.resetTransform(false);
+    this.clearPdfStatusTimer();
+    this.abortPdfDownloadTask();
     this.setData({
       title: "",
       category: "",
@@ -290,7 +358,9 @@ Page({
       pdfUrl: "",
       pdfFilename: "",
       pdfAvailable: false,
-      pdfOpening: false,
+      pdfActionBusy: false,
+      pdfActionLabel: "",
+      pdfStatus: createIdlePdfStatus(),
       sourceType: "meta",
       viewState: "error",
       viewMessage: message,
@@ -313,50 +383,52 @@ Page({
   },
 
   /**
-   * 详情页入口。
+   * 璇︽儏椤靛叆鍙ｃ€?
    *
-   * 输入：
-   * - 路由参数中的 `id`。
+   * 杈撳叆锛?
+   * - 璺敱鍙傛暟涓殑 `id`銆?
    *
-   * 输出：
-   * - 调用详情适配层拿到统一 view model。
-   * - 初始化页面 data。
-   * - 重置所有缩放/拖拽状态，确保从上一个详情页切过来时不会残留交互状态。
+   * 杈撳嚭锛?
+   * - 璋冪敤璇︽儏閫傞厤灞傛嬁鍒扮粺涓€ view model銆?
+   * - 鍒濆鍖栭〉闈?data銆?
+   * - 閲嶇疆鎵€鏈夌缉鏀?鎷栨嫿鐘舵€侊紝纭繚浠庝笂涓€涓鎯呴〉鍒囪繃鏉ユ椂涓嶄細娈嬬暀浜や簰鐘舵€併€?
    */
   onLoad(options: Record<string, string | undefined>) {
     void this.loadDetail(options);
   },
 
   /**
-   * 页面离开时清理定时器，避免动画或尺寸测量在页面销毁后继续运行。
+   * 椤甸潰绂诲紑鏃舵竻鐞嗗畾鏃跺櫒锛岄伩鍏嶅姩鐢绘垨灏哄娴嬮噺鍦ㄩ〉闈㈤攢姣佸悗缁х画杩愯銆?
    */
   onUnload() {
     clearTimeout(this.inertiaId);
     clearTimeout(this.measureTimer);
+    this.clearPdfStatusTimer();
+    this.abortPdfDownloadTask();
   },
 
   /**
-   * 页面 ready 后做一次尺寸测量。
-   * 这是对首屏渲染后的兜底，保证容器和正文尺寸尽快进入计算链路。
+   * 椤甸潰 ready 鍚庡仛涓€娆″昂瀵告祴閲忋€?
+   * 杩欐槸瀵归灞忔覆鏌撳悗鐨勫厹搴曪紝淇濊瘉瀹瑰櫒鍜屾鏂囧昂瀵稿敖蹇繘鍏ヨ绠楅摼璺€?
    */
   onReady() {
     this.scheduleMeasure();
   },
 
   /**
-   * 页面局部内容重新渲染完成后的回调。
-   * 例如 structured sections 渲染完成后，正文高度可能变化，因此需要重新测量。
+   * 椤甸潰灞€閮ㄥ唴瀹归噸鏂版覆鏌撳畬鎴愬悗鐨勫洖璋冦€?
+   * 渚嬪 structured sections 娓叉煋瀹屾垚鍚庯紝姝ｆ枃楂樺害鍙兘鍙樺寲锛屽洜姝ら渶瑕侀噸鏂版祴閲忋€?
    */
   onRenderReady() {
     this.scheduleMeasure();
   },
 
   /**
-   * 调度正文尺寸测量。
+   * 璋冨害姝ｆ枃灏哄娴嬮噺銆?
    *
-   * 这里故意做了一个很短的延迟：
-   * - 避免连续 setData / 多次局部渲染时频繁触发测量；
-   * - 给小程序布局一点稳定时间，减少拿到中间态尺寸的概率。
+   * 杩欓噷鏁呮剰鍋氫簡涓€涓緢鐭殑寤惰繜锛?
+   * - 閬垮厤杩炵画 setData / 澶氭灞€閮ㄦ覆鏌撴椂棰戠箒瑙﹀彂娴嬮噺锛?
+   * - 缁欏皬绋嬪簭甯冨眬涓€鐐圭ǔ瀹氭椂闂达紝鍑忓皯鎷垮埌涓棿鎬佸昂瀵哥殑姒傜巼銆?
    */
   scheduleMeasure() {
     clearTimeout(this.measureTimer);
@@ -367,17 +439,17 @@ Page({
   },
 
   /**
-   * 实际读取视口与正文尺寸。
+   * 瀹為檯璇诲彇瑙嗗彛涓庢鏂囧昂瀵搞€?
    *
-   * 读取内容：
-   * - `.viewer`：可视区域的宽高和页面位置。
-   * - `#articleWrapper`：正文包裹层的真实宽高。
+   * 璇诲彇鍐呭锛?
+   * - `.viewer`锛氬彲瑙嗗尯鍩熺殑瀹介珮鍜岄〉闈綅缃€?
+   * - `#articleWrapper`锛氭鏂囧寘瑁瑰眰鐨勭湡瀹炲楂樸€?
    *
-   * 这些尺寸决定了：
-   * - 缩放时的边界计算；
-   * - 居中逻辑；
-   * - 回弹目标位置；
-   * - 是否需要允许某个方向继续拖拽。
+   * 杩欎簺灏哄鍐冲畾浜嗭細
+   * - 缂╂斁鏃剁殑杈圭晫璁＄畻锛?
+   * - 灞呬腑閫昏緫锛?
+   * - 鍥炲脊鐩爣浣嶇疆锛?
+   * - 鏄惁闇€瑕佸厑璁告煇涓柟鍚戠户缁嫋鎷姐€?
    */
   measureContent() {
     const query = wx.createSelectorQuery().in(this);
@@ -408,6 +480,208 @@ Page({
       if (this.scale > 1.01) {
         this.rebound();
       }
+    });
+  },
+
+  noop() {
+    return;
+  },
+
+  onPdfStatusMaskTap() {
+    this.dismissPdfStatus();
+  },
+
+  onRetryOpenPdf() {
+    this.dismissPdfStatus();
+    void this.openPdf();
+  },
+
+  clearPdfStatusTimer() {
+    clearTimeout(this.pdfStatusTimer);
+    this.pdfStatusTimer = 0;
+  },
+
+  schedulePdfStatusDismiss(delay = PDF_STATUS_AUTO_HIDE_MS) {
+    this.clearPdfStatusTimer();
+    this.pdfStatusTimer = setTimeout(() => {
+      this.dismissPdfStatus();
+    }, delay) as unknown as number;
+  },
+
+  abortPdfDownloadTask() {
+    if (!this.pdfDownloadTask) {
+      return;
+    }
+
+    try {
+      this.pdfDownloadTask.abort();
+    } catch (error) {
+      console.warn("Abort PDF download task failed", error);
+    }
+
+    this.pdfDownloadTask = null;
+  },
+
+  dismissPdfStatus() {
+    if (this.data.pdfActionBusy) {
+      return;
+    }
+
+    this.clearPdfStatusTimer();
+
+    this.setData({
+      pdfStatus: createIdlePdfStatus(),
+      pdfActionLabel: "",
+    });
+  },
+
+  normalizePdfProgress(progress: number): number {
+    const numericProgress = Number(progress);
+    if (!Number.isFinite(numericProgress)) {
+      return 0;
+    }
+
+    return Math.max(0, Math.min(100, Math.round(numericProgress)));
+  },
+
+  getPdfActionLabel(stage: PdfStatusStage): string {
+    switch (stage) {
+      case "preparing":
+        return "准备中...";
+      case "cacheHit":
+      case "opening":
+        return "打开中...";
+      case "downloading":
+        return "下载中...";
+      case "saving":
+        return "保存中...";
+      default:
+        return "";
+    }
+  },
+
+  isPdfBusyStage(stage: PdfStatusStage): boolean {
+    return (
+      stage === "preparing" ||
+      stage === "cacheHit" ||
+      stage === "downloading" ||
+      stage === "saving" ||
+      stage === "opening"
+    );
+  },
+
+  setPdfStatusStage(stage: PdfStatusStage, patch: Partial<PdfStatusView> = {}) {
+    const nextStatus: PdfStatusView = {
+      ...createIdlePdfStatus(),
+      visible: true,
+      stage,
+      ...patch,
+    };
+
+    switch (stage) {
+      case "preparing":
+        nextStatus.stageLabel = nextStatus.stageLabel || "准备中";
+        nextStatus.title = nextStatus.title || "正在准备 PDF";
+        nextStatus.message = nextStatus.message || "正在检查文档资源，请稍候。";
+        nextStatus.tone = "neutral";
+        nextStatus.canRetry = false;
+        break;
+      case "cacheHit":
+        nextStatus.stageLabel = nextStatus.stageLabel || "缓存命中";
+        nextStatus.title = nextStatus.title || "发现本地缓存";
+        nextStatus.message =
+          nextStatus.message || "已找到之前下载的文件，马上为你打开。";
+        nextStatus.tone = "neutral";
+        nextStatus.canRetry = false;
+        break;
+      case "downloading":
+        nextStatus.stageLabel = nextStatus.stageLabel || "下载中";
+        nextStatus.title = nextStatus.title || "正在下载高清 PDF";
+        nextStatus.message = nextStatus.message || "下载过程可能受网络影响。";
+        nextStatus.tone = "neutral";
+        nextStatus.showProgress = true;
+        nextStatus.canRetry = false;
+        break;
+      case "saving":
+        nextStatus.stageLabel = nextStatus.stageLabel || "保存中";
+        nextStatus.title = nextStatus.title || "正在写入本地";
+        nextStatus.message = nextStatus.message || "保存完成后会立即打开。";
+        nextStatus.tone = "neutral";
+        nextStatus.showProgress = false;
+        nextStatus.canRetry = false;
+        break;
+      case "opening":
+        nextStatus.stageLabel = nextStatus.stageLabel || "打开中";
+        nextStatus.title = nextStatus.title || "正在打开 PDF";
+        nextStatus.message = nextStatus.message || "即将切换到系统阅读器。";
+        nextStatus.tone = "neutral";
+        nextStatus.showProgress = false;
+        nextStatus.canRetry = false;
+        break;
+      case "success":
+        nextStatus.stageLabel = nextStatus.stageLabel || "已完成";
+        nextStatus.title = nextStatus.title || "PDF 已打开";
+        nextStatus.message = nextStatus.message || "你可以在阅读器中继续查看或分享。";
+        nextStatus.tone = "success";
+        nextStatus.showProgress = false;
+        nextStatus.canRetry = false;
+        break;
+      case "error":
+        nextStatus.stageLabel = nextStatus.stageLabel || "失败";
+        nextStatus.title = nextStatus.title || "打开失败";
+        nextStatus.message = nextStatus.message || "请稍后重试。";
+        nextStatus.tone = "error";
+        nextStatus.showProgress = false;
+        nextStatus.canRetry = true;
+        break;
+      default:
+        nextStatus.visible = false;
+        nextStatus.tone = "neutral";
+        nextStatus.showProgress = false;
+        nextStatus.canRetry = false;
+        break;
+    }
+
+    if (nextStatus.showProgress) {
+      const progress = this.normalizePdfProgress(nextStatus.progress);
+      nextStatus.progress = progress;
+      nextStatus.progressText = nextStatus.progressText || `${progress}%`;
+    } else {
+      nextStatus.progress = this.normalizePdfProgress(nextStatus.progress);
+      nextStatus.progressText = nextStatus.progressText || "";
+    }
+
+    const actionBusy = this.isPdfBusyStage(stage);
+
+    this.setData({
+      pdfActionBusy: actionBusy,
+      pdfActionLabel: actionBusy ? this.getPdfActionLabel(stage) : "",
+      pdfStatus: nextStatus,
+    });
+  },
+
+  updatePdfDownloadProgress(progress: number) {
+    const normalizedProgress = this.normalizePdfProgress(progress);
+    const currentStatus = this.data.pdfStatus as PdfStatusView;
+
+    if (currentStatus.stage !== "downloading") {
+      return;
+    }
+
+    if (
+      normalizedProgress <= currentStatus.progress &&
+      normalizedProgress !== 100
+    ) {
+      return;
+    }
+
+    this.setPdfStatusStage("downloading", {
+      progress: normalizedProgress,
+      progressText: `${normalizedProgress}%`,
+      message:
+        normalizedProgress >= 100
+          ? "下载完成，正在写入临时文件..."
+          : "正在下载高清 PDF...",
     });
   },
 
@@ -448,6 +722,29 @@ Page({
     }
 
     return `${conclusionId}::${normalizedPdfUrl}`;
+  },
+
+  resolvePdfOpenContext(): PdfOpenContext {
+    if (!this.data.pdfAvailable) {
+      throw new PdfOperationError("validate", "当前条目暂未提供高清 PDF。");
+    }
+
+    const rawPdfUrl = String(this.data.pdfUrl || "").trim();
+    if (!rawPdfUrl) {
+      throw new PdfOperationError("validate", "当前条目缺少 PDF 下载地址。");
+    }
+
+    const fullPdfUrl = this.buildFullPdfUrl(rawPdfUrl);
+    if (!fullPdfUrl) {
+      throw new PdfOperationError("validate", "PDF 地址无效，请稍后重试。");
+    }
+
+    return {
+      rawPdfUrl,
+      fullPdfUrl,
+      pdfFilename: this.resolvePdfFilename(),
+      cacheKey: this.buildPdfCacheKey(rawPdfUrl),
+    };
   },
 
   getPdfCacheMap(): Record<string, string> {
@@ -514,16 +811,57 @@ Page({
     }
   },
 
-  downloadPdfFile(url: string, pdfFilename: string): Promise<string> {
+  isSavedFilePathAvailable(savedFilePath: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (!savedFilePath) {
+        resolve(false);
+        return;
+      }
+
+      wx.getFileInfo({
+        filePath: savedFilePath,
+        success: () => {
+          resolve(true);
+        },
+        fail: () => {
+          resolve(false);
+        },
+      });
+    });
+  },
+
+  async resolveValidCachedPdfPath(cacheKey: string): Promise<string> {
+    const cachedFilePath = this.getCachedPdfFilePath(cacheKey);
+    if (!cachedFilePath) {
+      return "";
+    }
+
+    const isAvailable = await this.isSavedFilePathAvailable(cachedFilePath);
+    if (isAvailable) {
+      return cachedFilePath;
+    }
+
+    this.removeCachedPdfFilePath(cacheKey);
+    return "";
+  },
+
+  downloadPdfWithProgress(
+    url: string,
+    pdfFilename: string,
+    onProgress?: (progress: number) => void,
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
-      wx.downloadFile({
+      const downloadTask = wx.downloadFile({
         url,
         success: (res) => {
+          this.pdfDownloadTask = null;
+
           if (res.statusCode !== 200 || !res.tempFilePath) {
             reject(
               new PdfOperationError(
                 "download",
                 `${pdfFilename} download failed (HTTP ${res.statusCode})`,
+                res,
               ),
             );
             return;
@@ -532,18 +870,27 @@ Page({
           resolve(res.tempFilePath);
         },
         fail: (error) => {
+          this.pdfDownloadTask = null;
+
           reject(
             new PdfOperationError(
               "download",
               `${pdfFilename} download failed: ${error.errMsg || ""}`.trim(),
+              error,
             ),
           );
         },
       });
+
+      this.pdfDownloadTask = downloadTask;
+
+      downloadTask.onProgressUpdate((res) => {
+        onProgress?.(Number(res.progress || 0));
+      });
     });
   },
 
-  savePdfFile(tempFilePath: string, pdfFilename: string): Promise<string> {
+  savePdfFromTempFile(tempFilePath: string, pdfFilename: string): Promise<string> {
     return new Promise((resolve, reject) => {
       wx.saveFile({
         tempFilePath,
@@ -553,6 +900,7 @@ Page({
               new PdfOperationError(
                 "save",
                 `${pdfFilename} save failed: empty savedFilePath`,
+                res,
               ),
             );
             return;
@@ -565,6 +913,7 @@ Page({
             new PdfOperationError(
               "save",
               `${pdfFilename} save failed: ${error.errMsg || ""}`.trim(),
+              error,
             ),
           );
         },
@@ -572,7 +921,7 @@ Page({
     });
   },
 
-  openPdfDocument(filePath: string, pdfFilename: string): Promise<void> {
+  openPdfFile(filePath: string, pdfFilename: string): Promise<void> {
     return new Promise((resolve, reject) => {
       wx.openDocument({
         filePath,
@@ -586,6 +935,7 @@ Page({
             new PdfOperationError(
               "open",
               `${pdfFilename} open failed: ${error.errMsg || ""}`.trim(),
+              error,
             ),
           );
         },
@@ -593,114 +943,188 @@ Page({
     });
   },
 
+  mapPdfErrorToStatus(error: unknown): PdfErrorPresentation {
+    const stage = error instanceof PdfOperationError ? error.stage : "download";
+    const rawMessage = String(getErrorMessage(error, "") || "").trim();
+    const normalizedMessage = rawMessage.toLowerCase();
+
+    if (stage === "validate") {
+      return {
+        stageLabel: "资源不可用",
+        title: "暂时无法打开 PDF",
+        message: rawMessage || "当前条目暂无可用 PDF。",
+      };
+    }
+
+    if (stage === "save") {
+      if (
+        normalizedMessage.includes("the maximum size") ||
+        normalizedMessage.includes("file system full") ||
+        normalizedMessage.includes("exceed")
+      ) {
+        return {
+          stageLabel: "保存失败",
+          title: "本地空间不足",
+          message: "请清理手机存储空间后重试。",
+        };
+      }
+
+      return {
+        stageLabel: "保存失败",
+        title: "写入本地失败",
+        message: "PDF 已下载，但保存失败，请稍后重试。",
+      };
+    }
+
+    if (stage === "open" || stage === "cache") {
+      if (normalizedMessage.includes("no such file") || normalizedMessage.includes("not found")) {
+        return {
+          stageLabel: "打开失败",
+          title: "本地文件已失效",
+          message: "缓存文件不可用，重新下载后再试。",
+        };
+      }
+
+      return {
+        stageLabel: "打开失败",
+        title: "系统未能打开 PDF",
+        message: "请稍后重试，或切换网络后再试。",
+      };
+    }
+
+    if (
+      normalizedMessage.includes("url not in domain list") ||
+      normalizedMessage.includes("url scheme is invalid")
+    ) {
+      return {
+        stageLabel: "下载失败",
+        title: "下载域名未授权",
+        message: "请将 PDF 域名加入 downloadFile 合法域名列表。",
+      };
+    }
+
+    if (normalizedMessage.includes("timeout")) {
+      return {
+        stageLabel: "下载超时",
+        title: "网络连接较慢",
+        message: "请检查网络后重试。",
+      };
+    }
+
+    return {
+      stageLabel: "下载失败",
+      title: "下载高清 PDF 失败",
+      message: "请稍后重试，或切换网络后再试。",
+    };
+  },
+
   /**
-   * 打开 PDF。
-   *
-   * 使用场景：
-   * - 命中缓存：直接打开本地 savedFilePath。
-   * - 缓存未命中：下载 -> 保存 -> 写入缓存 -> 打开。
-   *
-   * 这段逻辑不参与页面渲染，只负责阅读扩展入口。
-   */
+   * 鎵撳紑 PDF銆?   *
+   * 浣跨敤鍦烘櫙锛?   * - 鍛戒腑缂撳瓨锛氱洿鎺ユ墦寮€鏈湴 savedFilePath銆?   * - 缂撳瓨鏈懡涓細涓嬭浇 -> 淇濆瓨 -> 鍐欏叆缂撳瓨 -> 鎵撳紑銆?   *
+   * 杩欐閫昏緫涓嶅弬涓庨〉闈㈡覆鏌擄紝鍙礋璐ｉ槄璇绘墿灞曞叆鍙ｃ€?   */
   async openPdf() {
-    if (this.data.pdfOpening) {
+    if (this.data.pdfActionBusy) {
       return;
     }
 
-    if (!this.data.pdfAvailable) {
-      wx.showToast({
-        title: "PDF暂不可用",
-        icon: "none",
-      });
-      return;
-    }
+    this.clearPdfStatusTimer();
 
-    const rawPdfUrl = String(this.data.pdfUrl || "").trim();
-    if (!rawPdfUrl) {
-      wx.showToast({
-        title: "暂无PDF资源",
-        icon: "none",
-      });
-      return;
-    }
-
-    const fullPdfUrl = this.buildFullPdfUrl(rawPdfUrl);
-    if (!fullPdfUrl) {
-      wx.showToast({
-        title: "PDF地址无效",
-        icon: "none",
-      });
-      return;
-    }
-
-    const pdfFilename = this.resolvePdfFilename();
-    const cacheKey = this.buildPdfCacheKey(rawPdfUrl);
-
-    this.setData({
-      pdfOpening: true,
-    });
-    wx.showLoading({
-      title: "加载中...",
-    });
+    let context: PdfOpenContext | null = null;
+    let activeCacheKey = "";
 
     try {
-      const cachedFilePath = this.getCachedPdfFilePath(cacheKey);
+      this.setPdfStatusStage("preparing", {
+        message: "正在检查文档资源...",
+      });
+
+      context = this.resolvePdfOpenContext();
+      activeCacheKey = context.cacheKey;
+
+      const cachedFilePath = await this.resolveValidCachedPdfPath(context.cacheKey);
       if (cachedFilePath) {
-        try {
-          await this.openPdfDocument(cachedFilePath, pdfFilename);
-          return;
-        } catch (error) {
-          this.removeCachedPdfFilePath(cacheKey);
-          console.warn("Open cached PDF failed, fallback to re-download", {
-            error,
-            cacheKey,
-            cachedFilePath,
-          });
-        }
+        this.setPdfStatusStage("cacheHit");
+        this.setPdfStatusStage("opening", {
+          message: "正在打开已缓存的 PDF...",
+        });
+
+        await this.openPdfFile(cachedFilePath, context.pdfFilename);
+
+        this.setPdfStatusStage("success", {
+          title: "PDF 已打开",
+          message: "已从本地缓存打开，体验更顺滑。",
+        });
+        this.schedulePdfStatusDismiss();
+        return;
       }
 
-      const tempFilePath = await this.downloadPdfFile(fullPdfUrl, pdfFilename);
-      const savedFilePath = await this.savePdfFile(tempFilePath, pdfFilename);
-      this.setCachedPdfFilePath(cacheKey, savedFilePath);
-      await this.openPdfDocument(savedFilePath, pdfFilename);
+      this.setPdfStatusStage("downloading", {
+        progress: 0,
+        progressText: "0%",
+      });
+
+      const tempFilePath = await this.downloadPdfWithProgress(
+        context.fullPdfUrl,
+        context.pdfFilename,
+        (progress) => {
+          this.updatePdfDownloadProgress(progress);
+        },
+      );
+
+      this.setPdfStatusStage("saving", {
+        message: "下载完成，正在保存到本地...",
+      });
+
+      const savedFilePath = await this.savePdfFromTempFile(
+        tempFilePath,
+        context.pdfFilename,
+      );
+
+      if (context.cacheKey) {
+        this.setCachedPdfFilePath(context.cacheKey, savedFilePath);
+      }
+
+      this.setPdfStatusStage("opening", {
+        message: "正在调用系统阅读器...",
+      });
+
+      await this.openPdfFile(savedFilePath, context.pdfFilename);
+
+      this.setPdfStatusStage("success", {
+        title: "PDF 已打开",
+        message: "下载并缓存完成，下次会更快。",
+      });
+      this.schedulePdfStatusDismiss();
     } catch (error) {
-      const stage =
-        error instanceof PdfOperationError ? error.stage : "download";
+      const stage = error instanceof PdfOperationError ? error.stage : "download";
 
-      if (stage === "open") {
-        this.removeCachedPdfFilePath(cacheKey);
+      if ((stage === "open" || stage === "cache") && activeCacheKey) {
+        this.removeCachedPdfFilePath(activeCacheKey);
       }
 
-      wx.showToast({
-        title:
-          stage === "save"
-            ? "PDF保存失败"
-            : stage === "open"
-              ? "PDF打开失败"
-              : "PDF下载失败",
-        icon: "none",
+      const mappedError = this.mapPdfErrorToStatus(error);
+      this.setPdfStatusStage("error", {
+        stageLabel: mappedError.stageLabel,
+        title: mappedError.title,
+        message: mappedError.message,
+        canRetry: stage !== "validate",
       });
 
       console.error("Open PDF failed", {
         stage,
         error,
-        fullPdfUrl,
-        pdfFilename,
+        context,
       });
     } finally {
-      wx.hideLoading();
-      this.setData({
-        pdfOpening: false,
-      });
+      this.abortPdfDownloadTask();
     }
   },
 
   /**
-   * 点击统一的“缩放阅读”按钮。
+   * 鐐瑰嚮缁熶竴鐨勨€滅缉鏀鹃槄璇烩€濇寜閽€?
    *
-   * 设计意图：
-   * - 未放大时：以视口中心为锚点进入放大阅读态。
-   * - 已放大时：恢复默认阅读态。
+   * 璁捐鎰忓浘锛?
+   * - 鏈斁澶ф椂锛氫互瑙嗗彛涓績涓洪敋鐐硅繘鍏ユ斁澶ч槄璇绘€併€?
+   * - 宸叉斁澶ф椂锛氭仮澶嶉粯璁ら槄璇绘€併€?
    */
   onToggleZoom() {
     if (this.scale > 1.01) {
@@ -717,15 +1141,15 @@ Page({
   },
 
   /**
-   * 读取触摸点数组。
-   * 单独封装出来，是为了把小程序的触摸类型和页面内部使用的简化坐标结构隔离开。
+   * 璇诲彇瑙︽懜鐐规暟缁勩€?
+   * 鍗曠嫭灏佽鍑烘潵锛屾槸涓轰簡鎶婂皬绋嬪簭鐨勮Е鎽哥被鍨嬪拰椤甸潰鍐呴儴浣跨敤鐨勭畝鍖栧潗鏍囩粨鏋勯殧绂诲紑銆?
    */
   getTouches(e: WechatMiniprogram.TouchEvent): TouchPoint[] {
     return e.touches as unknown as TouchPoint[];
   },
 
   /**
-   * 计算双指距离，用于 pinch 缩放。
+   * 璁＄畻鍙屾寚璺濈锛岀敤浜?pinch 缂╂斁銆?
    */
   getDistance(touches: TouchPoint[]) {
     const dx = touches[0].pageX - touches[1].pageX;
@@ -734,9 +1158,9 @@ Page({
   },
 
   /**
-   * 计算双指中心点。
+   * 璁＄畻鍙屾寚涓績鐐广€?
    *
-   * 缩放时要围绕手指中心做变换，否则会产生“公式放大但焦点漂移”的阅读割裂感。
+   * 缂╂斁鏃惰鍥寸粫鎵嬫寚涓績鍋氬彉鎹紝鍚﹀垯浼氫骇鐢熲€滃叕寮忔斁澶т絾鐒︾偣婕傜Щ鈥濈殑闃呰鍓茶鎰熴€?
    */
   getCenter(touches: TouchPoint[]) {
     const first = this.getViewerPoint(touches[0]);
@@ -749,10 +1173,10 @@ Page({
   },
 
   /**
-   * 把页面坐标转换成 viewer 内部坐标。
+   * 鎶婇〉闈㈠潗鏍囪浆鎹㈡垚 viewer 鍐呴儴鍧愭爣銆?
    *
-   * 详情页的缩放和平移都是相对于 `.viewer` 视口计算的，
-   * 因此所有触点都需要先转换到同一坐标系中。
+   * 璇︽儏椤电殑缂╂斁鍜屽钩绉婚兘鏄浉瀵逛簬 `.viewer` 瑙嗗彛璁＄畻鐨勶紝
+   * 鍥犳鎵€鏈夎Е鐐归兘闇€瑕佸厛杞崲鍒板悓涓€鍧愭爣绯讳腑銆?
    */
   getViewerPoint(point: TouchPoint) {
     return {
@@ -762,17 +1186,17 @@ Page({
   },
 
   /**
-   * 默认阅读态下允许的最大纵向滚动值。
+   * 榛樿闃呰鎬佷笅鍏佽鐨勬渶澶х旱鍚戞粴鍔ㄥ€笺€?
    */
   getMaxScrollTop() {
     return Math.max(0, this.contentHeight - this.containerHeight);
   },
 
   /**
-   * 从缩放态回到普通阅读态时，推算应该还原到哪个 scrollTop。
+   * 浠庣缉鏀炬€佸洖鍒版櫘閫氶槄璇绘€佹椂锛屾帹绠楀簲璇ヨ繕鍘熷埌鍝釜 scrollTop銆?
    *
-   * 核心目的是保持“用户正在看的那一块内容”尽量不跳走，
-   * 也就是缩放前后维持阅读位置连续。
+   * 鏍稿績鐩殑鏄繚鎸佲€滅敤鎴锋鍦ㄧ湅鐨勯偅涓€鍧楀唴瀹光€濆敖閲忎笉璺宠蛋锛?
+   * 涔熷氨鏄缉鏀惧墠鍚庣淮鎸侀槄璇讳綅缃繛缁€?
    */
   getRestoreScrollTop() {
     if (this.scale <= 1.01) {
@@ -787,12 +1211,12 @@ Page({
   },
 
   /**
-   * 在进入缩放态之前，把普通 scroll-view 的滚动量折算成 transform 平移量。
+   * 鍦ㄨ繘鍏ョ缉鏀炬€佷箣鍓嶏紝鎶婃櫘閫?scroll-view 鐨勬粴鍔ㄩ噺鎶樼畻鎴?transform 骞崇Щ閲忋€?
    *
-   * 为什么需要这一步：
-   * - 默认阅读态由 scroll-view 控制纵向滚动。
-   * - 缩放态改由 transform 控制整页位置。
-   * - 如果不先做坐标系切换，用户一放大页面就会“跳位置”。
+   * 涓轰粈涔堥渶瑕佽繖涓€姝ワ細
+   * - 榛樿闃呰鎬佺敱 scroll-view 鎺у埗绾靛悜婊氬姩銆?
+   * - 缂╂斁鎬佹敼鐢?transform 鎺у埗鏁撮〉浣嶇疆銆?
+   * - 濡傛灉涓嶅厛鍋氬潗鏍囩郴鍒囨崲锛岀敤鎴蜂竴鏀惧ぇ椤甸潰灏变細鈥滆烦浣嶇疆鈥濄€?
    */
   prepareZoomViewport(callback?: () => void) {
     const currentScrollTop = this.articleScrollTop;
@@ -820,19 +1244,19 @@ Page({
   },
 
   /**
-   * 把当前缩放和平移状态组装成 style 字符串，供 WXML 直接绑定。
+   * 鎶婂綋鍓嶇缉鏀惧拰骞崇Щ鐘舵€佺粍瑁呮垚 style 瀛楃涓诧紝渚?WXML 鐩存帴缁戝畾銆?
    */
   buildTransformStyle() {
     return `transform: translate3d(${this.translateX}px, ${this.translateY}px, 0) scale(${this.scale});`;
   },
 
   /**
-   * 同步 transform 相关的页面 data。
+   * 鍚屾 transform 鐩稿叧鐨勯〉闈?data銆?
    *
-   * 这里统一更新：
-   * - transformStyle：实际视觉变换。
-   * - zoomActive：是否处于缩放态。
-   * - scaleLabel：右上角显示的百分比。
+   * 杩欓噷缁熶竴鏇存柊锛?
+   * - transformStyle锛氬疄闄呰瑙夊彉鎹€?
+   * - zoomActive锛氭槸鍚﹀浜庣缉鏀炬€併€?
+   * - scaleLabel锛氬彸涓婅鏄剧ず鐨勭櫨鍒嗘瘮銆?
    */
   syncTransformState() {
     this.setData({
@@ -843,11 +1267,11 @@ Page({
   },
 
   /**
-   * 根据当前内容尺寸和缩放比例，计算可拖拽边界。
+   * 鏍规嵁褰撳墠鍐呭灏哄鍜岀缉鏀炬瘮渚嬶紝璁＄畻鍙嫋鎷借竟鐣屻€?
    *
-   * 规则：
-   * - 如果缩放后内容比视口宽/高，则允许在边界内拖动。
-   * - 如果缩放后内容仍小于视口，则保持居中，不允许某一方向自由漂移。
+   * 瑙勫垯锛?
+   * - 濡傛灉缂╂斁鍚庡唴瀹规瘮瑙嗗彛瀹?楂橈紝鍒欏厑璁稿湪杈圭晫鍐呮嫋鍔ㄣ€?
+   * - 濡傛灉缂╂斁鍚庡唴瀹逛粛灏忎簬瑙嗗彛锛屽垯淇濇寔灞呬腑锛屼笉鍏佽鏌愪竴鏂瑰悜鑷敱婕傜Щ銆?
    */
   calcBounds() {
     const scaledWidth = this.contentWidth * this.scale;
@@ -885,10 +1309,10 @@ Page({
   },
 
   /**
-   * 越界阻尼。
+   * 瓒婄晫闃诲凹銆?
    *
-   * 当用户继续向边界外拖拽时，不是立刻硬性截断，而是给一个衰减后的位移。
-   * 这样手感会更柔和，结束后再交给 `rebound` 做正式回弹。
+   * 褰撶敤鎴风户缁悜杈圭晫澶栨嫋鎷芥椂锛屼笉鏄珛鍒荤‖鎬ф埅鏂紝鑰屾槸缁欎竴涓“鍑忓悗鐨勪綅绉汇€?
+   * 杩欐牱鎵嬫劅浼氭洿鏌斿拰锛岀粨鏉熷悗鍐嶄氦缁?`rebound` 鍋氭寮忓洖寮广€?
    */
   applyResistance(value: number, min: number, max: number) {
     if (value >= min && value <= max) {
@@ -903,12 +1327,12 @@ Page({
   },
 
   /**
-   * 回弹到合法边界内。
+   * 鍥炲脊鍒板悎娉曡竟鐣屽唴銆?
    *
-   * 使用场景：
-   * - 手动拖拽结束但位置越界。
-   * - 缩放后内容超出边界。
-   * - 惯性滑动撞到边界。
+   * 浣跨敤鍦烘櫙锛?
+   * - 鎵嬪姩鎷栨嫿缁撴潫浣嗕綅缃秺鐣屻€?
+   * - 缂╂斁鍚庡唴瀹硅秴鍑鸿竟鐣屻€?
+   * - 鎯€ф粦鍔ㄦ挒鍒拌竟鐣屻€?
    */
   rebound() {
     const bounds = this.calcBounds();
@@ -962,11 +1386,11 @@ Page({
   },
 
   /**
-   * 以给定中心点为锚执行缩放。
+   * 浠ョ粰瀹氫腑蹇冪偣涓洪敋鎵ц缂╂斁銆?
    *
-   * 输入：
-   * - `targetScale`：目标缩放比例。
-   * - `centerX / centerY`：缩放锚点，通常是双指中心或双击点。
+   * 杈撳叆锛?
+   * - `targetScale`锛氱洰鏍囩缉鏀炬瘮渚嬨€?
+   * - `centerX / centerY`锛氱缉鏀鹃敋鐐癸紝閫氬父鏄弻鎸囦腑蹇冩垨鍙屽嚮鐐广€?
    */
   zoomTo(targetScale: number, centerX: number, centerY: number) {
     const clampedScale = Math.max(
@@ -984,18 +1408,18 @@ Page({
   },
 
   /**
-   * 停止惯性动画。
+   * 鍋滄鎯€у姩鐢汇€?
    */
   stopInertia() {
     clearTimeout(this.inertiaId);
   },
 
   /**
-   * 普通阅读态下记录 scroll-view 的纵向滚动值。
+   * 鏅€氶槄璇绘€佷笅璁板綍 scroll-view 鐨勭旱鍚戞粴鍔ㄥ€笺€?
    *
-   * 注意：
-   * - 只有未放大时，这个 scrollTop 才是有效的主滚动来源。
-   * - 进入缩放态后，页面位置改由 transform 控制，因此这里直接忽略。
+   * 娉ㄦ剰锛?
+   * - 鍙湁鏈斁澶ф椂锛岃繖涓?scrollTop 鎵嶆槸鏈夋晥鐨勪富婊氬姩鏉ユ簮銆?
+   * - 杩涘叆缂╂斁鎬佸悗锛岄〉闈綅缃敼鐢?transform 鎺у埗锛屽洜姝よ繖閲岀洿鎺ュ拷鐣ャ€?
    */
   onArticleScroll(e: WechatMiniprogram.ScrollViewScroll) {
     if (this.scale > 1.01) {
@@ -1006,10 +1430,10 @@ Page({
   },
 
   /**
-   * 启动惯性滑动。
+   * 鍚姩鎯€ф粦鍔ㄣ€?
    *
-   * 这一步只在缩放态下工作，用于让拖拽结束后的阅读手感更接近原生阅读器。
-   * 一旦速度衰减过小，或撞到边界，就停止惯性并回弹。
+   * 杩欎竴姝ュ彧鍦ㄧ缉鏀炬€佷笅宸ヤ綔锛岀敤浜庤鎷栨嫿缁撴潫鍚庣殑闃呰鎵嬫劅鏇存帴杩戝師鐢熼槄璇诲櫒銆?
+   * 涓€鏃﹂€熷害琛板噺杩囧皬锛屾垨鎾炲埌杈圭晫锛屽氨鍋滄鎯€у苟鍥炲脊銆?
    */
   startInertia() {
     if (this.scale <= 1.01) {
@@ -1048,11 +1472,11 @@ Page({
   },
 
   /**
-   * 处理双击缩放。
+   * 澶勭悊鍙屽嚮缂╂斁銆?
    *
-   * 交互规则：
-   * - 当前已放大：双击恢复默认态。
-   * - 当前未放大：双击以点击点为中心放大。
+   * 浜や簰瑙勫垯锛?
+   * - 褰撳墠宸叉斁澶э細鍙屽嚮鎭㈠榛樿鎬併€?
+   * - 褰撳墠鏈斁澶э細鍙屽嚮浠ョ偣鍑荤偣涓轰腑蹇冩斁澶с€?
    */
   handleDoubleTap(e: WechatMiniprogram.TouchEvent) {
     const now = Date.now();
@@ -1073,13 +1497,13 @@ Page({
   },
 
   /**
-   * 触摸开始。
+   * 瑙︽懜寮€濮嬨€?
    *
-   * 主要职责：
-   * - 停掉当前惯性，避免和新的手势冲突。
-   * - 识别双击。
-   * - 初始化双指缩放所需的起始距离和起始比例。
-   * - 初始化单指拖拽所需的起始偏移与速度采样信息。
+   * 涓昏鑱岃矗锛?
+   * - 鍋滄帀褰撳墠鎯€э紝閬垮厤鍜屾柊鐨勬墜鍔垮啿绐併€?
+   * - 璇嗗埆鍙屽嚮銆?
+   * - 鍒濆鍖栧弻鎸囩缉鏀炬墍闇€鐨勮捣濮嬭窛绂诲拰璧峰姣斾緥銆?
+   * - 鍒濆鍖栧崟鎸囨嫋鎷芥墍闇€鐨勮捣濮嬪亸绉讳笌閫熷害閲囨牱淇℃伅銆?
    */
   onTouchStart(e: WechatMiniprogram.TouchEvent) {
     this.stopInertia();
@@ -1109,11 +1533,11 @@ Page({
   },
 
   /**
-   * 触摸移动。
+   * 瑙︽懜绉诲姩銆?
    *
-   * 两条主要分支：
-   * - 双指：更新缩放比例，并围绕双指中心同步修正平移量。
-   * - 单指：在缩放态下拖动画布，并持续记录速度用于后续惯性滑动。
+   * 涓ゆ潯涓昏鍒嗘敮锛?
+   * - 鍙屾寚锛氭洿鏂扮缉鏀炬瘮渚嬶紝骞跺洿缁曞弻鎸囦腑蹇冨悓姝ヤ慨姝ｅ钩绉婚噺銆?
+   * - 鍗曟寚锛氬湪缂╂斁鎬佷笅鎷栧姩鐢诲竷锛屽苟鎸佺画璁板綍閫熷害鐢ㄤ簬鍚庣画鎯€ф粦鍔ㄣ€?
    */
   onTouchMove(e: WechatMiniprogram.TouchEvent) {
     const touches = this.getTouches(e);
@@ -1170,12 +1594,12 @@ Page({
   },
 
   /**
-   * 触摸结束。
+   * 瑙︽懜缁撴潫銆?
    *
-   * 结束时会把当前 transform 固化为“稳定状态”，然后根据速度决定：
-   * - 进入惯性滑动；
-   * - 或直接做边界回弹；
-   * - 如果已经接近默认比例，则恢复普通阅读态。
+   * 缁撴潫鏃朵細鎶婂綋鍓?transform 鍥哄寲涓衡€滅ǔ瀹氱姸鎬佲€濓紝鐒跺悗鏍规嵁閫熷害鍐冲畾锛?
+   * - 杩涘叆鎯€ф粦鍔紱
+   * - 鎴栫洿鎺ュ仛杈圭晫鍥炲脊锛?
+   * - 濡傛灉宸茬粡鎺ヨ繎榛樿姣斾緥锛屽垯鎭㈠鏅€氶槄璇绘€併€?
    */
   onTouchEnd() {
     this.lastScale = this.scale;
@@ -1196,14 +1620,14 @@ Page({
   },
 
   /**
-   * 重置到默认阅读态。
+   * 閲嶇疆鍒伴粯璁ら槄璇绘€併€?
    *
-   * 输入：
-   * - `syncData`：
-   *   - `true`：同步更新页面 data，真正回到普通阅读态。
-   *   - `false`：只重置内部状态，通常用于页面初始化阶段。
+   * 杈撳叆锛?
+   * - `syncData`锛?
+   *   - `true`锛氬悓姝ユ洿鏂伴〉闈?data锛岀湡姝ｅ洖鍒版櫘閫氶槄璇绘€併€?
+   *   - `false`锛氬彧閲嶇疆鍐呴儴鐘舵€侊紝閫氬父鐢ㄤ簬椤甸潰鍒濆鍖栭樁娈点€?
    *
-   * 这个函数是详情页阅读交互的“总兜底”，很多异常或退出缩放的路径都会回到这里。
+   * 杩欎釜鍑芥暟鏄鎯呴〉闃呰浜や簰鐨勨€滄€诲厹搴曗€濓紝寰堝寮傚父鎴栭€€鍑虹缉鏀剧殑璺緞閮戒細鍥炲埌杩欓噷銆?
    */
   resetTransform(syncData = true) {
     const restoreScrollTop = syncData ? this.getRestoreScrollTop() : 0;
@@ -1228,3 +1652,4 @@ Page({
     }
   },
 });
+

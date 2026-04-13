@@ -18,11 +18,11 @@
       <button
         wx:if="{{pdfAvailable}}"
         bindtap="openPdf"
-        class="pdf-btn"
-        loading="{{pdfOpening}}"
-        disabled="{{pdfOpening}}"
+        class="pdf-btn {{pdfActionBusy ? 'pdf-btn-busy' : ''}}"
+        loading="{{pdfActionBusy}}"
+        disabled="{{pdfActionBusy}}"
       >
-        {{pdfOpening ? '打开中...' : '查看高清 PDF'}}
+        {{pdfActionBusy ? pdfActionLabel : '查看高清 PDF'}}
       </button>
     </view>
   </view>
@@ -122,6 +122,54 @@
 
       <view wx:if="{{zoomActive}}" class="zoom-hint">
         双指缩放，单指拖动
+      </view>
+    </view>
+  </view>
+
+  <view
+    wx:if="{{pdfStatus.visible}}"
+    class="pdf-status-layer"
+    catchtap="onPdfStatusMaskTap"
+    catchtouchmove="noop"
+  >
+    <view class="pdf-status-card pdf-status-card-{{pdfStatus.tone}}" catchtap="noop">
+      <view class="pdf-status-head">
+        <view class="pdf-status-stage">{{pdfStatus.stageLabel}}</view>
+        <view wx:if="{{pdfStatus.progressText}}" class="pdf-status-percent">
+          {{pdfStatus.progressText}}
+        </view>
+      </view>
+
+      <view class="pdf-status-title">{{pdfStatus.title}}</view>
+      <view class="pdf-status-message">{{pdfStatus.message}}</view>
+
+      <view wx:if="{{pdfStatus.showProgress}}" class="pdf-progress-track">
+        <view class="pdf-progress-fill" style="width: {{pdfStatus.progress}}%;"></view>
+      </view>
+
+      <view class="pdf-status-foot">
+        <view class="pdf-status-dot pdf-status-dot-{{pdfStatus.tone}}">
+          <view wx:if="{{pdfActionBusy}}" class="pdf-status-spinner"></view>
+          <view wx:elif="{{pdfStatus.tone === 'success'}}" class="pdf-status-check">✓</view>
+          <view wx:else class="pdf-status-dot-core"></view>
+        </view>
+
+        <view wx:if="{{pdfStatus.canRetry}}" class="pdf-status-actions">
+          <button class="pdf-status-btn pdf-status-btn-primary" bindtap="onRetryOpenPdf">
+            重试
+          </button>
+          <button class="pdf-status-btn pdf-status-btn-ghost" bindtap="dismissPdfStatus">
+            关闭
+          </button>
+        </view>
+
+        <view wx:elif="{{pdfStatus.tone === 'success'}}" class="pdf-status-hint">
+          已完成，可继续查看
+        </view>
+
+        <view wx:else class="pdf-status-hint">
+          {{pdfActionBusy ? '请稍候，不要离开当前页面' : '点击空白处关闭'}}
+        </view>
       </view>
     </view>
   </view>
