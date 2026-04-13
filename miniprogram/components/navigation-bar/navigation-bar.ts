@@ -1,125 +1,142 @@
+import { getNavLayout } from "../../utils/nav";
+
 Component({
   options: {
-    multipleSlots: true // 在组件定义时的选项中启用多slot支持
+    multipleSlots: true,
   },
-  /**
-   * 组件的属性列表
-   */
   properties: {
     extClass: {
       type: String,
-      value: ''
+      value: "",
     },
     title: {
       type: String,
-      value: ''
+      value: "",
     },
     background: {
       type: String,
-      value: 'rgba(248, 250, 252, 0.86)'
+      value: "rgba(248, 250, 252, 0.86)",
     },
     color: {
       type: String,
-      value: '#0f172a'
+      value: "#0f172a",
     },
     back: {
       type: Boolean,
-      value: true
+      value: true,
     },
     loading: {
       type: Boolean,
-      value: false
+      value: false,
     },
     homeButton: {
       type: Boolean,
       value: false,
     },
-    animated: {
-      // 显示隐藏的时候opacity动画效果
+    fixed: {
       type: Boolean,
-      value: true
+      value: false,
     },
-    show: {
-      // 显示隐藏导航，隐藏的时候navigation-bar的高度占位还在
+    placeholder: {
       type: Boolean,
       value: true,
-      observer: '_showChange'
     },
-    // back为true的时候，返回的页面深度
+    zIndex: {
+      type: Number,
+      value: 40,
+    },
+    animated: {
+      type: Boolean,
+      value: true,
+    },
+    show: {
+      type: Boolean,
+      value: true,
+      observer: "_showChange",
+    },
     delta: {
       type: Number,
-      value: 1
+      value: 1,
     },
   },
-  /**
-   * 组件的初始数据
-   */
   data: {
-    displayStyle: '',
-    innerPaddingRight: '',
-    leftWidth: '',
-    safeAreaTop: '',
-    contentStyle: '',
+    displayStyle: "",
+    fixedStyle: "",
+    placeholderStyle: "",
+    innerPaddingRight: "",
+    leftWidth: "",
+    safeAreaTop: "",
+    contentStyle: "",
+    ios: true,
   },
   lifetimes: {
     attached() {
-      const rect = wx.getMenuButtonBoundingClientRect()
-      wx.getSystemInfo({
-        success: (res) => {
-          const isAndroid = res.platform === 'android'
-          const statusBarHeight = res.statusBarHeight || res.safeArea?.top || 0
-          const fallbackContentHeight = isAndroid ? 48 : 44
-          const capsuleGap = rect.top ? Math.max(rect.top - statusBarHeight, 6) : 6
-          const contentHeight = rect.height
-            ? Math.max(fallbackContentHeight, rect.height + capsuleGap * 2)
-            : fallbackContentHeight
-          const sideWidth = rect.left
-            ? Math.max(res.windowWidth - rect.left, 88)
-            : 96
-
-          this.setData({
-            ios: !isAndroid,
-            innerPaddingRight: `padding-right: ${sideWidth}px;`,
-            leftWidth: `width: ${sideWidth}px;`,
-            safeAreaTop: `padding-top: ${statusBarHeight}px;`,
-            contentStyle: `height: ${contentHeight}px;`,
-          })
-        }
-      })
+      this.applyLayout();
+      this._showChange(this.data.show);
     },
   },
-  /**
-   * 组件的方法列表
-   */
+  observers: {
+    fixed() {
+      this.updateFixedStyle();
+    },
+    zIndex() {
+      this.updateFixedStyle();
+    },
+  },
   methods: {
-    _showChange(show: boolean) {
-      const animated = this.data.animated
-      let displayStyle = ''
-      if (animated) {
-        displayStyle = `opacity: ${
-          show ? '1' : '0'
-        };transition:opacity 0.5s;`
-      } else {
-        displayStyle = `display: ${show ? '' : 'none'}`
-      }
+    applyLayout() {
+      const layout = getNavLayout();
+      const platform = String(wx.getSystemInfoSync().platform || "").toLowerCase();
+
       this.setData({
-        displayStyle
-      })
+        ios: platform !== "android",
+        innerPaddingRight: `padding-right: ${layout.sideWidthPx}px;`,
+        leftWidth: `width: ${layout.sideWidthPx}px;`,
+        safeAreaTop: `padding-top: ${layout.statusBarHeightPx}px;`,
+        contentStyle: `height: ${layout.navBarHeightPx}px;`,
+        placeholderStyle: `height: ${layout.navTotalHeightPx}px;`,
+      });
+
+      this.updateFixedStyle();
+    },
+    updateFixedStyle() {
+      const fixedStyle = this.data.fixed
+        ? `position: fixed; left: 0; right: 0; top: 0; z-index: ${this.data.zIndex};`
+        : "";
+
+      this.setData({
+        fixedStyle,
+      });
+    },
+    _showChange(show: boolean) {
+      const animated = this.data.animated;
+      let displayStyle = "";
+
+      if (animated) {
+        displayStyle = `opacity: ${show ? "1" : "0"};transition:opacity 0.5s;`;
+      } else {
+        displayStyle = `display: ${show ? "" : "none"}`;
+      }
+
+      this.setData({
+        displayStyle,
+      });
     },
     back() {
-      const data = this.data
-      if (data.delta) {
+      if (this.data.delta) {
         wx.navigateBack({
-          delta: data.delta
-        })
+          delta: this.data.delta,
+        });
       }
-      this.triggerEvent('back', { delta: data.delta }, {})
+
+      this.triggerEvent("back", { delta: this.data.delta }, {});
     },
     home() {
       wx.reLaunch({
-        url: '/pages/index/index'
-      })
-      this.triggerEvent('home', {}, {})
-    }
+        url: "/pages/index/index",
+      });
+
+      this.triggerEvent("home", {}, {});
+    },
   },
-})
+});

@@ -3,8 +3,30 @@
     "pages/index/index",
     "pages/logs/logs",
     "pages/search/search",
-    "pages/detail/detail"
+    "pages/detail/detail",
+    "pages/mine/mine",
+    "pages/favorites/favorites"
   ],
+  "tabBar": {
+    "color": "#8E8E93",
+    "selectedColor": "#111111",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/search/search",
+        "text": "搜索",
+        "iconPath": "assets/tabbar/search.png",
+        "selectedIconPath": "assets/tabbar/search-active.png"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的",
+        "iconPath": "assets/tabbar/mine.png",
+        "selectedIconPath": "assets/tabbar/mine-active.png"
+      }
+    ]
+  },
   "window": {
     "navigationBarTextStyle": "black",
     "navigationStyle": "custom"

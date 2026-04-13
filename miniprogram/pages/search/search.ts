@@ -1,5 +1,3 @@
-const appInstance = getApp<IAppOption>();
-
 import type { ResultItem } from "../../types/search";
 import { renderMath } from "../../utils/math-render";
 import { getErrorMessage } from "../../utils/request";
@@ -77,7 +75,6 @@ Page({
     debugInfo: null as SearchDebugInfo | null,
     debugExpanded: true,
 
-    statusBarHeight: 0,
     total: 0,
     hotCount: 0,
     learned: 0,
@@ -101,7 +98,6 @@ Page({
     const highExamFrequencyCount = meta.highExamFrequencyCount;
 
     this.setData({
-      statusBarHeight: appInstance.globalData.statusBarHeight || 0,
       total,
       hotCount,
       learned: total,

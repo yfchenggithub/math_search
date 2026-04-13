@@ -6,6 +6,7 @@
 }
 
 .header {
+  padding-top: 20rpx;
   padding-left: 24rpx;
   padding-right: 24rpx;
   padding-bottom: 10rpx;
@@ -277,6 +278,7 @@
 .list {
   flex: 1;
   padding: 20rpx;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 20rpx);
   box-sizing: border-box;
 }
 

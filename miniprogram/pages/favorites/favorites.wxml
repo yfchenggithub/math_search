@@ -1,0 +1,211 @@
+<view class="favorites-page">
+  <navigation-bar
+    title="我的收藏"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+    bind:back="handleBackTap"
+  ></navigation-bar>
+
+  <view class="favorites-page__container">
+    <!-- 未登录态 -->
+    <block wx:if="{{!isLoggedIn}}">
+      <view class="favorites-state-card">
+        <text class="favorites-state-card__title">登录后可查看收藏内容</text>
+        <text class="favorites-state-card__desc">支持多端同步、批量导出与下载记录</text>
+        <button class="favorites-state-card__button" bindtap="handleLoginTap">
+          立即登录
+        </button>
+      </view>
+    </block>
+
+    <!-- 已登录态 -->
+    <block wx:elif="{{isLoggedIn}}">
+      <!-- 空状态：还没有任何收藏 -->
+      <block wx:if="{{favoriteList.length === 0}}">
+        <view class="favorites-empty">
+          <view class="favorites-empty__illustration"></view>
+          <text class="favorites-empty__title">你还没有收藏任何结论</text>
+          <text class="favorites-empty__desc">去搜索并收藏常用的二级结论吧</text>
+          <button class="favorites-empty__button" bindtap="handleGoSearchTap">
+            去搜索
+          </button>
+        </view>
+      </block>
+
+      <!-- 正常列表 -->
+      <block wx:else>
+        <!-- 顶部概览 -->
+        <view class="favorites-summary-card">
+          <view class="favorites-summary-card__top">
+            <text class="favorites-summary-card__title">共收藏 {{favoriteCount}} 条</text>
+            <view class="favorites-summary-card__actions">
+              <button
+                class="favorites-summary-card__action"
+                bindtap="handleBatchExportTap"
+              >
+                批量导出 PDF
+              </button>
+              <button
+                class="favorites-summary-card__action favorites-summary-card__action--secondary"
+                bindtap="handleManageToggleTap"
+              >
+                {{isManaging ? '完成' : '管理'}}
+              </button>
+            </view>
+          </view>
+
+          <text class="favorites-summary-card__meta" wx:if="{{lastFavoriteAt}}">
+            最近收藏：{{lastFavoriteAt}}
+          </text>
+        </view>
+
+        <!-- 搜索与筛选 -->
+        <view class="favorites-toolbar" style="top: {{stickyTopPx}}px;">
+          <view class="favorites-search-bar">
+            <input
+              class="favorites-search-bar__input"
+              type="text"
+              placeholder="搜索收藏标题 / 标签 / 关键词"
+              value="{{keyword}}"
+              bindinput="handleKeywordInput"
+              confirm-type="search"
+              bindconfirm="handleKeywordConfirm"
+            />
+          </view>
+
+          <scroll-view class="favorites-filter-row" scroll-x="true" show-scrollbar="false">
+            <view
+              class="favorites-filter-chip {{selectedModule === 'all' ? 'is-active' : ''}}"
+              data-module="all"
+              bindtap="handleModuleChange"
+            >
+              全部模块
+            </view>
+            <view
+              class="favorites-filter-chip {{selectedModule === 'function' ? 'is-active' : ''}}"
+              data-module="function"
+              bindtap="handleModuleChange"
+            >
+              函数
+            </view>
+            <view
+              class="favorites-filter-chip {{selectedModule === 'sequence' ? 'is-active' : ''}}"
+              data-module="sequence"
+              bindtap="handleModuleChange"
+            >
+              数列
+            </view>
+            <view
+              class="favorites-filter-chip {{selectedModule === 'inequality' ? 'is-active' : ''}}"
+              data-module="inequality"
+              bindtap="handleModuleChange"
+            >
+              不等式
+            </view>
+            <view
+              class="favorites-filter-chip {{selectedSort === 'recent' ? 'is-active' : ''}}"
+              data-sort="recent"
+              bindtap="handleSortChange"
+            >
+              最近收藏
+            </view>
+          </scroll-view>
+        </view>
+
+        <!-- 搜索 / 筛选结果为空 -->
+        <block wx:if="{{filteredFavoriteList.length === 0}}">
+          <view class="favorites-empty favorites-empty--compact">
+            <text class="favorites-empty__title">没有匹配到收藏内容</text>
+            <text class="favorites-empty__desc">换个关键词，或者切换模块再试试</text>
+          </view>
+        </block>
+
+        <!-- 列表 -->
+        <view class="favorites-list" wx:else>
+          <block wx:for="{{filteredFavoriteList}}" wx:key="id" wx:for-item="favorite">
+            <view class="favorite-card">
+              <!-- 管理态复选 -->
+              <view class="favorite-card__checkbox" wx:if="{{isManaging}}">
+                <checkbox
+                  value="{{favorite.id}}"
+                  checked="{{favorite.checked}}"
+                  data-id="{{favorite.id}}"
+                  bindtap="handleSelectItemTap"
+                />
+              </view>
+
+              <!-- 主体 -->
+              <view class="favorite-card__main" bindtap="handleFavoriteDetailTap" data-id="{{favorite.id}}">
+                <view class="favorite-card__header">
+                  <text class="favorite-card__title">{{favorite.title}}</text>
+                </view>
+
+                <view class="favorite-card__meta-row">
+                  <text class="favorite-card__module">模块：{{favorite.moduleLabel}}</text>
+                </view>
+
+                <view class="favorite-card__tags" wx:if="{{favorite.tags && favorite.tags.length}}">
+                  <block wx:for="{{favorite.tags}}" wx:key="*this" wx:for-item="tag">
+                    <text class="favorite-card__tag">{{tag}}</text>
+                  </block>
+                </view>
+
+                <text class="favorite-card__summary" wx:if="{{favorite.summary}}">
+                  {{favorite.summary}}
+                </text>
+              </view>
+
+              <!-- 非管理态操作区 -->
+              <view class="favorite-card__actions" wx:if="{{!isManaging}}">
+                <button
+                  class="favorite-card__action"
+                  data-id="{{favorite.id}}"
+                  bindtap="handleViewTap"
+                >
+                  查看
+                </button>
+                <button
+                  class="favorite-card__action"
+                  data-id="{{favorite.id}}"
+                  bindtap="handlePdfTap"
+                >
+                  PDF
+                </button>
+                <button
+                  class="favorite-card__action"
+                  data-id="{{favorite.id}}"
+                  bindtap="handleShareTap"
+                >
+                  分享
+                </button>
+              </view>
+            </view>
+          </block>
+        </view>
+
+        <!-- 管理态底部操作栏 -->
+        <view class="favorites-manage-bar" wx:if="{{isManaging}}">
+          <view class="favorites-manage-bar__info">
+            <text>已选择 {{selectedCount}} 条</text>
+          </view>
+
+          <view class="favorites-manage-bar__actions">
+            <button
+              class="favorites-manage-bar__button favorites-manage-bar__button--danger"
+              bindtap="handleBatchRemoveTap"
+            >
+              取消收藏
+            </button>
+            <button
+              class="favorites-manage-bar__button"
+              bindtap="handleBatchExportTap"
+            >
+              导出 PDF
+            </button>
+          </view>
+        </view>
+      </block>
+    </block>
+  </view>
+</view>

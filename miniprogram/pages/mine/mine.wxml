@@ -1,0 +1,156 @@
+<view class="mine-page">
+  <navigation-bar
+    title="我的"
+    back="{{false}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="mine-page__container">
+    <!-- 用户信息卡 -->
+    <view class="mine-user-card">
+      <block wx:if="{{isLoggedIn}}">
+        <view class="mine-user-card__main">
+          <image
+            class="mine-user-card__avatar"
+            src="{{userInfo.avatarUrl || defaultAvatar}}"
+            mode="aspectFill"
+          />
+          <view class="mine-user-card__content">
+            <text class="mine-user-card__nickname">{{userInfo.nickname || '微信用户'}}</text>
+            <text class="mine-user-card__meta">
+              已收藏 {{favoriteCount}} 条 · 剩余点数 {{pointBalance}}
+            </text>
+          </view>
+        </view>
+      </block>
+
+      <block wx:else>
+        <view class="mine-user-card__main">
+          <image
+            class="mine-user-card__avatar"
+            src="{{defaultAvatar}}"
+            mode="aspectFill"
+          />
+          <view class="mine-user-card__content">
+            <text class="mine-user-card__nickname">登录后可同步收藏与点数</text>
+            <text class="mine-user-card__meta">按需登录，不影响搜索与查看</text>
+          </view>
+        </view>
+
+        <button class="mine-user-card__login-btn" bindtap="handleLoginTap">
+          立即登录
+        </button>
+      </block>
+    </view>
+
+    <!-- 核心资产 -->
+    <view class="mine-section">
+      <view class="mine-section__header">
+        <text class="mine-section__title">核心资产</text>
+      </view>
+
+      <view class="mine-list">
+        <view class="mine-list-item" bindtap="handleFavoritesTap">
+          <view class="mine-list-item__left">
+            <text class="mine-list-item__label">我的收藏</text>
+          </view>
+          <view class="mine-list-item__right">
+            <text class="mine-list-item__value" wx:if="{{isLoggedIn}}">{{favoriteCount}} 条</text>
+            <text class="mine-list-item__arrow">></text>
+          </view>
+        </view>
+
+        <view class="mine-list-item" bindtap="handlePointsTap">
+          <view class="mine-list-item__left">
+            <text class="mine-list-item__label">PDF 点数</text>
+          </view>
+          <view class="mine-list-item__right">
+            <text class="mine-list-item__value" wx:if="{{isLoggedIn}}">{{pointBalance}} 点</text>
+            <text class="mine-list-item__arrow">></text>
+          </view>
+        </view>
+
+        <view class="mine-list-item" bindtap="handleExportRecordsTap">
+          <view class="mine-list-item__left">
+            <text class="mine-list-item__label">导出记录</text>
+          </view>
+          <view class="mine-list-item__right">
+            <text class="mine-list-item__arrow">></text>
+          </view>
+        </view>
+
+        <view class="mine-list-item" bindtap="handleShareRecordsTap">
+          <view class="mine-list-item__left">
+            <text class="mine-list-item__label">我的分享</text>
+          </view>
+          <view class="mine-list-item__right">
+            <text class="mine-list-item__arrow">></text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 快捷操作 -->
+    <view class="mine-section">
+      <view class="mine-section__header">
+        <text class="mine-section__title">快捷操作</text>
+      </view>
+
+      <view class="mine-action-group">
+        <button class="mine-action-button" bindtap="handleBatchExportTap">
+          批量导出收藏 PDF
+        </button>
+        <button
+          class="mine-action-button mine-action-button--secondary"
+          bindtap="handleRewardAdTap"
+        >
+          看广告获取下载点数
+        </button>
+      </view>
+    </view>
+
+    <!-- 更多服务 -->
+    <view class="mine-section">
+      <view class="mine-section__header">
+        <text class="mine-section__title">更多服务</text>
+      </view>
+
+      <view class="mine-list">
+        <view class="mine-list-item" bindtap="handleHistoryTap">
+          <view class="mine-list-item__left">
+            <text class="mine-list-item__label">最近浏览</text>
+          </view>
+          <view class="mine-list-item__right">
+            <text class="mine-list-item__arrow">></text>
+          </view>
+        </view>
+
+        <view class="mine-list-item" bindtap="handleFeedbackTap">
+          <view class="mine-list-item__left">
+            <text class="mine-list-item__label">意见反馈</text>
+          </view>
+          <view class="mine-list-item__right">
+            <text class="mine-list-item__arrow">></text>
+          </view>
+        </view>
+
+        <view class="mine-list-item" bindtap="handleSettingsTap">
+          <view class="mine-list-item__left">
+            <text class="mine-list-item__label">设置</text>
+          </view>
+          <view class="mine-list-item__right">
+            <text class="mine-list-item__arrow">></text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 底部协议 -->
+    <view class="mine-footer">
+      <text class="mine-footer__link" bindtap="handleUserAgreementTap">用户协议</text>
+      <text class="mine-footer__divider"> / </text>
+      <text class="mine-footer__link" bindtap="handlePrivacyTap">隐私政策</text>
+    </view>
+  </view>
+</view>

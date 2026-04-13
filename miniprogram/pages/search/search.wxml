@@ -1,8 +1,12 @@
 <view class="page">
-  <view
-    class="header"
-    style="padding-top: calc({{statusBarHeight}}px + 20rpx);"
-  >
+  <navigation-bar
+    title="高中数学二级结论搜索"
+    back="{{false}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="header">
     <view class="title">Math Search</view>
     <view class="sub">
       {{total}} indexed items, {{hotCount}} hot points

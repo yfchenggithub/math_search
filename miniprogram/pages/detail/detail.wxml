@@ -1,5 +1,5 @@
 <view class="page">
-  <navigation-bar back="{{true}}"></navigation-bar>
+  <navigation-bar back="{{true}}" fixed="{{true}}" placeholder="{{true}}"></navigation-bar>
 
   <view class="toolbar">
     <view class="toolbar-main">

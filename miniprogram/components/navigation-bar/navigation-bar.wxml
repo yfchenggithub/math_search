@@ -1,7 +1,12 @@
 <view class="weui-navigation-bar {{extClass}}">
   <view
+    wx:if="{{fixed && placeholder}}"
+    class="weui-navigation-bar__placeholder"
+    style="{{placeholderStyle}}"
+  ></view>
+  <view
     class="weui-navigation-bar__inner {{ios ? 'ios' : 'android'}}"
-    style="color: {{color}}; background: {{background}}; {{displayStyle}}; {{safeAreaTop}};"
+    style="color: {{color}}; background: {{background}}; {{displayStyle}}; {{safeAreaTop}}; {{fixedStyle}}"
   >
     <view
       class="weui-navigation-bar__content"
@@ -17,7 +22,7 @@
                 hover-class="weui-active"
                 hover-stay-time="100"
                 aria-role="button"
-                aria-label="返回"
+                aria-label="杩斿洖"
               >
                 <view class="weui-navigation-bar__button weui-navigation-bar__btn_goback"></view>
               </view>
@@ -31,7 +36,7 @@
                 class="weui-navigation-bar__btn_home_wrapper"
                 hover-class="weui-active"
                 aria-role="button"
-                aria-label="首页"
+                aria-label="棣栭〉"
               >
                 <view class="weui-navigation-bar__button weui-navigation-bar__btn_home"></view>
               </view>
@@ -49,7 +54,7 @@
           <view
             class="weui-loading"
             aria-role="img"
-            aria-label="加载中"
+            aria-label="loading"
           ></view>
         </view>
 
