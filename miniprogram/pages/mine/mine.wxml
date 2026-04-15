@@ -50,6 +50,47 @@
           去登录
         </button>
       </block>
+
+      <view
+        wx:if="{{loginStage !== 'idle' || loginErrorText || loginWarningText}}"
+        class="mine-login-feedback {{loginStage === 'failed' ? 'mine-login-feedback--error' : ''}} {{loginStage === 'partial_success' ? 'mine-login-feedback--warning' : ''}} {{loginDebugVisible ? 'mine-login-feedback--debug' : ''}}"
+      >
+        <view class="mine-login-feedback__head">
+          <text class="mine-login-feedback__icon">
+            {{loginStage === 'failed' ? '!' : (loginStage === 'partial_success' ? 'i' : '·')}}
+          </text>
+          <text class="mine-login-feedback__title">
+            {{loginHintText || '正在处理登录...'}}
+          </text>
+        </view>
+
+        <text wx:if="{{loginErrorText}}" class="mine-login-feedback__desc">
+          {{loginErrorText}}
+        </text>
+        <text wx:elif="{{loginWarningText}}" class="mine-login-feedback__desc">
+          {{loginWarningText}}
+        </text>
+
+        <view class="mine-login-feedback__tags">
+          <text wx:if="{{loginTraceId}}" class="mine-login-feedback__tag">trace: {{loginTraceId}}</text>
+          <text wx:if="{{loginElapsedMs > 0}}" class="mine-login-feedback__tag">{{loginElapsedMs}} ms</text>
+        </view>
+
+        <button
+          wx:if="{{loginStage === 'failed'}}"
+          class="mine-login-feedback__retry"
+          bindtap="handleLoginTap"
+        >
+          重新登录
+        </button>
+
+        <text
+          wx:if="{{loginDebugVisible && loginDebugText}}"
+          class="mine-login-feedback__debug"
+        >
+          {{loginDebugText}}
+        </text>
+      </view>
     </view>
 
     <view class="mine-section">

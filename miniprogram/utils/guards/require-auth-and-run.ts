@@ -1,5 +1,11 @@
 import { authService } from "../../services/auth/auth-service";
 import type { RequireAuthOptions } from "../../services/auth/auth-types";
+import {
+  createLoginTraceId,
+  getLoginStageText,
+  mapAuthFlowError,
+} from "../auth/auth-login-feedback";
+import { getErrorMessage } from "../request";
 
 function showLoginConfirmModal(options: RequireAuthOptions): Promise<boolean> {
   return new Promise((resolve) => {
@@ -23,30 +29,75 @@ export async function requireAuthAndRun<T>(
   action: () => Promise<T> | T,
   options: RequireAuthOptions = {},
 ): Promise<T | undefined> {
+  const loginSource = options.loginSource || "unknown";
+
   if (authService.isAuthenticated()) {
     return action();
   }
 
   const confirmed = await showLoginConfirmModal(options);
   if (!confirmed) {
+    console.info("[auth-flow] [guard] 用户取消登录确认", {
+      loginSource,
+    });
     return undefined;
   }
 
+  const traceId = createLoginTraceId();
+
   try {
     wx.showLoading({
-      title: "登录中...",
+      title: "正在登录...",
       mask: true,
     });
 
-    await authService.login();
-    return await action();
-  } catch (error) {
-    wx.showToast({
-      title: "登录失败，请重试",
-      icon: "none",
+    await authService.login({
+      traceId,
+      onStageChange: (payload) => {
+        console.info("[auth-flow] [guard] 阶段切换", {
+          traceId: payload.traceId || traceId,
+          stage: payload.stage,
+          message: payload.message || getLoginStageText(payload.stage),
+          loginSource,
+        });
+      },
     });
+  } catch (error) {
+    const mappedError = mapAuthFlowError(error);
+    console.warn("[auth-flow] [guard] 登录失败", {
+      traceId,
+      loginSource,
+      category: mappedError.category,
+      debugMessage: mappedError.debugMessage,
+      error,
+    });
+
+    if (!mappedError.isUserCancelled && mappedError.shouldToast) {
+      wx.showToast({
+        title: mappedError.userMessage,
+        icon: "none",
+      });
+    }
+
     return undefined;
   } finally {
     wx.hideLoading();
+  }
+
+  try {
+    return await action();
+  } catch (error) {
+    console.warn("[auth-flow] [guard] 已登录但受保护动作执行失败", {
+      traceId,
+      loginSource,
+      error,
+    });
+
+    wx.showToast({
+      title: getErrorMessage(error, "操作未完成，请稍后重试"),
+      icon: "none",
+    });
+
+    return undefined;
   }
 }

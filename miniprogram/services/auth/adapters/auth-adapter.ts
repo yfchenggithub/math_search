@@ -1,6 +1,6 @@
-import type { LoginResult } from "../auth-types";
+import type { AuthLoginTraceOptions, LoginResult } from "../auth-types";
 
 export interface AuthAdapter {
-  login(): Promise<LoginResult>;
+  login(options?: AuthLoginTraceOptions): Promise<LoginResult>;
   logout?(): Promise<void> | void;
 }

@@ -1,5 +1,17 @@
 export type AuthStatus = "visitor" | "logging_in" | "authenticated" | "expired";
 
+export type AuthLoginStage =
+  | "idle"
+  | "preparing"
+  | "wechat_code"
+  | "server_sign_in"
+  | "session_ready"
+  | "syncing_profile"
+  | "loading_summary"
+  | "success"
+  | "partial_success"
+  | "failed";
+
 export type AuthPlatform = "mini_program" | "h5" | "web" | "android" | "ios";
 export type AuthProvider =
   | "wechat"
@@ -30,12 +42,25 @@ export interface LoginResult {
   session: AuthSession;
 }
 
+export interface AuthLoginStagePayload {
+  stage: AuthLoginStage;
+  message?: string;
+  traceId?: string;
+  timestamp?: number;
+}
+
+export interface AuthLoginTraceOptions {
+  traceId?: string;
+  onStageChange?: (payload: AuthLoginStagePayload) => void;
+}
+
 export interface RequireAuthOptions {
   title?: string;
   content?: string;
   confirmText?: string;
   cancelText?: string;
   showCancel?: boolean;
+  loginSource?: "mine_page" | "guard" | "favorites" | "points" | "unknown";
 }
 
 export interface WechatMiniAppLoginRequest {
