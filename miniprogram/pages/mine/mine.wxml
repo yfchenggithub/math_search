@@ -50,47 +50,6 @@
           去登录
         </button>
       </block>
-
-      <view
-        wx:if="{{loginStage !== 'idle' || loginErrorText || loginWarningText}}"
-        class="mine-login-feedback {{loginStage === 'failed' ? 'mine-login-feedback--error' : ''}} {{loginStage === 'partial_success' ? 'mine-login-feedback--warning' : ''}} {{loginDebugVisible ? 'mine-login-feedback--debug' : ''}}"
-      >
-        <view class="mine-login-feedback__head">
-          <text class="mine-login-feedback__icon">
-            {{loginStage === 'failed' ? '!' : (loginStage === 'partial_success' ? 'i' : '·')}}
-          </text>
-          <text class="mine-login-feedback__title">
-            {{loginHintText || '正在处理登录...'}}
-          </text>
-        </view>
-
-        <text wx:if="{{loginErrorText}}" class="mine-login-feedback__desc">
-          {{loginErrorText}}
-        </text>
-        <text wx:elif="{{loginWarningText}}" class="mine-login-feedback__desc">
-          {{loginWarningText}}
-        </text>
-
-        <view class="mine-login-feedback__tags">
-          <text wx:if="{{loginTraceId}}" class="mine-login-feedback__tag">trace: {{loginTraceId}}</text>
-          <text wx:if="{{loginElapsedMs > 0}}" class="mine-login-feedback__tag">{{loginElapsedMs}} ms</text>
-        </view>
-
-        <button
-          wx:if="{{loginStage === 'failed'}}"
-          class="mine-login-feedback__retry"
-          bindtap="handleLoginTap"
-        >
-          重新登录
-        </button>
-
-        <text
-          wx:if="{{loginDebugVisible && loginDebugText}}"
-          class="mine-login-feedback__debug"
-        >
-          {{loginDebugText}}
-        </text>
-      </view>
     </view>
 
     <view class="mine-section">
@@ -208,6 +167,57 @@
       <text class="mine-footer__link" bindtap="handleUserAgreementTap">用户协议</text>
       <text class="mine-footer__divider"> / </text>
       <text class="mine-footer__link" bindtap="handlePrivacyTap">隐私政策</text>
+    </view>
+  </view>
+
+  <view
+    wx:if="{{authStatusToastVisible}}"
+    class="auth-status-toast-layer"
+    catchtouchmove="noop"
+  >
+    <view
+      class="auth-status-toast-card auth-status-toast-card--{{authStatusToastType}}"
+      catchtap="noop"
+    >
+      <view class="auth-status-toast-head">
+        <view class="auth-status-toast-dot auth-status-toast-dot--{{authStatusToastType}}">
+          <view
+            wx:if="{{authStatusToastType === 'logging'}}"
+            class="auth-status-toast-spinner"
+          ></view>
+          <view
+            wx:elif="{{authStatusToastType === 'success'}}"
+            class="auth-status-toast-check"
+          >✓</view>
+          <view
+            wx:else
+            class="auth-status-toast-core"
+          ></view>
+        </view>
+        <text class="auth-status-toast-title">{{authStatusToastTitle}}</text>
+      </view>
+
+      <text class="auth-status-toast-message">{{authStatusToastMessage}}</text>
+
+      <view
+        wx:if="{{authStatusToastRetryable || authStatusToastClosable}}"
+        class="auth-status-toast-actions"
+      >
+        <button
+          wx:if="{{authStatusToastRetryable}}"
+          class="auth-status-toast-btn auth-status-toast-btn--primary"
+          bindtap="handleAuthStatusRetryTap"
+        >
+          重试
+        </button>
+        <button
+          wx:if="{{authStatusToastClosable}}"
+          class="auth-status-toast-btn auth-status-toast-btn--ghost"
+          bindtap="handleAuthStatusCloseTap"
+        >
+          关闭
+        </button>
+      </view>
     </view>
   </view>
 </view>

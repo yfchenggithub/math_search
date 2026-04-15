@@ -3,6 +3,7 @@ import { getFavoritesList } from "../../services/api/favorites-api";
 import { authService } from "../../services/auth/auth-service";
 import type {
   AuthLoginStage,
+  AuthStatusToastType,
   AuthStatus,
   AuthUser,
   RequireAuthOptions,
@@ -16,6 +17,13 @@ import {
   isAuthDebugEnv,
   mapAuthFlowError,
 } from "../../utils/auth/auth-login-feedback";
+import {
+  hideAuthStatusToast,
+  retryAuthStatusToast,
+  showAuthStatusToast,
+  subscribeAuthStatusToast,
+  type AuthStatusToastState,
+} from "../../utils/auth/auth-status-feedback";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { RequestError } from "../../utils/request";
 
@@ -57,6 +65,12 @@ type MinePageData = {
   loginDebugVisible: boolean;
   loginDebugText: string;
   loginTraceId: string;
+  authStatusToastVisible: boolean;
+  authStatusToastType: AuthStatusToastType;
+  authStatusToastTitle: string;
+  authStatusToastMessage: string;
+  authStatusToastRetryable: boolean;
+  authStatusToastClosable: boolean;
 };
 
 Page<MinePageData, WechatMiniprogram.IAnyObject>({
@@ -76,10 +90,18 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     loginDebugVisible: false,
     loginDebugText: "",
     loginTraceId: "",
+    authStatusToastVisible: false,
+    authStatusToastType: "idle",
+    authStatusToastTitle: "",
+    authStatusToastMessage: "",
+    authStatusToastRetryable: false,
+    authStatusToastClosable: false,
   },
 
   unsubscribeAuthStore: undefined as undefined | (() => void),
+  unsubscribeAuthStatusToast: undefined as undefined | (() => void),
   isLoginDebugEnv: false,
+  isPageVisible: false,
   loginFlowStartedAt: 0,
   loginElapsedTimer: undefined as undefined | number,
   latestLoginErrorCategory: "" as "" | AuthFlowErrorCategory,
@@ -95,9 +117,13 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     this.unsubscribeAuthStore = authStore.subscribe(() => {
       this.syncAuthState();
     });
+    this.unsubscribeAuthStatusToast = subscribeAuthStatusToast((state) => {
+      this.syncAuthStatusToast(state);
+    });
   },
 
   onShow() {
+    this.isPageVisible = true;
     this.syncAuthState();
 
     if (this.data.isLoggedIn) {
@@ -112,10 +138,19 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     }
   },
 
+  onHide() {
+    this.isPageVisible = false;
+    hideAuthStatusToast("page_hide");
+  },
+
   onUnload() {
+    this.isPageVisible = false;
     this.stopLoginElapsedTimer();
     this.unsubscribeAuthStore?.();
     this.unsubscribeAuthStore = undefined;
+    this.unsubscribeAuthStatusToast?.();
+    this.unsubscribeAuthStatusToast = undefined;
+    hideAuthStatusToast("page_unload");
   },
 
   syncAuthState() {
@@ -149,6 +184,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     this.loginFlowStartedAt = 0;
     this.latestLoginErrorCategory = "";
     this.latestLoginDebugMessage = "";
+    hideAuthStatusToast("reset_feedback");
 
     this.setData({
       loginStage: "idle",
@@ -191,6 +227,18 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     });
 
     this.updateLoginDebugText(stage);
+
+    if (this.isLoggingStage(stage)) {
+      if (this.isPageVisible) {
+        showAuthStatusToast({
+          type: "logging",
+          title: "登录中",
+          message: hintText || "正在处理登录...",
+          traceId,
+          source: "mine",
+        });
+      }
+    }
   },
 
   setLoginFailed(error: unknown) {
@@ -213,11 +261,31 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       error,
     });
 
-    if (!mappedError.isUserCancelled && mappedError.shouldToast) {
-      wx.showToast({
-        title: mappedError.userMessage,
-        icon: "none",
-      });
+    if (mappedError.isUserCancelled) {
+      if (this.isPageVisible) {
+        showAuthStatusToast({
+          type: "cancelled",
+          title: "已取消登录",
+          message: mappedError.userMessage,
+          traceId: this.data.loginTraceId,
+          source: "mine",
+        });
+      }
+    } else {
+      if (this.isPageVisible) {
+        showAuthStatusToast({
+          type: "error",
+          title: "登录未完成",
+          message: mappedError.userMessage,
+          retryable: true,
+          closable: true,
+          traceId: this.data.loginTraceId,
+          source: "mine",
+          onRetry: () => {
+            void this.performLoginFlow();
+          },
+        });
+      }
     }
 
     this.updateLoginDebugText("failed");
@@ -241,6 +309,16 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       elapsedMs: this.getLoginElapsedMs(),
     });
 
+    if (this.isPageVisible) {
+      showAuthStatusToast({
+        type: "warning",
+        title: "登录已完成",
+        message: warning,
+        traceId: this.data.loginTraceId,
+        source: "mine",
+      });
+    }
+
     this.updateLoginDebugText("partial_success");
   },
 
@@ -260,6 +338,16 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       traceId: this.data.loginTraceId,
       elapsedMs: this.getLoginElapsedMs(),
     });
+
+    if (this.isPageVisible) {
+      showAuthStatusToast({
+        type: "success",
+        title: "已完成登录",
+        message: "登录成功",
+        traceId: this.data.loginTraceId,
+        source: "mine",
+      });
+    }
 
     this.updateLoginDebugText("success");
   },
@@ -370,10 +458,6 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
 
       if (refreshOutcome.stage === "success") {
         this.setLoginSuccess();
-        wx.showToast({
-          title: "已完成登录",
-          icon: "success",
-        });
       } else {
         this.setLoginPartialSuccess(refreshOutcome.warningText || "已登录，部分数据稍后刷新");
       }
@@ -518,6 +602,22 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     await this.performLoginFlow();
   },
 
+  handleAuthStatusRetryTap() {
+    console.info("[auth-status-toast] mine 页面点击重试", {
+      traceId: this.data.loginTraceId,
+    });
+
+    const retried = retryAuthStatusToast();
+    if (!retried) {
+      void this.performLoginFlow();
+    }
+  },
+
+  handleAuthStatusCloseTap() {
+    console.info("[auth-status-toast] mine 页面手动关闭");
+    hideAuthStatusToast("manual_close");
+  },
+
   handleLogoutTap() {
     wx.showModal({
       title: "退出登录",
@@ -652,6 +752,10 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
+  noop() {
+    return;
+  },
+
   getLoginElapsedMs(): number {
     if (!this.loginFlowStartedAt) {
       return this.data.loginElapsedMs;
@@ -682,5 +786,27 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
 
     clearInterval(this.loginElapsedTimer);
     this.loginElapsedTimer = undefined;
+  },
+
+  syncAuthStatusToast(state: AuthStatusToastState) {
+    this.setData({
+      authStatusToastVisible: state.visible,
+      authStatusToastType: state.type,
+      authStatusToastTitle: state.title,
+      authStatusToastMessage: state.message,
+      authStatusToastRetryable: state.retryable,
+      authStatusToastClosable: state.closable,
+    });
+  },
+
+  isLoggingStage(stage: AuthLoginStage): boolean {
+    return (
+      stage === "preparing"
+      || stage === "wechat_code"
+      || stage === "server_sign_in"
+      || stage === "session_ready"
+      || stage === "syncing_profile"
+      || stage === "loading_summary"
+    );
   },
 });

@@ -110,7 +110,7 @@ class AuthService {
     authStore.setLoggingIn();
     this.notifyStage({
       stage: "preparing",
-      message: "正在准备登录流程...",
+      message: "正在准备登录...",
       traceId,
       timestamp: Date.now(),
     });

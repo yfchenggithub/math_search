@@ -12,6 +12,14 @@ export type AuthLoginStage =
   | "partial_success"
   | "failed";
 
+export type AuthStatusToastType =
+  | "idle"
+  | "logging"
+  | "success"
+  | "warning"
+  | "error"
+  | "cancelled";
+
 export type AuthPlatform = "mini_program" | "h5" | "web" | "android" | "ios";
 export type AuthProvider =
   | "wechat"
@@ -52,6 +60,15 @@ export interface AuthLoginStagePayload {
 export interface AuthLoginTraceOptions {
   traceId?: string;
   onStageChange?: (payload: AuthLoginStagePayload) => void;
+}
+
+export interface AuthStatusToastPayload {
+  type: AuthStatusToastType;
+  title?: string;
+  message?: string;
+  traceId?: string;
+  retryable?: boolean;
+  closable?: boolean;
 }
 
 export interface RequireAuthOptions {

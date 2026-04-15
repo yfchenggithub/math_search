@@ -5,6 +5,10 @@ import {
   getLoginStageText,
   mapAuthFlowError,
 } from "../auth/auth-login-feedback";
+import {
+  hasAuthStatusToastSubscriber,
+  showAuthStatusToast,
+} from "../auth/auth-status-feedback";
 import { getErrorMessage } from "../request";
 
 function showLoginConfirmModal(options: RequireAuthOptions): Promise<boolean> {
@@ -44,24 +48,58 @@ export async function requireAuthAndRun<T>(
   }
 
   const traceId = createLoginTraceId();
+  const hasStatusToastHost = hasAuthStatusToastSubscriber();
 
   try {
-    wx.showLoading({
-      title: "正在登录...",
-      mask: true,
-    });
+    if (hasStatusToastHost) {
+      showAuthStatusToast({
+        type: "logging",
+        title: "登录中",
+        message: getLoginStageText("preparing"),
+        traceId,
+        source: "guard",
+      });
+    } else {
+      wx.showLoading({
+        title: "正在登录...",
+        mask: true,
+      });
+    }
 
     await authService.login({
       traceId,
       onStageChange: (payload) => {
+        const stageText = payload.message || getLoginStageText(payload.stage);
         console.info("[auth-flow] [guard] 阶段切换", {
           traceId: payload.traceId || traceId,
           stage: payload.stage,
-          message: payload.message || getLoginStageText(payload.stage),
+          message: stageText,
           loginSource,
+        });
+
+        if (!hasStatusToastHost || payload.stage === "failed") {
+          return;
+        }
+
+        showAuthStatusToast({
+          type: "logging",
+          title: "登录中",
+          message: stageText || "正在处理登录...",
+          traceId: payload.traceId || traceId,
+          source: "guard",
         });
       },
     });
+
+    if (hasStatusToastHost) {
+      showAuthStatusToast({
+        type: "success",
+        title: "已完成登录",
+        message: "登录成功",
+        traceId,
+        source: "guard",
+      });
+    }
   } catch (error) {
     const mappedError = mapAuthFlowError(error);
     console.warn("[auth-flow] [guard] 登录失败", {
@@ -72,7 +110,30 @@ export async function requireAuthAndRun<T>(
       error,
     });
 
-    if (!mappedError.isUserCancelled && mappedError.shouldToast) {
+    if (hasStatusToastHost) {
+      if (mappedError.isUserCancelled) {
+        showAuthStatusToast({
+          type: "cancelled",
+          title: "已取消登录",
+          message: mappedError.userMessage,
+          traceId,
+          source: "guard",
+        });
+      } else {
+        showAuthStatusToast({
+          type: "error",
+          title: "登录未完成",
+          message: mappedError.userMessage,
+          retryable: true,
+          closable: true,
+          traceId,
+          source: "guard",
+          onRetry: () => {
+            void requireAuthAndRun(action, options);
+          },
+        });
+      }
+    } else if (!mappedError.isUserCancelled && mappedError.shouldToast) {
       wx.showToast({
         title: mappedError.userMessage,
         icon: "none",
@@ -81,7 +142,9 @@ export async function requireAuthAndRun<T>(
 
     return undefined;
   } finally {
-    wx.hideLoading();
+    if (!hasStatusToastHost) {
+      wx.hideLoading();
+    }
   }
 
   try {

@@ -102,13 +102,13 @@ export class MiniProgramWechatAuthAdapter implements AuthAdapter {
       traceId,
     });
 
-    emitStage(options, "preparing", "正在准备微信登录...");
+    emitStage(options, "preparing", "正在准备登录...");
 
     try {
       emitStage(options, "wechat_code", "正在获取微信登录凭证...");
       const code = await wxLoginAsync();
 
-      emitStage(options, "server_sign_in", "正在连接登录服务...");
+      emitStage(options, "server_sign_in", "正在连接服务器...");
       const response = await loginByWechatMiniProgram({
         code,
         platform: "mini_program",

@@ -218,13 +218,13 @@ export function getLoginStageText(stage: AuthLoginStage): string {
     case "wechat_code":
       return "正在获取微信登录凭证...";
     case "server_sign_in":
-      return "正在连接登录服务...";
+      return "正在连接服务器...";
     case "session_ready":
       return "登录凭证已建立";
     case "syncing_profile":
       return "正在同步个人资料...";
     case "loading_summary":
-      return "正在加载收藏统计...";
+      return "正在读取收藏统计...";
     case "success":
       return "已完成登录";
     case "partial_success":
