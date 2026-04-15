@@ -1,16 +1,18 @@
 import { getNavLayout } from "../../utils/nav";
+import {
+  getFavoritesList,
+  removeFavorite,
+  type FavoriteRecord,
+} from "../../services/api/favorites-api";
+import { authService } from "../../services/auth/auth-service";
+import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
+import { RequestError, getErrorMessage } from "../../utils/request";
 
-interface FavoriteItem {
-  id: string;
-  title: string;
-  module: string;
-  moduleLabel: string;
-  tags: string[];
-  summary: string;
-  favoritedAt: string;
-  pdfAvailable: boolean;
+type FavoriteItem = FavoriteRecord & {
   checked?: boolean;
-}
+};
+
+type FavoritesViewState = "auth_required" | "loading" | "empty" | "ready" | "error";
 
 interface FavoritesPageData {
   isLoggedIn: boolean;
@@ -24,17 +26,14 @@ interface FavoritesPageData {
   lastFavoriteAt: string;
   favoriteList: FavoriteItem[];
   filteredFavoriteList: FavoriteItem[];
+  viewState: FavoritesViewState;
+  errorMessage: string;
   statusBarHeightPx: number;
   navBarHeightPx: number;
   navTotalHeightPx: number;
   stickyTopPx: number;
   safeBottomInsetPx: number;
 }
-
-const STORAGE_KEYS = {
-  token: "auth_token",
-  favoriteList: "favorite_list",
-} as const;
 
 const MODULE_LABEL_MAP: Record<string, string> = {
   all: "全部",
@@ -68,60 +67,19 @@ function formatDateTime(input: string): string {
   return `${year}-${month}-${day} ${hour}:${minute}`;
 }
 
-function normalizeFavorite(
-  raw: Partial<FavoriteItem> & { id: string; title: string },
-): FavoriteItem {
-  const module = String(raw.module || "").trim() || "function";
-
+function normalizeFavorite(item: FavoriteRecord): FavoriteItem {
+  const module = String(item.module || "").trim() || "function";
   return {
-    id: raw.id,
-    title: String(raw.title || "").trim() || "未命名结论",
+    ...item,
     module,
-    moduleLabel: raw.moduleLabel || MODULE_LABEL_MAP[module] || module,
-    tags: Array.isArray(raw.tags) ? raw.tags.filter(Boolean) : [],
-    summary: String(raw.summary || "").trim(),
-    favoritedAt: formatDateTime(String(raw.favoritedAt || "")),
-    pdfAvailable: Boolean(raw.pdfAvailable),
-    checked: Boolean(raw.checked),
+    moduleLabel: item.moduleLabel || MODULE_LABEL_MAP[module] || module,
+    title: String(item.title || "").trim() || "未命名结论",
+    tags: Array.isArray(item.tags) ? item.tags.filter(Boolean) : [],
+    summary: String(item.summary || "").trim(),
+    favoritedAt: formatDateTime(String(item.favoritedAt || "")),
+    pdfAvailable: Boolean(item.pdfAvailable),
+    checked: false,
   };
-}
-
-function getMockFavorites(): FavoriteItem[] {
-  return [
-    {
-      id: "I022",
-      title: "二元分式与不等式（倒数和 >= 4/和）",
-      module: "inequality",
-      moduleLabel: "不等式",
-      tags: ["均值不等式", "分式", "常用结论"],
-      summary: "适用于正数条件下的倒数和放缩，是高频秒杀型二级结论。",
-      favoritedAt: "2026-04-13 14:30",
-      pdfAvailable: true,
-      checked: false,
-    },
-    {
-      id: "F013",
-      title: "函数单调性与零点个数联动判断",
-      module: "function",
-      moduleLabel: "函数",
-      tags: ["单调性", "零点", "导数"],
-      summary: "用于处理参数范围、零点个数、交点个数等综合题型。",
-      favoritedAt: "2026-04-12 21:10",
-      pdfAvailable: true,
-      checked: false,
-    },
-    {
-      id: "S009",
-      title: "等差数列前 n 项和最值切入",
-      module: "sequence",
-      moduleLabel: "数列",
-      tags: ["数列", "前n项和", "最值"],
-      summary: "适合与二次函数、配方法联动使用，常见于压轴前两问。",
-      favoritedAt: "2026-04-11 09:20",
-      pdfAvailable: false,
-      checked: false,
-    },
-  ];
 }
 
 Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
@@ -137,7 +95,8 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     lastFavoriteAt: "",
     favoriteList: [],
     filteredFavoriteList: [],
-
+    viewState: "auth_required",
+    errorMessage: "",
     statusBarHeightPx: 0,
     navBarHeightPx: 44,
     navTotalHeightPx: 64,
@@ -146,65 +105,86 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
   },
 
   onLoad() {
+    authService.init();
     this.setData(getNavLayout());
-    this.bootstrapPage();
+    void this.bootstrapPage();
   },
 
   onShow() {
     this.setData(getNavLayout());
-    this.syncLoginState();
-    if (this.data.isLoggedIn) {
-      this.loadFavorites();
-    }
+    void this.bootstrapPage();
   },
 
-  bootstrapPage() {
-    this.syncLoginState();
-    if (!this.data.isLoggedIn) {
+  async bootstrapPage() {
+    if (!authService.isAuthenticated()) {
+      this.enterAuthRequiredState();
       return;
     }
-    this.loadFavorites();
+
+    this.setData({
+      isLoggedIn: true,
+    });
+
+    await this.loadFavorites();
   },
 
-  syncLoginState() {
-    const token = wx.getStorageSync(STORAGE_KEYS.token);
+  enterAuthRequiredState() {
     this.setData({
-      isLoggedIn: Boolean(token),
+      isLoggedIn: false,
+      isLoading: false,
+      isManaging: false,
+      favoriteCount: 0,
+      selectedCount: 0,
+      lastFavoriteAt: "",
+      favoriteList: [],
+      filteredFavoriteList: [],
+      viewState: "auth_required",
+      errorMessage: "",
     });
   },
 
-  loadFavorites() {
-    this.setData({ isLoading: true });
+  async loadFavorites() {
+    this.setData({
+      isLoading: true,
+      errorMessage: "",
+      viewState: "loading",
+    });
 
     try {
-      const cached = wx.getStorageSync(STORAGE_KEYS.favoriteList);
-      const sourceList =
-        Array.isArray(cached) && cached.length ? cached : getMockFavorites();
-      const favoriteList = sourceList.map((item) => normalizeFavorite(item));
+      const response = await getFavoritesList();
+      const favoriteList = response.list.map((item) => normalizeFavorite(item));
+      const favoriteCount = typeof response.total === "number"
+        ? response.total
+        : favoriteList.length;
 
       this.setData(
         {
           favoriteList,
-          favoriteCount: favoriteList.length,
+          favoriteCount,
           lastFavoriteAt: favoriteList[0]?.favoritedAt || "",
+          isManaging: false,
         },
         () => {
           this.applyFilters();
+
+          this.setData({
+            viewState: this.data.filteredFavoriteList.length ? "ready" : "empty",
+          });
         },
       );
     } catch (error) {
-      console.error("[favorites] loadFavorites failed:", error);
-      wx.showToast({
-        title: "收藏加载失败",
-        icon: "none",
+      if (error instanceof RequestError && error.statusCode === 401) {
+        this.enterAuthRequiredState();
+        return;
+      }
+
+      this.setData({
+        viewState: "error",
+        errorMessage: getErrorMessage(error, "收藏加载失败"),
       });
     } finally {
       this.setData({ isLoading: false });
     }
-  },
-
-  persistFavorites(nextList: FavoriteItem[]) {
-    wx.setStorageSync(STORAGE_KEYS.favoriteList, nextList);
   },
 
   applyFilters() {
@@ -226,10 +206,11 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
           item.title,
           item.summary,
           item.moduleLabel,
-          ...item.tags,
+          ...(Array.isArray(item.tags) ? item.tags : []),
         ]
           .join(" ")
           .toLowerCase();
+
         return haystack.includes(keyword);
       });
     }
@@ -265,16 +246,20 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
-  handleLoginTap() {
-    wx.navigateTo({
-      url: "/pages/login/login",
-      fail: () => {
-        wx.showToast({
-          title: "请接入登录页",
-          icon: "none",
-        });
+  async handleLoginTap() {
+    await requireAuthAndRun(
+      async () => {
+        await this.bootstrapPage();
       },
-    });
+      {
+        title: "请先登录",
+        content: "登录后可查看和管理收藏列表",
+      },
+    );
+  },
+
+  handleRetryTap() {
+    void this.loadFavorites();
   },
 
   handleGoSearchTap() {
@@ -293,36 +278,56 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       },
       () => {
         this.applyFilters();
+        if (this.data.isLoggedIn) {
+          this.setData({
+            viewState: this.data.filteredFavoriteList.length ? "ready" : "empty",
+          });
+        }
       },
     );
   },
 
   handleKeywordConfirm() {
     this.applyFilters();
+    if (this.data.isLoggedIn) {
+      this.setData({
+        viewState: this.data.filteredFavoriteList.length ? "ready" : "empty",
+      });
+    }
   },
 
   handleModuleChange(event: WechatMiniprogram.BaseEvent) {
     const module = String(event.currentTarget.dataset.module || "all");
+
     this.setData(
       {
         selectedModule: module,
       },
       () => {
         this.applyFilters();
+        if (this.data.isLoggedIn) {
+          this.setData({
+            viewState: this.data.filteredFavoriteList.length ? "ready" : "empty",
+          });
+        }
       },
     );
   },
 
   handleSortChange(event: WechatMiniprogram.BaseEvent) {
-    const sort = String(event.currentTarget.dataset.sort || "recent") as
-      | "recent"
-      | "title";
+    const sort = String(event.currentTarget.dataset.sort || "recent") as "recent" | "title";
+
     this.setData(
       {
         selectedSort: sort,
       },
       () => {
         this.applyFilters();
+        if (this.data.isLoggedIn) {
+          this.setData({
+            viewState: this.data.filteredFavoriteList.length ? "ready" : "empty",
+          });
+        }
       },
     );
   },
@@ -354,6 +359,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       if (item.id !== targetId) {
         return item;
       }
+
       return {
         ...item,
         checked: !item.checked,
@@ -380,7 +386,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       url: `/pages/detail/detail?id=${id}`,
       fail: () => {
         wx.showToast({
-          title: `跳转详情失败：${id}`,
+          title: "跳转详情失败",
           icon: "none",
         });
       },
@@ -479,28 +485,39 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
           return;
         }
 
-        const nextList = this.data.favoriteList.filter(
-          (item) => !selectedIds.includes(item.id),
-        );
-        this.persistFavorites(nextList);
-        this.setData(
-          {
-            favoriteList: nextList,
-            favoriteCount: nextList.length,
-            lastFavoriteAt: nextList[0]?.favoritedAt || "",
-            isManaging: false,
-          },
-          () => {
-            this.applyFilters();
-          },
-        );
-
-        wx.showToast({
-          title: "已取消收藏",
-          icon: "success",
-        });
+        void this.confirmBatchRemove(selectedIds);
       },
     });
+  },
+
+  async confirmBatchRemove(selectedIds: string[]) {
+    try {
+      wx.showLoading({
+        title: "处理中...",
+        mask: true,
+      });
+
+      await Promise.all(selectedIds.map((id) => removeFavorite(id)));
+
+      wx.showToast({
+        title: "已取消收藏",
+        icon: "success",
+      });
+
+      await this.loadFavorites();
+    } catch (error) {
+      if (error instanceof RequestError && error.statusCode === 401) {
+        this.enterAuthRequiredState();
+        return;
+      }
+
+      wx.showToast({
+        title: getErrorMessage(error, "取消收藏失败"),
+        icon: "none",
+      });
+    } finally {
+      wx.hideLoading();
+    }
   },
 
   onShareAppMessage() {

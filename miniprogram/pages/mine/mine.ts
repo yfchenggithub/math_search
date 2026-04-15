@@ -1,61 +1,70 @@
-type UserInfo = {
-  nickname: string;
-  avatarUrl: string;
-};
+import { fetchMineUserInfo } from "../../services/api/auth-api";
+import { getFavoritesList } from "../../services/api/favorites-api";
+import { authService } from "../../services/auth/auth-service";
+import type { AuthStatus, AuthUser } from "../../services/auth/auth-types";
+import { authStore } from "../../stores/auth-store";
+import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
+import { getErrorMessage, RequestError } from "../../utils/request";
 
 type MinePageData = {
+  authStatus: AuthStatus;
   isLoggedIn: boolean;
+  isLoggingIn: boolean;
   defaultAvatar: string;
-  userInfo: UserInfo;
+  userInfo: AuthUser | null;
   favoriteCount: number;
   pointBalance: number;
 };
 
-const TOKEN_KEY = "auth_token";
-const USER_KEY = "auth_user";
-
-function getStoredToken(): string {
-  return String(wx.getStorageSync(TOKEN_KEY) || "").trim();
-}
-
-function getStoredUser(): UserInfo {
-  const raw = wx.getStorageSync(USER_KEY);
-  if (!raw || typeof raw !== "object") {
-    return {
-      nickname: "",
-      avatarUrl: "",
-    };
-  }
-
-  return {
-    nickname: String((raw as Record<string, unknown>).nickname || ""),
-    avatarUrl: String((raw as Record<string, unknown>).avatarUrl || ""),
-  };
-}
-
 Page<MinePageData, WechatMiniprogram.IAnyObject>({
   data: {
+    authStatus: "visitor",
     isLoggedIn: false,
+    isLoggingIn: false,
     defaultAvatar: "/assets/images/default-avatar.png",
-    userInfo: {
-      nickname: "",
-      avatarUrl: "",
-    },
+    userInfo: null,
     favoriteCount: 0,
     pointBalance: 0,
   },
 
-  onShow() {
-    this.bootstrapPage();
+  unsubscribeAuthStore: undefined as undefined | (() => void),
+
+  onLoad() {
+    authService.init();
+
+    this.unsubscribeAuthStore = authStore.subscribe(() => {
+      this.syncAuthState();
+    });
   },
 
-  async bootstrapPage() {
-    const token = getStoredToken();
-    const isLoggedIn = Boolean(token);
-    const userInfo = getStoredUser();
+  onShow() {
+    this.syncAuthState();
+
+    if (this.data.isLoggedIn) {
+      void this.refreshMineData();
+    }
+  },
+
+  onUnload() {
+    this.unsubscribeAuthStore?.();
+    this.unsubscribeAuthStore = undefined;
+  },
+
+  syncAuthState() {
+    const state = authStore.getState();
+    const isLoggedIn = state.status === "authenticated";
+    const userInfo = isLoggedIn
+      ? (state.user || {
+        id: "",
+        nickname: "微信用户",
+        avatarUrl: "",
+      })
+      : null;
 
     this.setData({
+      authStatus: state.status,
       isLoggedIn,
+      isLoggingIn: state.status === "logging_in",
       userInfo,
     });
 
@@ -64,28 +73,55 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
         favoriteCount: 0,
         pointBalance: 0,
       });
+    }
+  },
+
+  async refreshMineData() {
+    await Promise.allSettled([
+      this.refreshUserInfo(),
+      this.loadMineSummary(),
+    ]);
+  },
+
+  async refreshUserInfo() {
+    if (!this.data.isLoggedIn) {
       return;
     }
 
-    await this.loadMineSummary();
+    try {
+      const user = await fetchMineUserInfo();
+      authService.syncUser(user);
+    } catch (error) {
+      if (error instanceof RequestError && error.statusCode === 401) {
+        return;
+      }
+
+      console.warn("[mine] refreshUserInfo failed:", error);
+    }
   },
 
   async loadMineSummary() {
+    if (!this.data.isLoggedIn) {
+      return;
+    }
+
     try {
       wx.showNavigationBarLoading();
-
-      // TODO: Replace with real API integration.
-      const mockFavoriteCount = 23;
-      const mockPointBalance = 8;
+      const response = await getFavoritesList({
+        page: 1,
+        pageSize: 1,
+      });
 
       this.setData({
-        favoriteCount: mockFavoriteCount,
-        pointBalance: mockPointBalance,
+        favoriteCount: response.total || 0,
       });
     } catch (error) {
-      console.error("[mine] loadMineSummary failed:", error);
+      if (error instanceof RequestError && error.statusCode === 401) {
+        return;
+      }
+
       wx.showToast({
-        title: "加载失败，请稍后重试",
+        title: getErrorMessage(error, "加载失败，请稍后重试"),
         icon: "none",
       });
     } finally {
@@ -94,157 +130,125 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
   },
 
   async handleLoginTap() {
-    await this.ensureLogin({
-      reason: "登录后可同步收藏、点数与下载记录",
-    });
-  },
-
-  async ensureLogin(options?: { reason?: string }): Promise<boolean> {
-    if (this.data.isLoggedIn) {
-      return true;
+    if (this.data.isLoggingIn) {
+      return;
     }
 
-    const reason = options?.reason || "该功能需要登录后使用";
-
-    const confirmed = await new Promise<boolean>((resolve) => {
-      wx.showModal({
-        title: "请先登录",
-        content: reason,
-        confirmText: "立即登录",
-        cancelText: "暂不登录",
-        success: (res) => resolve(Boolean(res.confirm)),
-        fail: () => resolve(false),
-      });
-    });
-
-    if (!confirmed) {
-      return false;
-    }
-
-    return this.performLogin();
-  },
-
-  async performLogin(): Promise<boolean> {
     try {
       wx.showLoading({
         title: "登录中...",
         mask: true,
       });
 
-      // TODO: Replace with real login flow.
-      const mockToken = "mock-token-u1001";
-      const mockUser: UserInfo = {
-        nickname: "远锋用户",
-        avatarUrl: "",
-      };
-
-      wx.setStorageSync(TOKEN_KEY, mockToken);
-      wx.setStorageSync(USER_KEY, mockUser);
-
-      this.setData({
-        isLoggedIn: true,
-        userInfo: mockUser,
-      });
-
-      await this.loadMineSummary();
+      await authService.login();
+      await this.refreshMineData();
 
       wx.showToast({
         title: "登录成功",
         icon: "success",
       });
-
-      return true;
     } catch (error) {
-      console.error("[mine] performLogin failed:", error);
       wx.showToast({
-        title: "登录失败，请稍后重试",
+        title: getErrorMessage(error, "登录失败，请重试"),
         icon: "none",
       });
-      return false;
     } finally {
       wx.hideLoading();
     }
   },
 
-  async handleFavoritesTap() {
-    const ok = await this.ensureLogin({
-      reason: "登录后可查看和同步你的收藏内容",
-    });
-    if (!ok) {
-      return;
-    }
+  handleLogoutTap() {
+    wx.showModal({
+      title: "退出登录",
+      content: "退出后仍可匿名使用搜索、建议、详情和 PDF 浏览。",
+      confirmText: "退出",
+      cancelText: "取消",
+      success: (res) => {
+        if (!res.confirm) {
+          return;
+        }
 
-    wx.navigateTo({
-      url: "/pages/favorites/favorites",
+        authService.logout();
+        wx.showToast({
+          title: "已退出登录",
+          icon: "none",
+        });
+      },
     });
   },
 
-  async handlePointsTap() {
-    const ok = await this.ensureLogin({
-      reason: "登录后可查看 PDF 点数与权益",
-    });
-    if (!ok) {
-      return;
-    }
+  async handleFavoritesTap() {
+    await requireAuthAndRun(
+      () => new Promise<void>((resolve, reject) => {
+        wx.navigateTo({
+          url: "/pages/favorites/favorites",
+          success: () => resolve(),
+          fail: (error) => reject(error),
+        });
+      }),
+      {
+        title: "请先登录",
+        content: "登录后可查看和管理收藏列表",
+      },
+    );
+  },
 
-    wx.showToast({
-      title: "点数页待接入",
-      icon: "none",
+  async runProtectedAction(
+    reason: string,
+    action: () => Promise<void> | void,
+  ) {
+    await requireAuthAndRun(
+      async () => {
+        await action();
+      },
+      {
+        title: "请先登录",
+        content: reason,
+      },
+    );
+  },
+
+  async handlePointsTap() {
+    await this.runProtectedAction("登录后可查看 PDF 点数与权益", () => {
+      wx.showToast({
+        title: "点数页待接入",
+        icon: "none",
+      });
     });
   },
 
   async handleExportRecordsTap() {
-    const ok = await this.ensureLogin({
-      reason: "登录后可查看导出记录",
-    });
-    if (!ok) {
-      return;
-    }
-
-    wx.showToast({
-      title: "导出记录页待接入",
-      icon: "none",
+    await this.runProtectedAction("登录后可查看导出记录", () => {
+      wx.showToast({
+        title: "导出记录页待接入",
+        icon: "none",
+      });
     });
   },
 
   async handleShareRecordsTap() {
-    const ok = await this.ensureLogin({
-      reason: "登录后可查看分享记录",
-    });
-    if (!ok) {
-      return;
-    }
-
-    wx.showToast({
-      title: "我的分享页待接入",
-      icon: "none",
+    await this.runProtectedAction("登录后可查看分享记录", () => {
+      wx.showToast({
+        title: "我的分享页待接入",
+        icon: "none",
+      });
     });
   },
 
   async handleBatchExportTap() {
-    const ok = await this.ensureLogin({
-      reason: "登录后可批量导出收藏 PDF",
-    });
-    if (!ok) {
-      return;
-    }
-
-    wx.navigateTo({
-      url: "/pages/favorites/favorites?mode=export",
+    await this.runProtectedAction("登录后可批量导出收藏 PDF", () => {
+      wx.navigateTo({
+        url: "/pages/favorites/favorites?mode=export",
+      });
     });
   },
 
   async handleRewardAdTap() {
-    const ok = await this.ensureLogin({
-      reason: "登录后可获取并记录 PDF 点数",
-    });
-    if (!ok) {
-      return;
-    }
-
-    wx.showToast({
-      title: "广告领点数待接入",
-      icon: "none",
+    await this.runProtectedAction("登录后可获取并记录 PDF 点数", () => {
+      wx.showToast({
+        title: "广告领点数待接入",
+        icon: "none",
+      });
     });
   },
 

@@ -19,6 +19,8 @@ page {
 .favorites-summary-card,
 .favorite-card,
 .favorites-empty,
+.favorites-loading-card,
+.favorites-error-card,
 .favorites-manage-bar {
   box-sizing: border-box;
   border-radius: 32rpx;
@@ -27,6 +29,8 @@ page {
 }
 
 .favorites-state-card,
+.favorites-loading-card,
+.favorites-error-card,
 .favorites-empty {
   display: flex;
   flex-direction: column;
@@ -50,8 +54,39 @@ page {
   color: #6b7280;
 }
 
+.favorites-loading-card__text {
+  font-size: 28rpx;
+  color: #475569;
+}
+
+.favorites-error-card__title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #111827;
+}
+
+.favorites-error-card__desc {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  line-height: 1.7;
+  color: #6b7280;
+}
+
+.favorites-error-card__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 76rpx;
+  margin-top: 28rpx;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  color: #ffffff;
+  background: #111827;
+}
+
 .favorites-state-card__button,
 .favorites-empty__button,
+.favorites-error-card__button,
 .favorites-summary-card__action,
 .favorite-card__action,
 .favorites-manage-bar__button {

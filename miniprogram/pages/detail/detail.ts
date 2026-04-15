@@ -1,21 +1,4 @@
-/**
- * 璇︽儏椤甸〉闈㈡帶鍒跺櫒銆?
- *
- * 杩欎釜鏂囦欢涓昏瑙ｅ喅涓や欢浜嬶細
- * 1. 鎺ヤ綇 `detail-content.ts` 浜у嚭鐨勮鎯?view model锛屽苟鎶婂畠鏀惧埌椤甸潰 data 涓€?
- * 2. 绠＄悊璇︽儏椤电殑闃呰浜や簰锛屽挨鍏舵槸婊氬姩銆佸弻鍑绘斁澶с€佸弻鎸囩缉鏀俱€佹嫋鎷藉拰骞虫粦鍥炲脊銆?
- *
- * 鍦ㄦ暣涓鎯呴摼璺腑鐨勪綅缃細
- * - `detail-content.ts` 璐熻矗鈥滄暟鎹€傞厤鈥濓紝鎶婂師濮?record 杞垚椤甸潰鍙秷璐圭粨鏋勩€?
- * - 鏈枃浠惰礋璐ｂ€滈〉闈㈢姸鎬佷笌浜や簰鎺у埗鈥濓紝涓嶅叧蹇冨師濮?schema 鐨勭粏鑺傘€?
- * - `detail.wxml / detail.scss` 璐熻矗鏈€缁堣鍥惧憟鐜般€?
- *
- * 鎺ㄨ崘闃呰椤哄簭锛?
- * 1. `onLoad`锛氳鎯呮暟鎹浣曡繘鍏ラ〉闈€?
- * 2. `scheduleMeasure / measureContent`锛氶〉闈负浠€涔堣娴嬮噺瀹瑰櫒涓庡唴瀹瑰昂瀵搞€?
- * 3. `onToggleZoom / zoomTo / rebound`锛氭斁澶х缉灏忔槸濡備綍宸ヤ綔鐨勩€?
- * 4. `onTouchStart / onTouchMove / onTouchEnd`锛氭墜鍔块摼璺浣曟帴绠℃暣椤甸槄璇汇€?
- */
+﻿
 import type {
   DetailDocumentView,
   DetailSectionView,
@@ -24,6 +7,8 @@ import {
   buildAbsoluteApiUrl,
   extractFilenameFromUrl,
 } from "../../utils/api-url";
+import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
+import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { getDetailDocumentById } from "../../utils/detail-content";
 import { getErrorMessage } from "../../utils/request";
 
@@ -101,14 +86,7 @@ function createIdlePdfStatus(): PdfStatusView {
   };
 }
 
-/**
- * 璇︽儏椤电殑鏁翠綋鎵ц娴佺▼锛?
- * 1. `onLoad` 鏍规嵁璺敱鍙傛暟璇诲彇璇︽儏鏁版嵁锛屽苟鎶婂熀纭€鍐呭鏀惧叆椤甸潰 data銆?
- * 2. 椤甸潰娓叉煋瀹屾垚鍚庯紝璋冪敤 `scheduleMeasure` / `measureContent` 鑾峰彇瀹瑰櫒鍜屾鏂囧昂瀵搞€?
- * 3. 姝ｅ父鐘舵€佷笅鐢?`scroll-view` 璐熻矗绾靛悜闃呰婊氬姩銆?
- * 4. 涓€鏃﹁繘鍏ョ缉鏀炬€侊紝椤甸潰浼氭敼涓虹敱 transform + 鎵嬪娍鎺у埗瑙嗗彛浣嶇疆銆?
- * 5. 缂╂斁缁撴潫鍚庯紝閫氳繃 `resetTransform` / `getRestoreScrollTop` 灏介噺淇濇寔闃呰浣嶇疆杩炵画銆?
- */
+
 Page({
   data: {
     id: "",
@@ -122,6 +100,7 @@ Page({
     hasDifficulty: false,
     difficultyLabel: "",
     isFavorited: false,
+    favoriteActionBusy: false,
     showFavoriteStatus: false,
     favoriteStatusText: "",
     coreFormulaHtml: "",
@@ -140,22 +119,14 @@ Page({
     zoomActive: false,
     scaleLabel: "100%",
   },
-
-  // 褰撳墠缂╂斁姣斾緥鍙婁笂涓€娆＄ǔ瀹氱缉鏀炬瘮渚嬨€?
   scale: 1,
   lastScale: 1,
-
-  // 褰撳墠骞崇Щ閲忓強涓婁竴娆＄ǔ瀹氬钩绉婚噺銆?
   translateX: 0,
   translateY: 0,
   lastTranslateX: 0,
   lastTranslateY: 0,
-
-  // 鍏佽鐨勭缉鏀捐寖鍥淬€傛渶灏忓€间繚鎸?1锛屼唬琛ㄩ粯璁ら槄璇绘€併€?
   minScale: 1,
   maxScale: 4,
-
-  // 鎵嬪娍涓棿鎬併€傝繖閲屼繚瀛樹竴娆¤Е鎺ц繃绋嬪紑濮嬫椂鐨勫叧閿暟鎹紝鏂逛究 move 闃舵璁＄畻澧為噺銆?
   gesture: {
     startDistance: 0,
     startScale: 1,
@@ -165,9 +136,6 @@ Page({
 
   lastTapTime: 0,
   ticking: false,
-
-  // 瑙嗗彛涓庢鏂囧昂瀵镐俊鎭€?
-  // 杩欎簺鏁版嵁鏄悗缁绠楃缉鏀捐竟鐣屻€佹嫋鎷借寖鍥村拰鍥炲脊鐩爣鐨勫熀纭€銆?
   containerWidth: 0,
   containerHeight: 0,
   contentWidth: 0,
@@ -187,24 +155,12 @@ Page({
   pdfDownloadTask: null as WechatMiniprogram.DownloadTask | null,
   currentDetailId: "",
 
-  /**
-   * 涓€涓瀬绠€鐨?raf 鏇夸唬鍝併€?
-   *
-   * 灏忕▼搴忕幆澧冮噷骞朵笉鏄瘡澶勯兘鏂逛究鐩存帴浣跨敤娴忚鍣ㄥ師鐢?`requestAnimationFrame`锛?
-   * 杩欓噷缁熶竴鐢?16ms 瀹氭椂鍣ㄦā鎷熶竴甯э紝鏈嶅姟鍥炲脊鍜屾儻鎬у姩鐢汇€?
-   */
+  
   raf(callback: Function) {
     return setTimeout(() => callback(), 16);
   },
 
-  /**
-   * 璇︽儏椤电殑鏁版嵁鍔犺浇鍏ュ彛銆?
-   *
-   * 褰撳墠閲囩敤鈥滃悗绔紭鍏堬紝鏈湴闄嶇骇鈥濈殑绛栫暐锛?
-   * 1. 鍏堣姹傚悗绔?`/conclusion/{id}`锛?
-   * 2. 濡傛灉鎺ュ彛涓嶅彲鐢紝鍒欒嚜鍔ㄥ洖閫€鍒版湰鍦伴潤鎬佸唴瀹癸紱
-   * 3. 椤甸潰浜や簰灞傜户缁彧娑堣垂缁熶竴鐨?`DetailDocumentView`銆?
-   */
+  
   async loadDetail(options: Record<string, string | undefined>) {
     const id = String(options.id || "").trim();
     this.currentDetailId = id;
@@ -246,18 +202,12 @@ Page({
     }
   },
 
-  /**
-   * 浼樺厛璇诲彇鍚庣璇︽儏锛屽け璐ュ悗鍥為€€鏈湴鍐呭銆?
-   */
+  
   async resolveDetailDocument(id: string): Promise<DetailDocumentView | null> {
     return getDetailDocumentById(id);
   },
 
-  /**
-   * 灏嗙粺涓€鐨勮鎯?view model 搴旂敤鍒伴〉闈€?
-   *
-   * 杩欓噷椤烘墜閲嶇疆缂╂斁鍜屾粴鍔ㄧ姸鎬侊紝閬垮厤浠庝笂涓€涓潯鐩畫鐣欎氦浜掔姸鎬併€?
-   */
+  
   applyDetailDocument(detail: DetailDocumentView) {
     this.resetTransform(false);
     this.clearPdfStatusTimer();
@@ -277,6 +227,7 @@ Page({
         hasDifficulty: detail.hasDifficulty,
         difficultyLabel: detail.difficultyLabel,
         isFavorited: detail.isFavorited,
+        favoriteActionBusy: false,
         showFavoriteStatus: detail.showFavoriteStatus,
         favoriteStatusText: detail.favoriteStatusText,
         coreFormulaHtml: detail.coreFormulaHtml,
@@ -316,6 +267,7 @@ Page({
       hasDifficulty: false,
       difficultyLabel: "",
       isFavorited: false,
+      favoriteActionBusy: false,
       showFavoriteStatus: false,
       favoriteStatusText: "",
       coreFormulaHtml: "",
@@ -351,6 +303,7 @@ Page({
       hasDifficulty: false,
       difficultyLabel: "",
       isFavorited: false,
+      favoriteActionBusy: false,
       showFavoriteStatus: false,
       favoriteStatusText: "",
       coreFormulaHtml: "",
@@ -382,24 +335,75 @@ Page({
     });
   },
 
-  /**
-   * 璇︽儏椤靛叆鍙ｃ€?
-   *
-   * 杈撳叆锛?
-   * - 璺敱鍙傛暟涓殑 `id`銆?
-   *
-   * 杈撳嚭锛?
-   * - 璋冪敤璇︽儏閫傞厤灞傛嬁鍒扮粺涓€ view model銆?
-   * - 鍒濆鍖栭〉闈?data銆?
-   * - 閲嶇疆鎵€鏈夌缉鏀?鎷栨嫿鐘舵€侊紝纭繚浠庝笂涓€涓鎯呴〉鍒囪繃鏉ユ椂涓嶄細娈嬬暀浜や簰鐘舵€併€?
-   */
+  async handleFavoriteToggleTap() {
+    if (this.data.favoriteActionBusy) {
+      return;
+    }
+
+    const conclusionId = String(this.data.id || "").trim();
+    if (!conclusionId) {
+      wx.showToast({
+        title: "结论 ID 无效",
+        icon: "none",
+      });
+      return;
+    }
+
+    const nextFavoriteState = !this.data.isFavorited;
+
+    await requireAuthAndRun(
+      async () => {
+        await this.commitFavoriteToggle(conclusionId, nextFavoriteState);
+      },
+      {
+        title: "请先登录",
+        content: "登录后可同步收藏状态",
+      },
+    );
+  },
+
+  async commitFavoriteToggle(conclusionId: string, nextFavoriteState: boolean) {
+    try {
+      this.setData({
+        favoriteActionBusy: true,
+      });
+
+      if (nextFavoriteState) {
+        await addFavorite({
+          conclusion_id: conclusionId,
+        });
+      } else {
+        await removeFavorite(conclusionId);
+      }
+
+      this.setData({
+        isFavorited: nextFavoriteState,
+        showFavoriteStatus: true,
+        favoriteStatusText: nextFavoriteState ? "已收藏" : "未收藏",
+      });
+
+      wx.showToast({
+        title: nextFavoriteState ? "已收藏" : "已取消收藏",
+        icon: "success",
+      });
+    } catch (error) {
+      wx.showToast({
+        title: getErrorMessage(error, "收藏操作失败"),
+        icon: "none",
+      });
+    } finally {
+      this.setData({
+        favoriteActionBusy: false,
+      });
+    }
+  },
+
+  
   onLoad(options: Record<string, string | undefined>) {
     void this.loadDetail(options);
   },
 
-  /**
-   * 椤甸潰绂诲紑鏃舵竻鐞嗗畾鏃跺櫒锛岄伩鍏嶅姩鐢绘垨灏哄娴嬮噺鍦ㄩ〉闈㈤攢姣佸悗缁х画杩愯銆?
-   */
+  
   onUnload() {
     clearTimeout(this.inertiaId);
     clearTimeout(this.measureTimer);
@@ -407,29 +411,17 @@ Page({
     this.abortPdfDownloadTask();
   },
 
-  /**
-   * 椤甸潰 ready 鍚庡仛涓€娆″昂瀵告祴閲忋€?
-   * 杩欐槸瀵归灞忔覆鏌撳悗鐨勫厹搴曪紝淇濊瘉瀹瑰櫒鍜屾鏂囧昂瀵稿敖蹇繘鍏ヨ绠楅摼璺€?
-   */
+  
   onReady() {
     this.scheduleMeasure();
   },
 
-  /**
-   * 椤甸潰灞€閮ㄥ唴瀹归噸鏂版覆鏌撳畬鎴愬悗鐨勫洖璋冦€?
-   * 渚嬪 structured sections 娓叉煋瀹屾垚鍚庯紝姝ｆ枃楂樺害鍙兘鍙樺寲锛屽洜姝ら渶瑕侀噸鏂版祴閲忋€?
-   */
+  
   onRenderReady() {
     this.scheduleMeasure();
   },
 
-  /**
-   * 璋冨害姝ｆ枃灏哄娴嬮噺銆?
-   *
-   * 杩欓噷鏁呮剰鍋氫簡涓€涓緢鐭殑寤惰繜锛?
-   * - 閬垮厤杩炵画 setData / 澶氭灞€閮ㄦ覆鏌撴椂棰戠箒瑙﹀彂娴嬮噺锛?
-   * - 缁欏皬绋嬪簭甯冨眬涓€鐐圭ǔ瀹氭椂闂达紝鍑忓皯鎷垮埌涓棿鎬佸昂瀵哥殑姒傜巼銆?
-   */
+  
   scheduleMeasure() {
     clearTimeout(this.measureTimer);
 
@@ -438,19 +430,7 @@ Page({
     }, 80) as unknown as number;
   },
 
-  /**
-   * 瀹為檯璇诲彇瑙嗗彛涓庢鏂囧昂瀵搞€?
-   *
-   * 璇诲彇鍐呭锛?
-   * - `.viewer`锛氬彲瑙嗗尯鍩熺殑瀹介珮鍜岄〉闈綅缃€?
-   * - `#articleWrapper`锛氭鏂囧寘瑁瑰眰鐨勭湡瀹炲楂樸€?
-   *
-   * 杩欎簺灏哄鍐冲畾浜嗭細
-   * - 缂╂斁鏃剁殑杈圭晫璁＄畻锛?
-   * - 灞呬腑閫昏緫锛?
-   * - 鍥炲脊鐩爣浣嶇疆锛?
-   * - 鏄惁闇€瑕佸厑璁告煇涓柟鍚戠户缁嫋鎷姐€?
-   */
+  
   measureContent() {
     const query = wx.createSelectorQuery().in(this);
     query.select(".viewer").boundingClientRect();
@@ -685,16 +665,12 @@ Page({
     });
   },
 
-  /**
-   * Build full PDF URL from API baseURL + pdf_url.
-   */
+  
   buildFullPdfUrl(pdfUrl: string): string {
     return buildAbsoluteApiUrl(pdfUrl);
   },
 
-  /**
-   * Resolve filename from field first, then url, then default.
-   */
+  
   resolvePdfFilename(): string {
     const explicitFilename = String(this.data.pdfFilename || "").trim();
     if (explicitFilename) {
@@ -711,9 +687,7 @@ Page({
     return DEFAULT_PDF_FILENAME;
   },
 
-  /**
-   * Build stable cache key by `conclusion_id + pdf_url`.
-   */
+  
   buildPdfCacheKey(rawPdfUrl: string): string {
     const conclusionId = String(this.data.id || this.currentDetailId || "").trim();
     const normalizedPdfUrl = String(rawPdfUrl || "").trim();
@@ -1018,10 +992,7 @@ Page({
     };
   },
 
-  /**
-   * 鎵撳紑 PDF銆?   *
-   * 浣跨敤鍦烘櫙锛?   * - 鍛戒腑缂撳瓨锛氱洿鎺ユ墦寮€鏈湴 savedFilePath銆?   * - 缂撳瓨鏈懡涓細涓嬭浇 -> 淇濆瓨 -> 鍐欏叆缂撳瓨 -> 鎵撳紑銆?   *
-   * 杩欐閫昏緫涓嶅弬涓庨〉闈㈡覆鏌擄紝鍙礋璐ｉ槄璇绘墿灞曞叆鍙ｃ€?   */
+  
   async openPdf() {
     if (this.data.pdfActionBusy) {
       return;
@@ -1119,13 +1090,7 @@ Page({
     }
   },
 
-  /**
-   * 鐐瑰嚮缁熶竴鐨勨€滅缉鏀鹃槄璇烩€濇寜閽€?
-   *
-   * 璁捐鎰忓浘锛?
-   * - 鏈斁澶ф椂锛氫互瑙嗗彛涓績涓洪敋鐐硅繘鍏ユ斁澶ч槄璇绘€併€?
-   * - 宸叉斁澶ф椂锛氭仮澶嶉粯璁ら槄璇绘€併€?
-   */
+  
   onToggleZoom() {
     if (this.scale > 1.01) {
       this.resetTransform();
@@ -1140,28 +1105,19 @@ Page({
     });
   },
 
-  /**
-   * 璇诲彇瑙︽懜鐐规暟缁勩€?
-   * 鍗曠嫭灏佽鍑烘潵锛屾槸涓轰簡鎶婂皬绋嬪簭鐨勮Е鎽哥被鍨嬪拰椤甸潰鍐呴儴浣跨敤鐨勭畝鍖栧潗鏍囩粨鏋勯殧绂诲紑銆?
-   */
+  
   getTouches(e: WechatMiniprogram.TouchEvent): TouchPoint[] {
     return e.touches as unknown as TouchPoint[];
   },
 
-  /**
-   * 璁＄畻鍙屾寚璺濈锛岀敤浜?pinch 缂╂斁銆?
-   */
+  
   getDistance(touches: TouchPoint[]) {
     const dx = touches[0].pageX - touches[1].pageX;
     const dy = touches[0].pageY - touches[1].pageY;
     return Math.sqrt(dx * dx + dy * dy);
   },
 
-  /**
-   * 璁＄畻鍙屾寚涓績鐐广€?
-   *
-   * 缂╂斁鏃惰鍥寸粫鎵嬫寚涓績鍋氬彉鎹紝鍚﹀垯浼氫骇鐢熲€滃叕寮忔斁澶т絾鐒︾偣婕傜Щ鈥濈殑闃呰鍓茶鎰熴€?
-   */
+  
   getCenter(touches: TouchPoint[]) {
     const first = this.getViewerPoint(touches[0]);
     const second = this.getViewerPoint(touches[1]);
@@ -1172,12 +1128,7 @@ Page({
     };
   },
 
-  /**
-   * 鎶婇〉闈㈠潗鏍囪浆鎹㈡垚 viewer 鍐呴儴鍧愭爣銆?
-   *
-   * 璇︽儏椤电殑缂╂斁鍜屽钩绉婚兘鏄浉瀵逛簬 `.viewer` 瑙嗗彛璁＄畻鐨勶紝
-   * 鍥犳鎵€鏈夎Е鐐归兘闇€瑕佸厛杞崲鍒板悓涓€鍧愭爣绯讳腑銆?
-   */
+  
   getViewerPoint(point: TouchPoint) {
     return {
       x: point.pageX - this.viewerLeft,
@@ -1185,19 +1136,12 @@ Page({
     };
   },
 
-  /**
-   * 榛樿闃呰鎬佷笅鍏佽鐨勬渶澶х旱鍚戞粴鍔ㄥ€笺€?
-   */
+  
   getMaxScrollTop() {
     return Math.max(0, this.contentHeight - this.containerHeight);
   },
 
-  /**
-   * 浠庣缉鏀炬€佸洖鍒版櫘閫氶槄璇绘€佹椂锛屾帹绠楀簲璇ヨ繕鍘熷埌鍝釜 scrollTop銆?
-   *
-   * 鏍稿績鐩殑鏄繚鎸佲€滅敤鎴锋鍦ㄧ湅鐨勯偅涓€鍧楀唴瀹光€濆敖閲忎笉璺宠蛋锛?
-   * 涔熷氨鏄缉鏀惧墠鍚庣淮鎸侀槄璇讳綅缃繛缁€?
-   */
+  
   getRestoreScrollTop() {
     if (this.scale <= 1.01) {
       return Math.min(
@@ -1210,14 +1154,7 @@ Page({
     return Math.min(this.getMaxScrollTop(), Math.max(0, visibleTop));
   },
 
-  /**
-   * 鍦ㄨ繘鍏ョ缉鏀炬€佷箣鍓嶏紝鎶婃櫘閫?scroll-view 鐨勬粴鍔ㄩ噺鎶樼畻鎴?transform 骞崇Щ閲忋€?
-   *
-   * 涓轰粈涔堥渶瑕佽繖涓€姝ワ細
-   * - 榛樿闃呰鎬佺敱 scroll-view 鎺у埗绾靛悜婊氬姩銆?
-   * - 缂╂斁鎬佹敼鐢?transform 鎺у埗鏁撮〉浣嶇疆銆?
-   * - 濡傛灉涓嶅厛鍋氬潗鏍囩郴鍒囨崲锛岀敤鎴蜂竴鏀惧ぇ椤甸潰灏变細鈥滆烦浣嶇疆鈥濄€?
-   */
+  
   prepareZoomViewport(callback?: () => void) {
     const currentScrollTop = this.articleScrollTop;
 
@@ -1243,21 +1180,12 @@ Page({
     );
   },
 
-  /**
-   * 鎶婂綋鍓嶇缉鏀惧拰骞崇Щ鐘舵€佺粍瑁呮垚 style 瀛楃涓诧紝渚?WXML 鐩存帴缁戝畾銆?
-   */
+  
   buildTransformStyle() {
     return `transform: translate3d(${this.translateX}px, ${this.translateY}px, 0) scale(${this.scale});`;
   },
 
-  /**
-   * 鍚屾 transform 鐩稿叧鐨勯〉闈?data銆?
-   *
-   * 杩欓噷缁熶竴鏇存柊锛?
-   * - transformStyle锛氬疄闄呰瑙夊彉鎹€?
-   * - zoomActive锛氭槸鍚﹀浜庣缉鏀炬€併€?
-   * - scaleLabel锛氬彸涓婅鏄剧ず鐨勭櫨鍒嗘瘮銆?
-   */
+  
   syncTransformState() {
     this.setData({
       transformStyle: this.buildTransformStyle(),
@@ -1266,13 +1194,7 @@ Page({
     });
   },
 
-  /**
-   * 鏍规嵁褰撳墠鍐呭灏哄鍜岀缉鏀炬瘮渚嬶紝璁＄畻鍙嫋鎷借竟鐣屻€?
-   *
-   * 瑙勫垯锛?
-   * - 濡傛灉缂╂斁鍚庡唴瀹规瘮瑙嗗彛瀹?楂橈紝鍒欏厑璁稿湪杈圭晫鍐呮嫋鍔ㄣ€?
-   * - 濡傛灉缂╂斁鍚庡唴瀹逛粛灏忎簬瑙嗗彛锛屽垯淇濇寔灞呬腑锛屼笉鍏佽鏌愪竴鏂瑰悜鑷敱婕傜Щ銆?
-   */
+  
   calcBounds() {
     const scaledWidth = this.contentWidth * this.scale;
     const scaledHeight = this.contentHeight * this.scale;
@@ -1308,12 +1230,7 @@ Page({
     };
   },
 
-  /**
-   * 瓒婄晫闃诲凹銆?
-   *
-   * 褰撶敤鎴风户缁悜杈圭晫澶栨嫋鎷芥椂锛屼笉鏄珛鍒荤‖鎬ф埅鏂紝鑰屾槸缁欎竴涓“鍑忓悗鐨勪綅绉汇€?
-   * 杩欐牱鎵嬫劅浼氭洿鏌斿拰锛岀粨鏉熷悗鍐嶄氦缁?`rebound` 鍋氭寮忓洖寮广€?
-   */
+  
   applyResistance(value: number, min: number, max: number) {
     if (value >= min && value <= max) {
       return value;
@@ -1326,14 +1243,7 @@ Page({
     return max + (value - max) * 0.35;
   },
 
-  /**
-   * 鍥炲脊鍒板悎娉曡竟鐣屽唴銆?
-   *
-   * 浣跨敤鍦烘櫙锛?
-   * - 鎵嬪姩鎷栨嫿缁撴潫浣嗕綅缃秺鐣屻€?
-   * - 缂╂斁鍚庡唴瀹硅秴鍑鸿竟鐣屻€?
-   * - 鎯€ф粦鍔ㄦ挒鍒拌竟鐣屻€?
-   */
+  
   rebound() {
     const bounds = this.calcBounds();
     const targetX = Math.min(
@@ -1385,13 +1295,7 @@ Page({
     animate();
   },
 
-  /**
-   * 浠ョ粰瀹氫腑蹇冪偣涓洪敋鎵ц缂╂斁銆?
-   *
-   * 杈撳叆锛?
-   * - `targetScale`锛氱洰鏍囩缉鏀炬瘮渚嬨€?
-   * - `centerX / centerY`锛氱缉鏀鹃敋鐐癸紝閫氬父鏄弻鎸囦腑蹇冩垨鍙屽嚮鐐广€?
-   */
+  
   zoomTo(targetScale: number, centerX: number, centerY: number) {
     const clampedScale = Math.max(
       this.minScale,
@@ -1407,20 +1311,12 @@ Page({
     this.rebound();
   },
 
-  /**
-   * 鍋滄鎯€у姩鐢汇€?
-   */
+  
   stopInertia() {
     clearTimeout(this.inertiaId);
   },
 
-  /**
-   * 鏅€氶槄璇绘€佷笅璁板綍 scroll-view 鐨勭旱鍚戞粴鍔ㄥ€笺€?
-   *
-   * 娉ㄦ剰锛?
-   * - 鍙湁鏈斁澶ф椂锛岃繖涓?scrollTop 鎵嶆槸鏈夋晥鐨勪富婊氬姩鏉ユ簮銆?
-   * - 杩涘叆缂╂斁鎬佸悗锛岄〉闈綅缃敼鐢?transform 鎺у埗锛屽洜姝よ繖閲岀洿鎺ュ拷鐣ャ€?
-   */
+  
   onArticleScroll(e: WechatMiniprogram.ScrollViewScroll) {
     if (this.scale > 1.01) {
       return;
@@ -1429,12 +1325,7 @@ Page({
     this.articleScrollTop = Number(e.detail.scrollTop || 0);
   },
 
-  /**
-   * 鍚姩鎯€ф粦鍔ㄣ€?
-   *
-   * 杩欎竴姝ュ彧鍦ㄧ缉鏀炬€佷笅宸ヤ綔锛岀敤浜庤鎷栨嫿缁撴潫鍚庣殑闃呰鎵嬫劅鏇存帴杩戝師鐢熼槄璇诲櫒銆?
-   * 涓€鏃﹂€熷害琛板噺杩囧皬锛屾垨鎾炲埌杈圭晫锛屽氨鍋滄鎯€у苟鍥炲脊銆?
-   */
+  
   startInertia() {
     if (this.scale <= 1.01) {
       return;
@@ -1471,13 +1362,7 @@ Page({
     step();
   },
 
-  /**
-   * 澶勭悊鍙屽嚮缂╂斁銆?
-   *
-   * 浜や簰瑙勫垯锛?
-   * - 褰撳墠宸叉斁澶э細鍙屽嚮鎭㈠榛樿鎬併€?
-   * - 褰撳墠鏈斁澶э細鍙屽嚮浠ョ偣鍑荤偣涓轰腑蹇冩斁澶с€?
-   */
+  
   handleDoubleTap(e: WechatMiniprogram.TouchEvent) {
     const now = Date.now();
 
@@ -1496,15 +1381,7 @@ Page({
     this.lastTapTime = now;
   },
 
-  /**
-   * 瑙︽懜寮€濮嬨€?
-   *
-   * 涓昏鑱岃矗锛?
-   * - 鍋滄帀褰撳墠鎯€э紝閬垮厤鍜屾柊鐨勬墜鍔垮啿绐併€?
-   * - 璇嗗埆鍙屽嚮銆?
-   * - 鍒濆鍖栧弻鎸囩缉鏀炬墍闇€鐨勮捣濮嬭窛绂诲拰璧峰姣斾緥銆?
-   * - 鍒濆鍖栧崟鎸囨嫋鎷芥墍闇€鐨勮捣濮嬪亸绉讳笌閫熷害閲囨牱淇℃伅銆?
-   */
+  
   onTouchStart(e: WechatMiniprogram.TouchEvent) {
     this.stopInertia();
     this.handleDoubleTap(e);
@@ -1532,13 +1409,7 @@ Page({
     }
   },
 
-  /**
-   * 瑙︽懜绉诲姩銆?
-   *
-   * 涓ゆ潯涓昏鍒嗘敮锛?
-   * - 鍙屾寚锛氭洿鏂扮缉鏀炬瘮渚嬶紝骞跺洿缁曞弻鎸囦腑蹇冨悓姝ヤ慨姝ｅ钩绉婚噺銆?
-   * - 鍗曟寚锛氬湪缂╂斁鎬佷笅鎷栧姩鐢诲竷锛屽苟鎸佺画璁板綍閫熷害鐢ㄤ簬鍚庣画鎯€ф粦鍔ㄣ€?
-   */
+  
   onTouchMove(e: WechatMiniprogram.TouchEvent) {
     const touches = this.getTouches(e);
 
@@ -1593,14 +1464,7 @@ Page({
     });
   },
 
-  /**
-   * 瑙︽懜缁撴潫銆?
-   *
-   * 缁撴潫鏃朵細鎶婂綋鍓?transform 鍥哄寲涓衡€滅ǔ瀹氱姸鎬佲€濓紝鐒跺悗鏍规嵁閫熷害鍐冲畾锛?
-   * - 杩涘叆鎯€ф粦鍔紱
-   * - 鎴栫洿鎺ュ仛杈圭晫鍥炲脊锛?
-   * - 濡傛灉宸茬粡鎺ヨ繎榛樿姣斾緥锛屽垯鎭㈠鏅€氶槄璇绘€併€?
-   */
+  
   onTouchEnd() {
     this.lastScale = this.scale;
     this.lastTranslateX = this.translateX;
@@ -1619,16 +1483,7 @@ Page({
     }
   },
 
-  /**
-   * 閲嶇疆鍒伴粯璁ら槄璇绘€併€?
-   *
-   * 杈撳叆锛?
-   * - `syncData`锛?
-   *   - `true`锛氬悓姝ユ洿鏂伴〉闈?data锛岀湡姝ｅ洖鍒版櫘閫氶槄璇绘€併€?
-   *   - `false`锛氬彧閲嶇疆鍐呴儴鐘舵€侊紝閫氬父鐢ㄤ簬椤甸潰鍒濆鍖栭樁娈点€?
-   *
-   * 杩欎釜鍑芥暟鏄鎯呴〉闃呰浜や簰鐨勨€滄€诲厹搴曗€濓紝寰堝寮傚父鎴栭€€鍑虹缉鏀剧殑璺緞閮戒細鍥炲埌杩欓噷銆?
-   */
+  
   resetTransform(syncData = true) {
     const restoreScrollTop = syncData ? this.getRestoreScrollTop() : 0;
 
@@ -1652,4 +1507,5 @@ Page({
     }
   },
 });
+
 

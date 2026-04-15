@@ -7,7 +7,6 @@
   ></navigation-bar>
 
   <view class="mine-page__container">
-    <!-- 用户信息卡 -->
     <view class="mine-user-card">
       <block wx:if="{{isLoggedIn}}">
         <view class="mine-user-card__main">
@@ -19,10 +18,14 @@
           <view class="mine-user-card__content">
             <text class="mine-user-card__nickname">{{userInfo.nickname || '微信用户'}}</text>
             <text class="mine-user-card__meta">
-              已收藏 {{favoriteCount}} 条 · 剩余点数 {{pointBalance}}
+              已收藏 {{favoriteCount}} 条
             </text>
           </view>
         </view>
+
+        <button class="mine-user-card__logout-btn" bindtap="handleLogoutTap">
+          退出登录
+        </button>
       </block>
 
       <block wx:else>
@@ -33,33 +36,49 @@
             mode="aspectFill"
           />
           <view class="mine-user-card__content">
-            <text class="mine-user-card__nickname">登录后可同步收藏与点数</text>
-            <text class="mine-user-card__meta">按需登录，不影响搜索与查看</text>
+            <text class="mine-user-card__nickname">登录后可同步收藏与权益</text>
+            <text class="mine-user-card__meta">搜索、建议、详情和 PDF 仍可匿名使用</text>
           </view>
         </view>
 
-        <button class="mine-user-card__login-btn" bindtap="handleLoginTap">
-          立即登录
+        <button
+          class="mine-user-card__login-btn"
+          bindtap="handleLoginTap"
+          loading="{{isLoggingIn}}"
+          disabled="{{isLoggingIn}}"
+        >
+          去登录
         </button>
       </block>
     </view>
 
-    <!-- 核心资产 -->
     <view class="mine-section">
       <view class="mine-section__header">
         <text class="mine-section__title">核心资产</text>
       </view>
 
       <view class="mine-list">
-        <view class="mine-list-item" bindtap="handleFavoritesTap">
-          <view class="mine-list-item__left">
-            <text class="mine-list-item__label">我的收藏</text>
+        <block wx:if="{{isLoggedIn}}">
+          <view class="mine-list-item" bindtap="handleFavoritesTap">
+            <view class="mine-list-item__left">
+              <text class="mine-list-item__label">我的收藏</text>
+            </view>
+            <view class="mine-list-item__right">
+              <text class="mine-list-item__value">{{favoriteCount}} 条</text>
+              <text class="mine-list-item__arrow">></text>
+            </view>
           </view>
-          <view class="mine-list-item__right">
-            <text class="mine-list-item__value" wx:if="{{isLoggedIn}}">{{favoriteCount}} 条</text>
-            <text class="mine-list-item__arrow">></text>
+        </block>
+        <block wx:else>
+          <view class="mine-list-item mine-list-item--disabled">
+            <view class="mine-list-item__left">
+              <text class="mine-list-item__label">我的收藏</text>
+            </view>
+            <view class="mine-list-item__right">
+              <text class="mine-list-item__value">登录后可用</text>
+            </view>
           </view>
-        </view>
+        </block>
 
         <view class="mine-list-item" bindtap="handlePointsTap">
           <view class="mine-list-item__left">
@@ -91,7 +110,6 @@
       </view>
     </view>
 
-    <!-- 快捷操作 -->
     <view class="mine-section">
       <view class="mine-section__header">
         <text class="mine-section__title">快捷操作</text>
@@ -110,7 +128,6 @@
       </view>
     </view>
 
-    <!-- 更多服务 -->
     <view class="mine-section">
       <view class="mine-section__header">
         <text class="mine-section__title">更多服务</text>
@@ -146,7 +163,6 @@
       </view>
     </view>
 
-    <!-- 底部协议 -->
     <view class="mine-footer">
       <text class="mine-footer__link" bindtap="handleUserAgreementTap">用户协议</text>
       <text class="mine-footer__divider"> / </text>

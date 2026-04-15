@@ -84,6 +84,23 @@ page {
   border: none;
 }
 
+.mine-user-card__logout-btn {
+  margin-top: 20rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 18rpx;
+  background: #f3f4f6;
+  color: #111111;
+  font-size: 26rpx;
+  font-weight: 500;
+  border: none;
+  padding: 0;
+}
+
+.mine-user-card__logout-btn::after {
+  border: none;
+}
+
 /* Section */
 .mine-section {
   margin-bottom: 24rpx;
@@ -158,6 +175,10 @@ page {
 /* Emphasize first asset row */
 .mine-list-item:first-child .mine-list-item__label {
   font-weight: 600;
+}
+
+.mine-list-item--disabled {
+  opacity: 0.68;
 }
 
 /* Quick Actions */

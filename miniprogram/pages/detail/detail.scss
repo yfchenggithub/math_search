@@ -1,4 +1,4 @@
-.page {
+﻿.page {
   min-height: 100vh;
   height: 100vh;
   background: linear-gradient(180deg, #f8fafc 0%, #f3f6fb 220rpx, #eef2f7 100%);
@@ -68,6 +68,7 @@
 }
 
 .toolbar-btn,
+.favorite-btn,
 .pdf-btn {
   flex: 1;
   display: flex;
@@ -89,6 +90,7 @@
 }
 
 .toolbar-btn::after,
+.favorite-btn::after,
 .pdf-btn::after {
   border: 0;
 }
@@ -97,6 +99,22 @@
   background: rgba(255, 255, 255, 0.72);
   color: #0f172a;
   border-color: rgba(148, 163, 184, 0.18);
+}
+
+.favorite-btn {
+  border-color: transparent;
+}
+
+.favorite-btn-active {
+  background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff;
+  border-color: #b91c1c;
+}
+
+.favorite-btn-inactive {
+  background: rgba(255, 255, 255, 0.86);
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.34);
 }
 
 .pdf-btn {
