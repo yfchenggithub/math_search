@@ -1,4 +1,8 @@
 import { loginByWechatMiniProgram } from "../../api/auth-api";
+import {
+  mapAuthLoginPayloadToSession,
+  normalizeWechatMiniAppLoginResponse,
+} from "../auth-normalizers";
 import type { AuthSession, LoginResult } from "../auth-types";
 import type { AuthAdapter } from "./auth-adapter";
 
@@ -20,14 +24,6 @@ function wxLoginAsync(): Promise<string> {
   });
 }
 
-function resolveExpiresAt(expiresIn?: number): number | undefined {
-  if (typeof expiresIn !== "number" || !Number.isFinite(expiresIn) || expiresIn <= 0) {
-    return undefined;
-  }
-
-  return Date.now() + expiresIn * 1000;
-}
-
 export class MiniProgramWechatAuthAdapter implements AuthAdapter {
   async login(): Promise<LoginResult> {
     const code = await wxLoginAsync();
@@ -41,21 +37,13 @@ export class MiniProgramWechatAuthAdapter implements AuthAdapter {
       authProvider: "wechat",
     });
 
-    const token = String(response.accessToken || "").trim();
-    if (!token) {
+    const normalizedPayload = normalizeWechatMiniAppLoginResponse(response);
+    if (!normalizedPayload.accessToken) {
       throw new Error("AUTH_API_TOKEN_EMPTY");
     }
 
-    const session: AuthSession = {
-      token,
-      tokenType: String(response.tokenType || "Bearer").trim() || "Bearer",
-      refreshToken: response.refreshToken,
-      expiresAt: resolveExpiresAt(response.expiresIn),
-      platform: "mini_program",
-      authProvider: "wechat",
-      user: response.user,
-      obtainedAt: Date.now(),
-    };
+    const now = Date.now();
+    const session: AuthSession = mapAuthLoginPayloadToSession(normalizedPayload, now);
 
     return { session };
   }

@@ -1,8 +1,8 @@
 import { authStore } from "../../stores/auth-store";
 import {
   clearSession,
+  getAccessToken as readAccessToken,
   getSession,
-  getToken as readToken,
   saveSession,
   updateSession,
 } from "../../utils/storage/token-storage";
@@ -87,7 +87,7 @@ class AuthService {
     authStore.setVisitor();
   }
 
-  getToken(): string {
+  getAccessToken(): string {
     const session = getSession();
     if (!session) {
       return "";
@@ -98,7 +98,12 @@ class AuthService {
       return "";
     }
 
-    return readToken();
+    return readAccessToken();
+  }
+
+  // Keep compatibility for callers that still read getToken().
+  getToken(): string {
+    return this.getAccessToken();
   }
 
   getCurrentUser(): AuthUser | null {
@@ -110,7 +115,7 @@ class AuthService {
   }
 
   isAuthenticated(): boolean {
-    return this.getStatus() === "authenticated" && Boolean(this.getToken());
+    return this.getStatus() === "authenticated" && Boolean(this.getAccessToken());
   }
 
   async requireAuth(): Promise<boolean> {

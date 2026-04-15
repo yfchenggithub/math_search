@@ -1,5 +1,5 @@
 import { API_CONFIG } from "../../config/api";
-import { getSession, getToken } from "../../utils/storage/token-storage";
+import { getAccessToken, getSession } from "../../utils/storage/token-storage";
 import type {
   ApiEnvelope,
   AuthMode,
@@ -239,23 +239,23 @@ function resolveAuthHeader(authMode: AuthMode): RequestHeader {
     return {};
   }
 
-  const token = getToken();
+  const accessToken = getAccessToken();
 
-  if (!token && authMode === "required") {
+  if (!accessToken && authMode === "required") {
     throw new RequestError("Please login first", {
       statusCode: 401,
       code: "AUTH_REQUIRED_NO_TOKEN",
     });
   }
 
-  if (!token) {
+  if (!accessToken) {
     return {};
   }
 
   const tokenType = getSession()?.tokenType || "Bearer";
 
   return {
-    Authorization: `${tokenType} ${token}`,
+    Authorization: `${tokenType} ${accessToken}`,
   };
 }
 
