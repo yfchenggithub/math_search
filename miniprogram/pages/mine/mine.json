@@ -1,5 +1,6 @@
 {
   "usingComponents": {
-    "navigation-bar": "/components/navigation-bar/navigation-bar"
+    "navigation-bar": "/components/navigation-bar/navigation-bar",
+    "auth-status-toast-host": "/components/auth-status-toast-host/auth-status-toast-host"
   }
 }

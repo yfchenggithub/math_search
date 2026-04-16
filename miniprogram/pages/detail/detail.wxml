@@ -181,4 +181,15 @@
       </view>
     </view>
   </view>
+
+  <auth-status-toast-host
+    visible="{{authStatusToastVisible}}"
+    type="{{authStatusToastType}}"
+    title="{{authStatusToastTitle}}"
+    message="{{authStatusToastMessage}}"
+    retryable="{{authStatusToastRetryable}}"
+    closable="{{authStatusToastClosable}}"
+    bindretry="handleAuthStatusRetryTap"
+    bindclose="handleAuthStatusCloseTap"
+  ></auth-status-toast-host>
 </view>

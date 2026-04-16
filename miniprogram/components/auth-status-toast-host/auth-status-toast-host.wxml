@@ -1,0 +1,50 @@
+<view
+  wx:if="{{visible}}"
+  class="auth-status-toast-layer"
+  catchtouchmove="noop"
+>
+  <view
+    class="auth-status-toast-card auth-status-toast-card--{{type}}"
+    catchtap="noop"
+  >
+    <view class="auth-status-toast-head">
+      <view class="auth-status-toast-dot auth-status-toast-dot--{{type}}">
+        <view
+          wx:if="{{type === 'logging'}}"
+          class="auth-status-toast-spinner"
+        ></view>
+        <view
+          wx:elif="{{type === 'success'}}"
+          class="auth-status-toast-check"
+        >✓</view>
+        <view
+          wx:else
+          class="auth-status-toast-core"
+        ></view>
+      </view>
+      <text class="auth-status-toast-title">{{title}}</text>
+    </view>
+
+    <text class="auth-status-toast-message">{{message}}</text>
+
+    <view
+      wx:if="{{retryable || closable}}"
+      class="auth-status-toast-actions"
+    >
+      <button
+        wx:if="{{retryable}}"
+        class="auth-status-toast-btn auth-status-toast-btn--primary"
+        bindtap="onRetryTap"
+      >
+        重试
+      </button>
+      <button
+        wx:if="{{closable}}"
+        class="auth-status-toast-btn auth-status-toast-btn--ghost"
+        bindtap="onCloseTap"
+      >
+        关闭
+      </button>
+    </view>
+  </view>
+</view>

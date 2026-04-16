@@ -1,6 +1,7 @@
 {
   "usingComponents": {
     "navigation-bar": "/components/navigation-bar/navigation-bar",
-    "detail-section-renderer": "/components/detail-section-renderer/detail-section-renderer"
+    "detail-section-renderer": "/components/detail-section-renderer/detail-section-renderer",
+    "auth-status-toast-host": "/components/auth-status-toast-host/auth-status-toast-host"
   }
 }

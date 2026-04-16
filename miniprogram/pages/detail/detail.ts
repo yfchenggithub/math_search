@@ -8,7 +8,15 @@ import {
   extractFilenameFromUrl,
 } from "../../utils/api-url";
 import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
+import type { AuthStatusToastType } from "../../services/auth/auth-types";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
+import type { AuthStatusToastState } from "../../utils/auth/auth-status-feedback";
+import {
+  hideAuthStatusToast,
+  retryAuthStatusToast,
+  showAuthStatusToast,
+  subscribeAuthStatusToast,
+} from "../../utils/auth/auth-status-feedback";
 import { getDetailDocumentById } from "../../utils/detail-content";
 import { createLogger } from "../../utils/logger/logger";
 import { getErrorMessage } from "../../utils/request";
@@ -120,6 +128,12 @@ Page({
     transformStyle: "transform: translate3d(0px, 0px, 0) scale(1);",
     zoomActive: false,
     scaleLabel: "100%",
+    authStatusToastVisible: false,
+    authStatusToastType: "idle" as AuthStatusToastType,
+    authStatusToastTitle: "",
+    authStatusToastMessage: "",
+    authStatusToastRetryable: false,
+    authStatusToastClosable: false,
   },
   scale: 1,
   lastScale: 1,
@@ -156,6 +170,7 @@ Page({
   pdfStatusTimer: 0,
   pdfDownloadTask: null as WechatMiniprogram.DownloadTask | null,
   currentDetailId: "",
+  unsubscribeAuthStatusToast: undefined as undefined | (() => void),
 
   
   raf(callback: Function) {
@@ -344,9 +359,15 @@ Page({
 
     const conclusionId = String(this.data.id || "").trim();
     if (!conclusionId) {
-      wx.showToast({
-        title: "结论 ID 无效",
-        icon: "none",
+      detailPageLogger.warn("favorite_toggle_invalid_id", {
+        id: this.data.id,
+      });
+      showAuthStatusToast({
+        type: "error",
+        title: "收藏未完成",
+        message: "结论 ID 无效，请返回列表后重试",
+        closable: true,
+        source: "unknown",
       });
       return;
     }
@@ -360,6 +381,7 @@ Page({
       {
         title: "请先登录",
         content: "登录后可同步收藏状态",
+        loginSource: "favorites",
       },
     );
   },
@@ -384,14 +406,33 @@ Page({
         favoriteStatusText: nextFavoriteState ? "已收藏" : "未收藏",
       });
 
-      wx.showToast({
+      detailPageLogger.info("favorite_toggle_success", {
+        conclusionId,
+        isFavorited: nextFavoriteState,
+      });
+      showAuthStatusToast({
+        type: "success",
         title: nextFavoriteState ? "已收藏" : "已取消收藏",
-        icon: "success",
+        message: nextFavoriteState ? "收藏状态已同步" : "该条目已从收藏中移除",
+        source: "unknown",
       });
     } catch (error) {
-      wx.showToast({
-        title: getErrorMessage(error, "收藏操作失败"),
-        icon: "none",
+      const errorMessage = getErrorMessage(error, "收藏操作失败，请稍后重试");
+      detailPageLogger.warn("favorite_toggle_failed", {
+        conclusionId,
+        targetState: nextFavoriteState,
+        error,
+      });
+      showAuthStatusToast({
+        type: "error",
+        title: nextFavoriteState ? "收藏失败" : "取消收藏失败",
+        message: errorMessage,
+        retryable: true,
+        closable: true,
+        source: "unknown",
+        onRetry: () => {
+          void this.commitFavoriteToggle(conclusionId, nextFavoriteState);
+        },
       });
     } finally {
       this.setData({
@@ -402,6 +443,9 @@ Page({
 
   
   onLoad(options: Record<string, string | undefined>) {
+    this.unsubscribeAuthStatusToast = subscribeAuthStatusToast((state) => {
+      this.syncAuthStatusToast(state);
+    });
     void this.loadDetail(options);
   },
 
@@ -411,6 +455,9 @@ Page({
     clearTimeout(this.measureTimer);
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
+    this.unsubscribeAuthStatusToast?.();
+    this.unsubscribeAuthStatusToast = undefined;
+    hideAuthStatusToast("detail_unload");
   },
 
   
@@ -467,6 +514,28 @@ Page({
 
   noop() {
     return;
+  },
+
+  handleAuthStatusRetryTap() {
+    const retried = retryAuthStatusToast();
+    if (!retried) {
+      detailPageLogger.info("auth_status_retry_without_handler");
+    }
+  },
+
+  handleAuthStatusCloseTap() {
+    hideAuthStatusToast("manual_close");
+  },
+
+  syncAuthStatusToast(state: AuthStatusToastState) {
+    this.setData({
+      authStatusToastVisible: state.visible,
+      authStatusToastType: state.type,
+      authStatusToastTitle: state.title,
+      authStatusToastMessage: state.message,
+      authStatusToastRetryable: state.retryable,
+      authStatusToastClosable: state.closable,
+    });
   },
 
   onPdfStatusMaskTap() {

@@ -13,6 +13,20 @@ import { createLogger } from "../logger/logger";
 import { getErrorMessage } from "../request";
 
 const authGuardLogger = createLogger("auth-guard");
+const AUTH_MOJIBAKE_PATTERN = /[璇鍘宸鐧姝鎿]/;
+
+function resolveReadableText(rawText: string | undefined, fallback: string): string {
+  const normalized = String(rawText || "").trim();
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (normalized.includes("�") || AUTH_MOJIBAKE_PATTERN.test(normalized)) {
+    return fallback;
+  }
+
+  return normalized;
+}
 
 function showLoginConfirmModal(options: RequireAuthOptions): Promise<boolean> {
   return new Promise((resolve) => {
@@ -58,7 +72,10 @@ export async function requireAuthAndRun<T>(
       showAuthStatusToast({
         type: "logging",
         title: "登录中",
-        message: getLoginStageText("preparing"),
+        message: resolveReadableText(
+          getLoginStageText("preparing"),
+          "正在准备登录...",
+        ),
         traceId,
         source: "guard",
       });
@@ -72,7 +89,8 @@ export async function requireAuthAndRun<T>(
     await authService.login({
       traceId,
       onStageChange: (payload) => {
-        const stageText = payload.message || getLoginStageText(payload.stage);
+        const stageFallback = getLoginStageText(payload.stage) || "正在处理登录...";
+        const stageText = resolveReadableText(payload.message, stageFallback);
         authGuardLogger.info("login_stage_change", {
           traceId: payload.traceId || traceId,
           stage: payload.stage,
@@ -115,18 +133,26 @@ export async function requireAuthAndRun<T>(
 
     if (hasStatusToastHost) {
       if (mappedError.isUserCancelled) {
+        const cancelledMessage = resolveReadableText(
+          mappedError.userMessage,
+          "你已取消本次登录",
+        );
         showAuthStatusToast({
           type: "cancelled",
           title: "已取消登录",
-          message: mappedError.userMessage,
+          message: cancelledMessage,
           traceId,
           source: "guard",
         });
       } else {
+        const errorMessage = resolveReadableText(
+          mappedError.userMessage,
+          "登录未完成，请稍后重试",
+        );
         showAuthStatusToast({
           type: "error",
           title: "登录未完成",
-          message: mappedError.userMessage,
+          message: errorMessage,
           retryable: true,
           closable: true,
           traceId,
@@ -159,10 +185,22 @@ export async function requireAuthAndRun<T>(
       error,
     });
 
-    wx.showToast({
-      title: getErrorMessage(error, "操作未完成，请稍后重试"),
-      icon: "none",
-    });
+    const fallbackMessage = getErrorMessage(error, "操作未完成，请稍后重试");
+    if (hasStatusToastHost) {
+      showAuthStatusToast({
+        type: "error",
+        title: "操作未完成",
+        message: fallbackMessage,
+        closable: true,
+        traceId,
+        source: "guard",
+      });
+    } else {
+      wx.showToast({
+        title: fallbackMessage,
+        icon: "none",
+      });
+    }
 
     return undefined;
   }
