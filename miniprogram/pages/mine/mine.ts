@@ -9,20 +9,20 @@ import type {
   RequireAuthOptions,
 } from "../../services/auth/auth-types";
 import { authStore } from "../../stores/auth-store";
+import type { AuthFlowErrorCategory } from "../../utils/auth/auth-login-feedback";
 import {
-  type AuthFlowErrorCategory,
   createLoginTraceId,
   formatLoginDebugText,
   getLoginStageText,
   isAuthDebugEnv,
   mapAuthFlowError,
 } from "../../utils/auth/auth-login-feedback";
+import type { AuthStatusToastState } from "../../utils/auth/auth-status-feedback";
 import {
   hideAuthStatusToast,
   retryAuthStatusToast,
   showAuthStatusToast,
   subscribeAuthStatusToast,
-  type AuthStatusToastState,
 } from "../../utils/auth/auth-status-feedback";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { RequestError } from "../../utils/request";
