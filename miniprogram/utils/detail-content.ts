@@ -40,6 +40,9 @@ import type {
   CanonicalTheoremItem,
 } from "../types/detail";
 import { fetchConclusionDetail } from "./detail-api";
+import { createLogger } from "./logger/logger";
+
+const detailContentLogger = createLogger("detail-content");
 
 /**
  * 以下 Raw* 类型描述的是“构建脚本输出的数据形态”。
@@ -1271,7 +1274,9 @@ function getRawDetailEntry(id: string): RawDetailEntry | null {
     try {
       detailContentCache = buildDetailContentCache();
     } catch (error) {
-      console.error("Load detail content failed", error);
+      detailContentLogger.error("load_detail_content_failed", {
+        error,
+      });
       detailContentCache = {};
     }
   }

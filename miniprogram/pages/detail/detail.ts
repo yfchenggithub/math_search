@@ -10,6 +10,7 @@ import {
 import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { getDetailDocumentById } from "../../utils/detail-content";
+import { createLogger } from "../../utils/logger/logger";
 import { getErrorMessage } from "../../utils/request";
 
 type TouchPoint = {
@@ -70,6 +71,7 @@ class PdfOperationError extends Error {
 const DEFAULT_PDF_FILENAME = "hd-pdf.pdf";
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
 const PDF_STATUS_AUTO_HIDE_MS = 900;
+const detailPageLogger = createLogger("detail-page");
 
 function createIdlePdfStatus(): PdfStatusView {
   return {
@@ -496,7 +498,9 @@ Page({
     try {
       this.pdfDownloadTask.abort();
     } catch (error) {
-      console.warn("Abort PDF download task failed", error);
+      detailPageLogger.warn("abort_pdf_download_task_failed", {
+        error,
+      });
     }
 
     this.pdfDownloadTask = null;
@@ -739,7 +743,9 @@ Page({
 
       return normalized;
     } catch (error) {
-      console.warn("Read PDF cache map failed", error);
+      detailPageLogger.warn("read_pdf_cache_map_failed", {
+        error,
+      });
       return {};
     }
   },
@@ -763,7 +769,10 @@ Page({
       cacheMap[cacheKey] = savedFilePath;
       wx.setStorageSync(PDF_CACHE_STORAGE_KEY, cacheMap);
     } catch (error) {
-      console.warn("Write PDF cache map failed", error);
+      detailPageLogger.warn("write_pdf_cache_map_failed", {
+        cacheKey,
+        error,
+      });
     }
   },
 
@@ -781,7 +790,10 @@ Page({
       delete cacheMap[cacheKey];
       wx.setStorageSync(PDF_CACHE_STORAGE_KEY, cacheMap);
     } catch (error) {
-      console.warn("Remove PDF cache entry failed", error);
+      detailPageLogger.warn("remove_pdf_cache_entry_failed", {
+        cacheKey,
+        error,
+      });
     }
   },
 
@@ -1080,7 +1092,7 @@ Page({
         canRetry: stage !== "validate",
       });
 
-      console.error("Open PDF failed", {
+      detailPageLogger.error("open_pdf_failed", {
         stage,
         error,
         context,

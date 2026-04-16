@@ -9,7 +9,10 @@ import {
   hasAuthStatusToastSubscriber,
   showAuthStatusToast,
 } from "../auth/auth-status-feedback";
+import { createLogger } from "../logger/logger";
 import { getErrorMessage } from "../request";
+
+const authGuardLogger = createLogger("auth-guard");
 
 function showLoginConfirmModal(options: RequireAuthOptions): Promise<boolean> {
   return new Promise((resolve) => {
@@ -41,7 +44,7 @@ export async function requireAuthAndRun<T>(
 
   const confirmed = await showLoginConfirmModal(options);
   if (!confirmed) {
-    console.info("[auth-flow] [guard] 用户取消登录确认", {
+    authGuardLogger.info("login_confirm_cancelled", {
       loginSource,
     });
     return undefined;
@@ -70,7 +73,7 @@ export async function requireAuthAndRun<T>(
       traceId,
       onStageChange: (payload) => {
         const stageText = payload.message || getLoginStageText(payload.stage);
-        console.info("[auth-flow] [guard] 阶段切换", {
+        authGuardLogger.info("login_stage_change", {
           traceId: payload.traceId || traceId,
           stage: payload.stage,
           message: stageText,
@@ -102,7 +105,7 @@ export async function requireAuthAndRun<T>(
     }
   } catch (error) {
     const mappedError = mapAuthFlowError(error);
-    console.warn("[auth-flow] [guard] 登录失败", {
+    authGuardLogger.warn("login_failed", {
       traceId,
       loginSource,
       category: mappedError.category,
@@ -150,7 +153,7 @@ export async function requireAuthAndRun<T>(
   try {
     return await action();
   } catch (error) {
-    console.warn("[auth-flow] [guard] 已登录但受保护动作执行失败", {
+    authGuardLogger.warn("protected_action_failed", {
       traceId,
       loginSource,
       error,

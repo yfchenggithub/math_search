@@ -1,4 +1,4 @@
-import { authStore } from "../../stores/auth-store";
+﻿import { authStore } from "../../stores/auth-store";
 import {
   clearSession,
   getAccessToken as readAccessToken,
@@ -6,6 +6,7 @@ import {
   saveSession,
   updateSession,
 } from "../../utils/storage/token-storage";
+import { createLogger } from "../../utils/logger/logger";
 import { setAuthExpiredHandler } from "../request/request";
 import { MiniProgramWechatAuthAdapter } from "./adapters/mini-program-wechat-auth-adapter";
 import type { AuthAdapter } from "./adapters/auth-adapter";
@@ -18,6 +19,8 @@ import type {
   AuthUser,
 } from "./auth-types";
 import { mapAuthFlowError } from "../../utils/auth/auth-login-feedback";
+
+const authLogger = createLogger("auth-service");
 
 class AuthService {
   private initialized = false;
@@ -68,7 +71,7 @@ class AuthService {
       if (options?.onStageChange) {
         options.onStageChange({
           stage: "session_ready",
-          message: "登录态仍有效，复用当前会话",
+          message: "Session is still valid, reuse current session",
           traceId: options.traceId,
           timestamp: Date.now(),
         });
@@ -78,7 +81,7 @@ class AuthService {
     }
 
     if (this.loginPromise) {
-      this.logAuthFlow("复用中的登录流程", {
+      this.logAuthFlow("login_reuse_inflight", {
         traceId: this.currentLoginTraceId,
         stage: this.currentLoginStage,
       });
@@ -86,7 +89,7 @@ class AuthService {
       if (options?.onStageChange && this.currentLoginStage !== "idle") {
         options.onStageChange({
           stage: this.currentLoginStage,
-          message: this.currentLoginStageMessage || "复用中的登录流程",
+          message: this.currentLoginStageMessage || "澶嶇敤涓殑鐧诲綍娴佺▼",
           traceId: this.currentLoginTraceId,
           timestamp: Date.now(),
         });
@@ -103,14 +106,14 @@ class AuthService {
     this.currentLoginStageMessage = "";
     this.loginStartedAt = Date.now();
 
-    this.logAuthFlow("登录流程启动", {
+    this.logAuthFlow("login_start", {
       traceId,
     });
 
     authStore.setLoggingIn();
     this.notifyStage({
       stage: "preparing",
-      message: "正在准备登录...",
+      message: "姝ｅ湪鍑嗗鐧诲綍...",
       traceId,
       timestamp: Date.now(),
     });
@@ -131,7 +134,7 @@ class AuthService {
         authStore.setAuthenticated(session);
 
         const elapsedMs = this.getElapsedMs();
-        this.logAuthFlow("登录成功", {
+        this.logAuthFlow("login_success", {
           traceId,
           elapsedMs,
           platform: session.platform,
@@ -148,18 +151,18 @@ class AuthService {
           traceId,
           timestamp: Date.now(),
         });
-        this.logAuthFlow("登录失败", {
+        this.logAuthFlow("login_fail", {
           traceId,
           elapsedMs: this.getElapsedMs(),
           category: mappedError.category,
           debugMessage: mappedError.debugMessage,
-        });
+        }, "warn");
 
         authStore.setVisitor(String((error as Error)?.message || mappedError.category));
         throw error;
       })
       .finally(() => {
-        this.logAuthFlow("登录流程结束", {
+        this.logAuthFlow("login_finish", {
           traceId,
           elapsedMs: this.getElapsedMs(),
           finalStage: this.currentLoginStage,
@@ -224,6 +227,10 @@ class AuthService {
   }
 
   onAuthExpired(): void {
+    this.logAuthFlow("auth_expired", {
+      traceId: this.currentLoginTraceId || undefined,
+      stage: this.currentLoginStage,
+    }, "warn");
     clearSession();
     authStore.setExpired();
   }
@@ -279,8 +286,9 @@ class AuthService {
     this.currentLoginStage = normalizedPayload.stage;
     this.currentLoginStageMessage = normalizedPayload.message || "";
 
-    this.logAuthFlow(`阶段切换 -> ${normalizedPayload.stage}`, {
+    this.logAuthFlow("login_stage_change", {
       traceId: normalizedPayload.traceId,
+      stage: normalizedPayload.stage,
       message: normalizedPayload.message || "",
     });
 
@@ -288,10 +296,10 @@ class AuthService {
       try {
         listener(normalizedPayload);
       } catch (error) {
-        this.logAuthFlow("阶段监听器执行失败", {
+        this.logAuthFlow("login_stage_listener_failed", {
           traceId: normalizedPayload.traceId,
           error,
-        });
+        }, "warn");
       }
     });
   }
@@ -304,13 +312,27 @@ class AuthService {
     return Date.now() - this.loginStartedAt;
   }
 
-  private logAuthFlow(message: string, extra?: Record<string, unknown>): void {
-    if (extra) {
-      console.info("[auth-flow]", message, extra);
+  private logAuthFlow(
+    eventName: string,
+    extra?: Record<string, unknown>,
+    level: "debug" | "info" | "warn" | "error" = "info",
+  ): void {
+    if (level === "debug") {
+      authLogger.debug(eventName, extra);
       return;
     }
 
-    console.info("[auth-flow]", message);
+    if (level === "warn") {
+      authLogger.warn(eventName, extra);
+      return;
+    }
+
+    if (level === "error") {
+      authLogger.error(eventName, extra);
+      return;
+    }
+
+    authLogger.info(eventName, extra);
   }
 }
 

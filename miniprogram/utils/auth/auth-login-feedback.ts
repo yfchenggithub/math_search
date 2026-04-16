@@ -1,5 +1,8 @@
 import type { AuthLoginStage } from "../../services/auth/auth-types";
+import { createLogger } from "../logger/logger";
 import { RequestError } from "../request";
+
+const authLoginFeedbackLogger = createLogger("auth-login-feedback");
 
 type RuntimeErrorWithMeta = Error & {
   code?: string | number;
@@ -244,6 +247,14 @@ export function mapAuthFlowError(error: unknown): AuthFlowErrorMapping {
   const messageText = details.messages.length ? details.messages.join(" | ") : "-";
   const statusText = typeof details.statusCode === "number" ? String(details.statusCode) : "-";
 
+  if (category === "unknown") {
+    authLoginFeedbackLogger.warn("map_auth_flow_error_unknown", {
+      statusText,
+      codeText,
+      messageText,
+    });
+  }
+
   return {
     category,
     userMessage: resolveUserMessage(category),
@@ -277,7 +288,11 @@ export function formatLoginDebugText(options: LoginDebugTextOptions): string {
 export function isAuthDebugEnv(): boolean {
   try {
     return wx.getAccountInfoSync().miniProgram.envVersion === "develop";
-  } catch (_error) {
+  } catch (error) {
+    authLoginFeedbackLogger.warn("read_env_version_failed", {
+      fallback: false,
+      error,
+    });
     return false;
   }
 }

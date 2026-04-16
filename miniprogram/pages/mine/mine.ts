@@ -25,6 +25,7 @@ import {
   subscribeAuthStatusToast,
 } from "../../utils/auth/auth-status-feedback";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
+import { createLogger } from "../../utils/logger/logger";
 import { RequestError } from "../../utils/request";
 
 type LoginSource = NonNullable<RequireAuthOptions["loginSource"]>;
@@ -48,6 +49,9 @@ type RefreshMineDataOptions = {
   withLoginFeedback?: boolean;
   traceId?: string;
 };
+
+const mineLoginLogger = createLogger("mine-login");
+const authStatusToastLogger = createLogger("auth-status-toast");
 
 type MinePageData = {
   authStatus: AuthStatus;
@@ -129,7 +133,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     if (this.data.isLoggedIn) {
       void this.refreshMineData().then((result: MineRefreshResult) => {
         if (!result.profile.ok || !result.summary.ok) {
-          console.warn("[mine-login] 页面展示时刷新 mine 数据存在失败", {
+          mineLoginLogger.warn("page_show_refresh_failed", {
             profileOk: result.profile.ok,
             summaryOk: result.summary.ok,
           });
@@ -219,7 +223,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       loginTraceId: traceId,
     });
 
-    console.info("[mine-login] 阶段切换", {
+    mineLoginLogger.info("login_stage_change", {
       traceId,
       stage,
       hintText,
@@ -254,7 +258,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       loginWarningText: "",
     });
 
-    console.warn("[mine-login] 登录失败", {
+    mineLoginLogger.warn("login_failed", {
       traceId: this.data.loginTraceId,
       category: mappedError.category,
       debugMessage: mappedError.debugMessage,
@@ -303,7 +307,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       loginWarningText: warning,
     });
 
-    console.info("[mine-login] 登录部分成功", {
+    mineLoginLogger.info("login_partial_success", {
       traceId: this.data.loginTraceId,
       warning,
       elapsedMs: this.getLoginElapsedMs(),
@@ -334,7 +338,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       loginWarningText: "",
     });
 
-    console.info("[mine-login] 登录成功", {
+    mineLoginLogger.info("login_success", {
       traceId: this.data.loginTraceId,
       elapsedMs: this.getLoginElapsedMs(),
     });
@@ -428,7 +432,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     });
     this.startLoginElapsedTimer();
 
-    console.info("[mine-login] 点击登录", {
+    mineLoginLogger.info("login_tap", {
       traceId,
       isLoggedIn: this.data.isLoggedIn,
     });
@@ -462,14 +466,14 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
         this.setLoginPartialSuccess(refreshOutcome.warningText || "已登录，部分数据稍后刷新");
       }
 
-      console.info("[mine-login] 登录流程结束", {
+      mineLoginLogger.info("login_flow_finish", {
         traceId,
         finalStage: refreshOutcome.stage,
         elapsedMs: this.getLoginElapsedMs(),
       });
     } catch (error) {
       this.setLoginFailed(error);
-      console.warn("[mine-login] 登录流程异常结束", {
+      mineLoginLogger.warn("login_flow_failed", {
         traceId,
         elapsedMs: this.getLoginElapsedMs(),
         error,
@@ -529,7 +533,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       return;
     }
 
-    console.info("[mine-login] refreshUserInfo start", {
+    mineLoginLogger.info("refresh_user_info_start", {
       traceId: this.data.loginTraceId,
     });
 
@@ -537,18 +541,18 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       const user = await fetchMineUserInfo();
       authService.syncUser(user);
 
-      console.info("[mine-login] refreshUserInfo success", {
+      mineLoginLogger.info("refresh_user_info_success", {
         traceId: this.data.loginTraceId,
       });
     } catch (error) {
       if (error instanceof RequestError && error.statusCode === 401) {
-        console.warn("[mine-login] refreshUserInfo unauthorized", {
+        mineLoginLogger.warn("refresh_user_info_unauthorized", {
           traceId: this.data.loginTraceId,
         });
         throw error;
       }
 
-      console.warn("[mine-login] refreshUserInfo failed", {
+      mineLoginLogger.warn("refresh_user_info_failed", {
         traceId: this.data.loginTraceId,
         error,
       });
@@ -561,7 +565,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       return;
     }
 
-    console.info("[mine-login] loadMineSummary start", {
+    mineLoginLogger.info("load_mine_summary_start", {
       traceId: this.data.loginTraceId,
     });
 
@@ -576,19 +580,19 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
         favoriteCount: response.total || 0,
       });
 
-      console.info("[mine-login] loadMineSummary success", {
+      mineLoginLogger.info("load_mine_summary_success", {
         traceId: this.data.loginTraceId,
         favoriteCount: response.total || 0,
       });
     } catch (error) {
       if (error instanceof RequestError && error.statusCode === 401) {
-        console.warn("[mine-login] loadMineSummary unauthorized", {
+        mineLoginLogger.warn("load_mine_summary_unauthorized", {
           traceId: this.data.loginTraceId,
         });
         throw error;
       }
 
-      console.warn("[mine-login] loadMineSummary failed", {
+      mineLoginLogger.warn("load_mine_summary_failed", {
         traceId: this.data.loginTraceId,
         error,
       });
@@ -603,7 +607,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
   },
 
   handleAuthStatusRetryTap() {
-    console.info("[auth-status-toast] mine 页面点击重试", {
+    authStatusToastLogger.info("mine_retry_tap", {
       traceId: this.data.loginTraceId,
     });
 
@@ -614,7 +618,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
   },
 
   handleAuthStatusCloseTap() {
-    console.info("[auth-status-toast] mine 页面手动关闭");
+    authStatusToastLogger.info("mine_close_tap");
     hideAuthStatusToast("manual_close");
   },
 

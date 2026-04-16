@@ -2,6 +2,7 @@ import type {
   AuthStatusToastPayload,
   AuthStatusToastType,
 } from "../../services/auth/auth-types";
+import { createLogger } from "../logger/logger";
 
 export interface AuthStatusToastState {
   visible: boolean;
@@ -21,6 +22,8 @@ interface AuthStatusToastOptions extends AuthStatusToastPayload {
 }
 
 type AuthStatusToastListener = (state: AuthStatusToastState) => void;
+
+const authStatusToastLogger = createLogger("auth-status-toast");
 
 const DEFAULT_AUTO_HIDE_BY_TYPE: Record<AuthStatusToastType, number> = {
   idle: 0,
@@ -68,7 +71,9 @@ function emitState() {
     try {
       listener(currentState);
     } catch (error) {
-      console.warn("[auth-status-toast] listener failed", error);
+      authStatusToastLogger.warn("listener_failed", {
+        error,
+      });
     }
   });
 }
@@ -146,7 +151,7 @@ export function showAuthStatusToast(options: AuthStatusToastOptions): void {
   retryHandler = options.onRetry || null;
   currentState = nextState;
 
-  console.info("[auth-status-toast] 状态切换", {
+  authStatusToastLogger.info("state_change", {
     type: nextState.type,
     visible: nextState.visible,
     traceId: nextState.traceId,
@@ -171,7 +176,7 @@ export function hideAuthStatusToast(reason = "manual_close"): void {
   retryHandler = null;
   currentState = createIdleAuthStatusToastState();
 
-  console.info("[auth-status-toast] 状态关闭", {
+  authStatusToastLogger.info("state_hide", {
     reason,
   });
 
@@ -185,7 +190,7 @@ export function retryAuthStatusToast(): boolean {
 
   const handler = retryHandler;
 
-  console.info("[auth-status-toast] 重试点击");
+  authStatusToastLogger.info("retry_click");
   hideAuthStatusToast("retry_click");
 
   handler();

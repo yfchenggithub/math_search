@@ -1,10 +1,11 @@
-import { loginByWechatMiniProgram } from "../../api/auth-api";
+﻿import { loginByWechatMiniProgram } from "../../api/auth-api";
 import {
   mapAuthLoginPayloadToSession,
   normalizeWechatMiniAppLoginResponse,
 } from "../auth-normalizers";
 import type { AuthLoginTraceOptions, AuthSession, LoginResult } from "../auth-types";
 import type { AuthAdapter } from "./auth-adapter";
+import { createLogger } from "../../../utils/logger/logger";
 
 type AuthFlowRuntimeError = Error & {
   authCode?: string;
@@ -13,6 +14,8 @@ type AuthFlowRuntimeError = Error & {
   cause?: unknown;
   statusCode?: number;
 };
+
+const adapterLogger = createLogger("auth-adapter");
 
 function emitStage(
   options: AuthLoginTraceOptions | undefined,
@@ -77,19 +80,39 @@ function normalizeWxLoginError(error: unknown): Error {
   return toAuthFlowError("WECHAT_LOGIN_FAILED", "Wechat login failed", error);
 }
 
-function wxLoginAsync(): Promise<string> {
+function wxLoginAsync(traceId?: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    adapterLogger.info("wx_login_call_start", {
+      traceId,
+    });
+
     wx.login({
       success: (res) => {
         const code = String(res.code || "").trim();
         if (!code) {
-          reject(toAuthFlowError("WECHAT_LOGIN_CODE_EMPTY", "Wechat login code is empty"));
+          const error = toAuthFlowError("WECHAT_LOGIN_CODE_EMPTY", "Wechat login code is empty");
+          adapterLogger.warn("wx_login_code_fail", {
+            traceId,
+            error,
+          });
+          reject(error);
           return;
         }
+
+        adapterLogger.info("wx_login_code_success", {
+          traceId,
+          code,
+          codeLength: code.length,
+        });
         resolve(code);
       },
       fail: (error) => {
-        reject(normalizeWxLoginError(error));
+        const normalizedError = normalizeWxLoginError(error);
+        adapterLogger.warn("wx_login_call_fail", {
+          traceId,
+          error: normalizedError,
+        });
+        reject(normalizedError);
       },
     });
   });
@@ -98,23 +121,33 @@ function wxLoginAsync(): Promise<string> {
 export class MiniProgramWechatAuthAdapter implements AuthAdapter {
   async login(options?: AuthLoginTraceOptions): Promise<LoginResult> {
     const traceId = options?.traceId;
-    console.info("[auth-flow] [adapter] login start", {
+    adapterLogger.info("login_start", {
       traceId,
     });
 
-    emitStage(options, "preparing", "正在准备登录...");
+    emitStage(options, "preparing", "姝ｅ湪鍑嗗鐧诲綍...");
 
     try {
-      emitStage(options, "wechat_code", "正在获取微信登录凭证...");
-      const code = await wxLoginAsync();
+      emitStage(options, "wechat_code", "姝ｅ湪鑾峰彇寰俊鐧诲綍鍑瘉...");
+      const code = await wxLoginAsync(traceId);
 
-      emitStage(options, "server_sign_in", "正在连接服务器...");
+      emitStage(options, "server_sign_in", "姝ｅ湪杩炴帴鏈嶅姟鍣?..");
+      adapterLogger.info("backend_login_request_start", {
+        traceId,
+      });
       const response = await loginByWechatMiniProgram({
         code,
         platform: "mini_program",
         authProvider: "wechat",
       }).catch((error) => {
+        adapterLogger.warn("backend_login_request_fail", {
+          traceId,
+          error,
+        });
         throw toAuthFlowError("AUTH_API_REQUEST_FAILED", "Auth API request failed", error);
+      });
+      adapterLogger.info("backend_login_request_success", {
+        traceId,
       });
 
       const normalizedPayload = normalizeWechatMiniAppLoginResponse(response);
@@ -125,8 +158,8 @@ export class MiniProgramWechatAuthAdapter implements AuthAdapter {
       const now = Date.now();
       const session: AuthSession = mapAuthLoginPayloadToSession(normalizedPayload, now);
 
-      emitStage(options, "session_ready", "登录凭证已建立");
-      console.info("[auth-flow] [adapter] login success", {
+      emitStage(options, "session_ready", "Login credential ready");
+      adapterLogger.info("login_success", {
         traceId,
         platform: session.platform,
         authProvider: session.authProvider,
@@ -140,7 +173,7 @@ export class MiniProgramWechatAuthAdapter implements AuthAdapter {
 
       const authCode = (normalizedError as AuthFlowRuntimeError).authCode || "UNKNOWN";
 
-      console.warn("[auth-flow] [adapter] login failed", {
+      adapterLogger.warn("login_fail", {
         traceId,
         authCode,
         error: normalizedError,

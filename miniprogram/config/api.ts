@@ -2,15 +2,18 @@
  * API config center.
  * Keep baseURL and search mode switches in one place for easy rollback.
  */
-type ApiEnv = "develop" | "trial" | "release";
+import { createLogger } from "../utils/logger/logger";
+import { type ApiEnv, readApiEnvVersion } from "./runtime-env";
+
+const apiConfigLogger = createLogger("api-config");
 
 const BASE_URL_BY_ENV: Record<ApiEnv, string> = {
   // local debug
-  develop: "http://146.56.223.203:8000",
+  develop: "http://127.0.0.1:8000",
   // placeholders for future deployment
-  trial: "http://146.56.223.203:8000",
+  trial: "http://127.0.0.1:8000",
   // 146.56.223.203
-  release: "http://146.56.223.203:8000",
+  release: "http://127.0.0.1:8000",
 };
 
 /**
@@ -19,11 +22,14 @@ const BASE_URL_BY_ENV: Record<ApiEnv, string> = {
  */
 const BASE_URL_OVERRIDE = "";
 
-function resolveApiEnv(): ApiEnv {
+export function resolveApiEnv(): ApiEnv {
   try {
-    return wx.getAccountInfoSync().miniProgram.envVersion;
+    return readApiEnvVersion();
   } catch (error) {
-    console.warn("Failed to read envVersion, fallback to release", error);
+    apiConfigLogger.warn("resolve_env_failed", {
+      fallbackEnv: "release",
+      error,
+    });
     return "release";
   }
 }

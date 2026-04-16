@@ -1,4 +1,5 @@
 import { ContentMap, type ContentType } from "../data/content/registry";
+import { createLogger } from "./logger/logger";
 
 export interface LocalSearchBundleFallback {
   version?: number;
@@ -10,14 +11,12 @@ export interface LocalSearchBundleFallback {
   suggestions: unknown[];
 }
 
+const dataLoaderLogger = createLogger("data-loader");
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 
-/**
- * 通用本地内容加载器。
- * 主要用于 detail 等页面读取静态内容。
- */
 export function loadContent<T = unknown>(name: ContentType): T {
   try {
     const data = ContentMap[name];
@@ -27,15 +26,14 @@ export function loadContent<T = unknown>(name: ContentType): T {
 
     return data as T;
   } catch (error) {
-    console.error("加载本地内容失败:", name, error);
+    dataLoaderLogger.error("load_content_failed", {
+      name,
+      error,
+    });
     return {} as T;
   }
 }
 
-/**
- * 本地搜索索引兜底加载器。
- * 仅作为远程搜索失败后的 fallback 数据来源。
- */
 export function loadSearchBundleFallback(): LocalSearchBundleFallback | null {
   try {
     const loadedBundle = require("../data/index/search_bundle.js") as Partial<LocalSearchBundleFallback>;
@@ -56,7 +54,9 @@ export function loadSearchBundleFallback(): LocalSearchBundleFallback | null {
 
     return loadedBundle as LocalSearchBundleFallback;
   } catch (error) {
-    console.error("加载本地搜索索引失败:", error);
+    dataLoaderLogger.error("load_search_bundle_fallback_failed", {
+      error,
+    });
     return null;
   }
 }

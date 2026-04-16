@@ -1,4 +1,5 @@
 import { API_CONFIG } from "../../config/api";
+import { createLogger } from "../../utils/logger/logger";
 import { getAccessToken, getSession } from "../../utils/storage/token-storage";
 import type {
   ApiEnvelope,
@@ -14,17 +15,20 @@ import type {
 type ErrorCode = number | string;
 type AuthExpiredHandler = (error: RequestError) => void;
 type WechatRequestBody = WechatMiniprogram.IAnyObject | string | ArrayBuffer;
+const requestLogger = createLogger("request");
 
 interface RequestErrorOptions {
   statusCode?: number;
   code?: ErrorCode;
   data?: unknown;
+  requestId?: string;
 }
 
 export class RequestError extends Error {
   statusCode?: number;
   code?: ErrorCode;
   data?: unknown;
+  requestId?: string;
 
   constructor(message: string, options: RequestErrorOptions = {}) {
     super(message);
@@ -32,6 +36,7 @@ export class RequestError extends Error {
     this.statusCode = options.statusCode;
     this.code = options.code;
     this.data = options.data;
+    this.requestId = options.requestId;
   }
 }
 
@@ -335,6 +340,57 @@ export function getErrorMessage(
   return fallback;
 }
 
+function createRequestId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 8);
+  return `req_${timestamp}_${random}`;
+}
+
+function buildResponseSummary(data: unknown): unknown {
+  if (data === null || data === undefined) {
+    return data;
+  }
+
+  if (typeof data === "string") {
+    return {
+      type: "string",
+      length: data.length,
+      preview: data.slice(0, 200),
+    };
+  }
+
+  if (Array.isArray(data)) {
+    return {
+      type: "array",
+      length: data.length,
+      sample: data.slice(0, 3),
+    };
+  }
+
+  if (isPlainObject(data)) {
+    const keys = Object.keys(data);
+    const sample: Record<string, unknown> = {};
+    const limit = Math.min(keys.length, 5);
+
+    for (let index = 0; index < limit; index += 1) {
+      const key = keys[index];
+      sample[key] = data[key];
+    }
+
+    return {
+      type: "object",
+      keyCount: keys.length,
+      keys: keys.slice(0, 10),
+      sample,
+    };
+  }
+
+  return {
+    type: typeof data,
+    value: data,
+  };
+}
+
 export function request<
   TResponse,
   TData = RequestData,
@@ -355,21 +411,64 @@ export function request<
   } = options;
 
   return new Promise<TResponse>((resolve, reject) => {
+    const requestId = createRequestId();
+    const startedAt = Date.now();
     let requestUrl = "";
     let requestHeader: RequestHeader = {};
+    let resolvedQuery: RequestQuery | undefined;
+
+    const getDurationMs = (): number => Date.now() - startedAt;
+
+    const rejectWithLog = (
+      error: unknown,
+      extra: {
+        statusCode?: number;
+      } = {},
+    ) => {
+      requestLogger.warn("request_fail", {
+        requestId,
+        method,
+        url: requestUrl || url,
+        authMode,
+        statusCode: extra.statusCode,
+        durationMs: getDurationMs(),
+        error,
+      });
+
+      reject(error);
+    };
 
     try {
-      const resolvedQuery = resolveGetQuery(method, query, data);
+      resolvedQuery = resolveGetQuery(method, query, data);
       requestUrl = resolveRequestUrl(url, resolvedQuery);
       requestHeader = resolveRequestHeader(header, authMode);
     } catch (error) {
-      reject(error);
+      if (error instanceof RequestError && !error.requestId) {
+        error.requestId = requestId;
+      }
+      rejectWithLog(error);
       return;
     }
 
     const requestData = method === "GET"
       ? undefined
       : (data as RequestData | undefined);
+
+    requestLogger.info("request_start", {
+      method,
+      url: requestUrl,
+      requestId,
+      authMode,
+    });
+    requestLogger.debug("request_start_detail", {
+      method,
+      url: requestUrl,
+      requestId,
+      authMode,
+      query: resolvedQuery,
+      data: requestData,
+      header: requestHeader,
+    });
 
     wx.request<WechatRequestBody>({
       url: requestUrl,
@@ -387,36 +486,62 @@ export function request<
               statusCode,
               code: 401,
               data: responseData,
+              requestId,
             },
           );
           emitAuthExpired(unauthorizedError, skip401Handler);
-          reject(unauthorizedError);
+          rejectWithLog(unauthorizedError, { statusCode });
           return;
         }
 
         if (statusCode < 200 || statusCode >= 300) {
-          reject(new RequestError(resolveHttpErrorMessage(statusCode, responseData), {
+          rejectWithLog(new RequestError(resolveHttpErrorMessage(statusCode, responseData), {
             statusCode,
             data: responseData,
-          }));
+            requestId,
+          }), { statusCode });
           return;
         }
 
         if (responseData === null || responseData === undefined) {
-          reject(new RequestError("Empty response body"));
+          rejectWithLog(new RequestError("Empty response body", {
+            requestId,
+          }), { statusCode });
           return;
         }
 
         const businessError = resolveBusinessError(responseData, skip401Handler);
         if (businessError) {
-          reject(businessError);
+          businessError.requestId = requestId;
+          rejectWithLog(businessError, {
+            statusCode: businessError.statusCode,
+          });
           return;
         }
+
+        requestLogger.info("request_success", {
+          requestId,
+          method,
+          url: requestUrl,
+          statusCode,
+          durationMs: getDurationMs(),
+        });
+        requestLogger.debug("request_success_summary", {
+          requestId,
+          method,
+          url: requestUrl,
+          statusCode,
+          durationMs: getDurationMs(),
+          response: buildResponseSummary(responseData),
+        });
 
         resolve(unwrapResponseData<TResponse>(responseData, unwrapData));
       },
       fail: (error: WechatMiniprogram.GeneralCallbackResult) => {
-        reject(new RequestError(resolveNetworkErrorMessage(error.errMsg)));
+        rejectWithLog(new RequestError(resolveNetworkErrorMessage(error.errMsg), {
+          data: error,
+          requestId,
+        }));
       },
     });
   });

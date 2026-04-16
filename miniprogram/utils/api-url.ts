@@ -1,4 +1,7 @@
 import { API_CONFIG } from "../config/api";
+import { createLogger } from "./logger/logger";
+
+const apiUrlLogger = createLogger("api-url");
 
 function normalizeBaseURL(baseURL: string): string {
   return String(baseURL || "").trim().replace(/\/+$/, "");
@@ -43,7 +46,10 @@ export function extractFilenameFromUrl(pathOrUrl: string): string {
   try {
     return decodeURIComponent(rawFilename);
   } catch (error) {
-    console.warn("Decode filename from URL failed", error);
+    apiUrlLogger.warn("decode_filename_failed", {
+      rawFilename,
+      error,
+    });
     return rawFilename;
   }
 }

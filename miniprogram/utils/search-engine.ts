@@ -1,6 +1,9 @@
 import { SEARCH_API_CONFIG } from "../config/api";
 import { loadSearchBundleFallback } from "./data-loader";
+import { createLogger } from "./logger/logger";
 import { request } from "./request";
+
+const searchEngineLogger = createLogger("search-engine");
 
 /**
  * 本地搜索引擎。
@@ -317,11 +320,18 @@ export function initSearchEngine() {
       (wx as DebugWx).debugSearchBundle = SEARCH_BUNDLE;
     }
 
-    console.log("Search bundle ready");
+    searchEngineLogger.info("bundle_ready", {
+      docCount: Object.keys(loadedBundle.docs || {}).length,
+      suggestionCount: Array.isArray(loadedBundle.suggestions)
+        ? loadedBundle.suggestions.length
+        : 0,
+    });
   } catch (error) {
     SEARCH_BUNDLE = null;
     FIELD_MASK_ENTRIES = [];
-    console.error("Search bundle init failed", error);
+    searchEngineLogger.error("bundle_init_failed", {
+      error,
+    });
   }
 }
 
@@ -523,7 +533,10 @@ export async function suggestWithFacade(query: string): Promise<SuggestFacadeRes
   try {
     return await suggestRemoteFacade(query);
   } catch (error) {
-    console.warn("远程 suggest 失败，准备回退到本地索引", error);
+    searchEngineLogger.warn("remote_suggest_fallback_local", {
+      query,
+      error,
+    });
     return buildLocalSuggestFacadeResponse(query);
   }
 }
@@ -547,7 +560,10 @@ export async function searchWithFacade(query: string): Promise<SearchFacadeRespo
   try {
     return await searchRemoteFacade(query);
   } catch (error) {
-    console.warn("远程搜索失败，准备回退到本地索引", error);
+    searchEngineLogger.warn("remote_search_fallback_local", {
+      query,
+      error,
+    });
 
     const localResponse = buildLocalFacadeResponse(query, true);
     if (localResponse) {
