@@ -298,6 +298,182 @@ function sanitizePayload(payload: unknown): unknown {
   return trimPayloadSize(sanitized);
 }
 
+function padNumber(value: number, size: number): string {
+  const text = String(Math.trunc(value));
+  if (text.length >= size) {
+    return text;
+  }
+
+  return `${"0".repeat(size - text.length)}${text}`;
+}
+
+function formatTimestamp(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = padNumber(date.getMonth() + 1, 2);
+  const day = padNumber(date.getDate(), 2);
+  const hour = padNumber(date.getHours(), 2);
+  const minute = padNumber(date.getMinutes(), 2);
+  const second = padNumber(date.getSeconds(), 2);
+  const millisecond = padNumber(date.getMilliseconds(), 3);
+
+  return `${year}-${month}-${day} ${hour}:${minute}:${second},${millisecond}`;
+}
+
+function formatLevel(level: LogLevel): string {
+  if (level === "debug") {
+    return "DEBUG";
+  }
+
+  if (level === "info") {
+    return "INFO";
+  }
+
+  if (level === "warn") {
+    return "WARN";
+  }
+
+  if (level === "error") {
+    return "ERROR";
+  }
+
+  return "OFF";
+}
+
+function normalizeStackPath(rawPath: string): string {
+  return String(rawPath || "")
+    .trim()
+    .replace(/^file:\/\//i, "")
+    .replace(/^webpack:\/\//i, "")
+    .replace(/^blob:/i, "")
+    .replace(/[?#].*$/, "");
+}
+
+function extractFileName(filePath: string): string {
+  const normalized = normalizeStackPath(filePath).replace(/\\/g, "/");
+  if (!normalized) {
+    return "unknown";
+  }
+
+  const segments = normalized.split("/");
+  const fileName = segments[segments.length - 1];
+  return fileName || "unknown";
+}
+
+function looksLikeLoggerInternalFrame(stackLine: string, filePath: string): boolean {
+  const source = `${stackLine} ${filePath}`.toLowerCase().replace(/\\/g, "/");
+  return (
+    source.includes("/utils/logger/logger.ts")
+    || source.includes("/utils/logger/logger.js")
+    || source.includes(" emitlog ")
+    || source.includes(" createlogger ")
+    || source.includes(" getcallerlocation ")
+  );
+}
+
+function parseStackLine(line: string): {
+  filePath: string;
+  line: number;
+} | null {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const bracketMatch = trimmed.match(/\((.*)\)/);
+  let locationText = bracketMatch ? bracketMatch[1] : trimmed.replace(/^at\s+/, "");
+  locationText = locationText.trim();
+
+  if (!locationText) {
+    return null;
+  }
+
+  const locationMatch = locationText.match(/(.*):(\d+):(\d+)$/);
+  if (!locationMatch) {
+    const shortLocationMatch = locationText.match(/(.*):(\d+)$/);
+    if (!shortLocationMatch) {
+      return null;
+    }
+
+    return {
+      filePath: normalizeStackPath(shortLocationMatch[1]),
+      line: Number.parseInt(shortLocationMatch[2], 10) || 0,
+    };
+  }
+
+  return {
+    filePath: normalizeStackPath(locationMatch[1]),
+    line: Number.parseInt(locationMatch[2], 10) || 0,
+  };
+}
+
+function getCallerLocation(): {
+  fileName: string;
+  line: number;
+} {
+  try {
+    const stackText = String(new Error().stack || "");
+    if (!stackText) {
+      return {
+        fileName: "unknown",
+        line: 0,
+      };
+    }
+
+    const stackLines = stackText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => Boolean(line));
+
+    for (let index = 0; index < stackLines.length; index += 1) {
+      const stackLine = stackLines[index];
+      const parsed = parseStackLine(stackLine);
+
+      if (!parsed) {
+        continue;
+      }
+
+      if (looksLikeLoggerInternalFrame(stackLine, parsed.filePath)) {
+        continue;
+      }
+
+      return {
+        fileName: extractFileName(parsed.filePath),
+        line: parsed.line > 0 ? parsed.line : 0,
+      };
+    }
+  } catch (_error) {
+    // no-op
+  }
+
+  return {
+    fileName: "unknown",
+    line: 0,
+  };
+}
+
+function serializePayload(payload: unknown): string {
+  const normalizedPayload = payload === undefined
+    ? {}
+    : sanitizePayload(payload);
+
+  try {
+    return JSON.stringify(normalizedPayload);
+  } catch (_error) {
+    return "{\"summary\":\"[UnserializablePayload]\"}";
+  }
+}
+
+function formatLogLine(
+  scope: string,
+  level: LogLevel,
+  eventName: string,
+  payload: unknown,
+): string {
+  const caller = getCallerLocation();
+
+  return `${formatTimestamp()} | ${formatLevel(level)} | ${scope} | ${caller.fileName}:${caller.line} | ${eventName} | ${serializePayload(payload)}`;
+}
+
 function resolveConsoleMethod(level: LogLevel): (...args: unknown[]) => void {
   if (level === "debug" && typeof console.debug === "function") {
     return console.debug;
@@ -326,14 +502,8 @@ function emitLog(scope: string, level: LogLevel, eventName: string, payload?: un
 
   const method = resolveConsoleMethod(level);
   const normalizedEventName = String(eventName || "").trim() || "event";
-  const label = `[${scope}] ${normalizedEventName}`;
-
-  if (payload === undefined) {
-    method(label);
-    return;
-  }
-
-  method(label, sanitizePayload(payload));
+  const message = formatLogLine(scope, level, normalizedEventName, payload);
+  method(message);
 }
 
 export function createLogger(scope: string): Logger {
