@@ -1,6 +1,7 @@
 import type { ResultItem } from "../../types/search";
 import { renderMath } from "../../utils/math-render";
 import { getErrorMessage } from "../../utils/request";
+import { createLogger } from "../../utils/logger/logger";
 import type {
   SearchDebugInfo,
   SearchSuggestion,
@@ -14,6 +15,8 @@ import {
 } from "../../utils/search-engine";
 
 const TAB_ALL = "All";
+const SET_DATA_WARN_BYTES = 180 * 1024;
+const searchPageLogger = createLogger("search-page");
 
 type HighlightSegment = {
   text: string;
@@ -70,7 +73,6 @@ Page({
     suggestErrorMessage: "",
 
     results: [] as SearchCardItem[],
-    allResults: [] as SearchCardItem[],
     suggestions: [] as SearchSuggestion[],
     debugInfo: null as SearchDebugInfo | null,
     debugExpanded: true,
@@ -88,6 +90,7 @@ Page({
 
   searchTaskId: 0,
   suggestTaskId: 0,
+  allResultsCache: [] as SearchCardItem[],
 
   onLoad() {
     initSearchEngine();
@@ -174,6 +177,8 @@ Page({
     this.createSearchTaskId();
     this.createSuggestTaskId();
 
+    this.allResultsCache = [];
+
     this.setData({
       query: "",
       focus: true,
@@ -183,7 +188,6 @@ Page({
       suggestErrorMessage: "",
       showClear: false,
       suggestions: [],
-      allResults: [],
       results: [],
       debugInfo: null,
       activeTab: TAB_ALL,
@@ -199,11 +203,11 @@ Page({
   onTabTap(e: SearchTabTapEvent) {
     const tab = String(e.currentTarget.dataset.tab || TAB_ALL);
     const filteredResults = this.filterResults(
-      this.data.allResults as SearchCardItem[],
+      this.allResultsCache,
       tab,
     );
 
-    this.setData({
+    this.setDataWithTrace("search_tab_switch", {
       activeTab: tab,
       results: filteredResults,
     });
@@ -291,7 +295,7 @@ Page({
       return;
     }
 
-    this.setData({
+    this.setDataWithTrace("search_loading_start", {
       query: rawQuery,
       focus: hideSuggestions ? false : this.data.focus,
       showClear: rawQuery.length > 0,
@@ -307,6 +311,16 @@ Page({
       }
 
       const allResults = this.buildSearchCards(response.items, rawQuery);
+      const formulaHtmlChars = this.sumFormulaHtmlChars(allResults);
+
+      searchPageLogger.debug("search_response_adapted", {
+        query: rawQuery,
+        source: response.source,
+        itemCount: response.items.length,
+        cardCount: allResults.length,
+        formulaHtmlChars,
+        resultCountFromDebug: response.debug.resultCount,
+      });
 
       this.applySearchState(
         rawQuery,
@@ -322,6 +336,16 @@ Page({
         rawQuery,
         getErrorMessage(error, "Search failed, please retry"),
       );
+    } finally {
+      if (!this.isLatestSearchTask(searchTaskId)) {
+        return;
+      }
+
+      if (this.data.loading) {
+        this.setDataWithTrace("search_loading_finally", {
+          loading: false,
+        });
+      }
     }
   },
 
@@ -330,19 +354,20 @@ Page({
     allResults: SearchCardItem[],
     debugInfo: SearchDebugInfo,
   ) {
+    this.allResultsCache = allResults;
+
     const tabs = this.extendTabsWithResultCategories(allResults);
     const nextActiveTab = tabs.includes(this.data.activeTab)
       ? this.data.activeTab
       : TAB_ALL;
     const filteredResults = this.filterResults(allResults, nextActiveTab);
 
-    this.setData({
+    this.setDataWithTrace("search_state_success", {
       query: rawQuery,
       focus: false,
       loading: false,
       errorMessage: "",
       showClear: rawQuery.length > 0,
-      allResults,
       results: filteredResults,
       debugInfo,
       tabs,
@@ -351,13 +376,14 @@ Page({
   },
 
   applyErrorState(rawQuery: string, errorMessage: string) {
-    this.setData({
+    this.allResultsCache = [];
+
+    this.setDataWithTrace("search_state_error", {
       query: rawQuery,
       focus: false,
       loading: false,
       errorMessage,
       showClear: rawQuery.length > 0,
-      allResults: [],
       results: [],
       debugInfo: null,
       activeTab: TAB_ALL,
@@ -365,7 +391,9 @@ Page({
   },
 
   applyEmptySearchState(rawQuery: string) {
-    this.setData({
+    this.allResultsCache = [];
+
+    this.setDataWithTrace("search_state_empty", {
       query: rawQuery,
       loading: false,
       errorMessage: "",
@@ -373,7 +401,6 @@ Page({
       suggestErrorMessage: "",
       showClear: rawQuery.length > 0,
       suggestions: [],
-      allResults: [],
       results: [],
       debugInfo: null,
       activeTab: TAB_ALL,
@@ -483,6 +510,86 @@ Page({
 
   isLatestSuggestTask(taskId: number): boolean {
     return taskId === this.suggestTaskId;
+  },
+
+  setDataWithTrace(tag: string, payload: WechatMiniprogram.IAnyObject) {
+    const startedAt = Date.now();
+    const payloadBytes = this.estimatePayloadBytes(payload);
+    const summary = this.buildPayloadSummary(payload);
+
+    searchPageLogger.debug("set_data_start", {
+      tag,
+      payloadBytes,
+      ...summary,
+    });
+
+    if (payloadBytes >= SET_DATA_WARN_BYTES) {
+      searchPageLogger.warn("set_data_payload_large", {
+        tag,
+        payloadBytes,
+        ...summary,
+      });
+    }
+
+    this.setData(payload, () => {
+      searchPageLogger.debug("set_data_done", {
+        tag,
+        payloadBytes,
+        durationMs: Date.now() - startedAt,
+      });
+    });
+  },
+
+  estimatePayloadBytes(payload: WechatMiniprogram.IAnyObject): number {
+    try {
+      return JSON.stringify(payload).length;
+    } catch (_error) {
+      return -1;
+    }
+  },
+
+  buildPayloadSummary(
+    payload: WechatMiniprogram.IAnyObject,
+  ): WechatMiniprogram.IAnyObject {
+    const keys = Object.keys(payload);
+    const summary: WechatMiniprogram.IAnyObject = {
+      keyCount: keys.length,
+      keys: keys.slice(0, 10),
+    };
+
+    if (Array.isArray(payload.results)) {
+      summary.resultCount = payload.results.length;
+      summary.resultFormulaHtmlChars = this.sumFormulaHtmlChars(
+        payload.results as SearchCardItem[],
+      );
+    }
+
+    if (Array.isArray(payload.suggestions)) {
+      summary.suggestionCount = payload.suggestions.length;
+    }
+
+    if (typeof payload.loading === "boolean") {
+      summary.loading = payload.loading;
+    }
+
+    if (typeof payload.query === "string") {
+      summary.queryLength = payload.query.length;
+    }
+
+    return summary;
+  },
+
+  sumFormulaHtmlChars(items: SearchCardItem[]): number {
+    let total = 0;
+
+    for (let index = 0; index < items.length; index += 1) {
+      const formulaHtml = items[index].formulaHtml;
+      if (typeof formulaHtml === "string") {
+        total += formulaHtml.length;
+      }
+    }
+
+    return total;
   },
 
   filterResults(

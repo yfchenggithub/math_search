@@ -10,11 +10,11 @@ const apiConfigLogger = createLogger("api-config");
 
 const BASE_URL_BY_ENV: Record<ApiEnv, string> = {
   // local debug
-  develop: "http://127.0.0.1:8000",
+  develop: "http://146.56.223.203:8000",
   // placeholders for future deployment
-  trial: "http://127.0.0.1:8000",
+  trial: "http://146.56.223.203:8000",
   // 146.56.223.203
-  release: "http://127.0.0.1:8000",
+  release: "http://146.56.223.203:8000",
 };
 
 /**
