@@ -13,20 +13,6 @@ import { createLogger } from "../logger/logger";
 import { getErrorMessage } from "../request";
 
 const authGuardLogger = createLogger("auth-guard");
-const AUTH_MOJIBAKE_PATTERN = /[璇鍘宸鐧姝鎿]/;
-
-function resolveReadableText(rawText: string | undefined, fallback: string): string {
-  const normalized = String(rawText || "").trim();
-  if (!normalized) {
-    return fallback;
-  }
-
-  if (normalized.includes("�") || AUTH_MOJIBAKE_PATTERN.test(normalized)) {
-    return fallback;
-  }
-
-  return normalized;
-}
 
 function showLoginConfirmModal(options: RequireAuthOptions): Promise<boolean> {
   return new Promise((resolve) => {
@@ -72,10 +58,7 @@ export async function requireAuthAndRun<T>(
       showAuthStatusToast({
         type: "logging",
         title: "登录中",
-        message: resolveReadableText(
-          getLoginStageText("preparing"),
-          "正在准备登录...",
-        ),
+        message: getLoginStageText("preparing"),
         traceId,
         source: "guard",
       });
@@ -89,8 +72,7 @@ export async function requireAuthAndRun<T>(
     await authService.login({
       traceId,
       onStageChange: (payload) => {
-        const stageFallback = getLoginStageText(payload.stage) || "正在处理登录...";
-        const stageText = resolveReadableText(payload.message, stageFallback);
+        const stageText = payload.message || getLoginStageText(payload.stage);
         authGuardLogger.info("login_stage_change", {
           traceId: payload.traceId || traceId,
           stage: payload.stage,
@@ -133,26 +115,18 @@ export async function requireAuthAndRun<T>(
 
     if (hasStatusToastHost) {
       if (mappedError.isUserCancelled) {
-        const cancelledMessage = resolveReadableText(
-          mappedError.userMessage,
-          "你已取消本次登录",
-        );
         showAuthStatusToast({
           type: "cancelled",
           title: "已取消登录",
-          message: cancelledMessage,
+          message: mappedError.userMessage,
           traceId,
           source: "guard",
         });
       } else {
-        const errorMessage = resolveReadableText(
-          mappedError.userMessage,
-          "登录未完成，请稍后重试",
-        );
         showAuthStatusToast({
           type: "error",
           title: "登录未完成",
-          message: errorMessage,
+          message: mappedError.userMessage,
           retryable: true,
           closable: true,
           traceId,

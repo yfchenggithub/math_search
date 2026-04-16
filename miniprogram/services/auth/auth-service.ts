@@ -89,7 +89,7 @@ class AuthService {
       if (options?.onStageChange && this.currentLoginStage !== "idle") {
         options.onStageChange({
           stage: this.currentLoginStage,
-          message: this.currentLoginStageMessage || "澶嶇敤涓殑鐧诲綍娴佺▼",
+          message: this.currentLoginStageMessage || "复用中的登录流程",
           traceId: this.currentLoginTraceId,
           timestamp: Date.now(),
         });
@@ -113,7 +113,7 @@ class AuthService {
     authStore.setLoggingIn();
     this.notifyStage({
       stage: "preparing",
-      message: "姝ｅ湪鍑嗗鐧诲綍...",
+      message: "正在准备登录...",
       traceId,
       timestamp: Date.now(),
     });

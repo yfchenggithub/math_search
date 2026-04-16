@@ -125,13 +125,13 @@ export class MiniProgramWechatAuthAdapter implements AuthAdapter {
       traceId,
     });
 
-    emitStage(options, "preparing", "姝ｅ湪鍑嗗鐧诲綍...");
+    emitStage(options, "preparing", "正在准备登录...");
 
     try {
-      emitStage(options, "wechat_code", "姝ｅ湪鑾峰彇寰俊鐧诲綍鍑瘉...");
+      emitStage(options, "wechat_code", "正在获取微信登录凭证...");
       const code = await wxLoginAsync(traceId);
 
-      emitStage(options, "server_sign_in", "姝ｅ湪杩炴帴鏈嶅姟鍣?..");
+      emitStage(options, "server_sign_in", "正在连接服务器...");
       adapterLogger.info("backend_login_request_start", {
         traceId,
       });
