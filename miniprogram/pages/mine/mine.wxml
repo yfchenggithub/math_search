@@ -18,7 +18,7 @@
           <view class="mine-user-card__content">
             <text class="mine-user-card__nickname">{{userInfo.nickname || '微信用户'}}</text>
             <text class="mine-user-card__meta">
-              已收藏 {{favoriteCount}} 条
+              已收藏 {{favoriteCount}} 条结论
             </text>
           </view>
         </view>
@@ -36,8 +36,8 @@
             mode="aspectFill"
           />
           <view class="mine-user-card__content">
-            <text class="mine-user-card__nickname">登录后可同步收藏与权益</text>
-            <text class="mine-user-card__meta">搜索、建议、详情和 PDF 仍可匿名使用</text>
+            <text class="mine-user-card__nickname">立即登录</text>
+            <text class="mine-user-card__meta">登录后可同步收藏与浏览记录</text>
           </view>
         </view>
 
@@ -47,19 +47,19 @@
           loading="{{isLoggingIn}}"
           disabled="{{isLoggingIn}}"
         >
-          去登录
+          立即登录
         </button>
       </block>
     </view>
 
-    <view class="mine-section">
+    <view class="mine-section mine-section--primary">
       <view class="mine-section__header">
-        <text class="mine-section__title">核心资产</text>
+        <text class="mine-section__title">我的内容</text>
       </view>
 
-      <view class="mine-list">
+      <view class="mine-list mine-list--primary">
         <block wx:if="{{isLoggedIn}}">
-          <view class="mine-list-item" bindtap="handleFavoritesTap">
+          <view class="mine-list-item mine-list-item--highlight" bindtap="handleFavoritesTap">
             <view class="mine-list-item__left">
               <text class="mine-list-item__label">我的收藏</text>
             </view>
@@ -70,7 +70,7 @@
           </view>
         </block>
         <block wx:else>
-          <view class="mine-list-item mine-list-item--disabled">
+          <view class="mine-list-item mine-list-item--highlight mine-list-item--disabled">
             <view class="mine-list-item__left">
               <text class="mine-list-item__label">我的收藏</text>
             </view>
@@ -80,60 +80,6 @@
           </view>
         </block>
 
-        <view class="mine-list-item" bindtap="handlePointsTap">
-          <view class="mine-list-item__left">
-            <text class="mine-list-item__label">PDF 点数</text>
-          </view>
-          <view class="mine-list-item__right">
-            <text class="mine-list-item__value" wx:if="{{isLoggedIn}}">{{pointBalance}} 点</text>
-            <text class="mine-list-item__arrow">></text>
-          </view>
-        </view>
-
-        <view class="mine-list-item" bindtap="handleExportRecordsTap">
-          <view class="mine-list-item__left">
-            <text class="mine-list-item__label">导出记录</text>
-          </view>
-          <view class="mine-list-item__right">
-            <text class="mine-list-item__arrow">></text>
-          </view>
-        </view>
-
-        <view class="mine-list-item" bindtap="handleShareRecordsTap">
-          <view class="mine-list-item__left">
-            <text class="mine-list-item__label">我的分享</text>
-          </view>
-          <view class="mine-list-item__right">
-            <text class="mine-list-item__arrow">></text>
-          </view>
-        </view>
-      </view>
-    </view>
-
-    <view class="mine-section">
-      <view class="mine-section__header">
-        <text class="mine-section__title">快捷操作</text>
-      </view>
-
-      <view class="mine-action-group">
-        <button class="mine-action-button" bindtap="handleBatchExportTap">
-          批量导出收藏 PDF
-        </button>
-        <button
-          class="mine-action-button mine-action-button--secondary"
-          bindtap="handleRewardAdTap"
-        >
-          看广告获取下载点数
-        </button>
-      </view>
-    </view>
-
-    <view class="mine-section">
-      <view class="mine-section__header">
-        <text class="mine-section__title">更多服务</text>
-      </view>
-
-      <view class="mine-list">
         <view class="mine-list-item" bindtap="handleHistoryTap">
           <view class="mine-list-item__left">
             <text class="mine-list-item__label">最近浏览</text>
@@ -142,7 +88,15 @@
             <text class="mine-list-item__arrow">></text>
           </view>
         </view>
+      </view>
+    </view>
 
+    <view class="mine-section mine-section--secondary">
+      <view class="mine-section__header">
+        <text class="mine-section__title">更多服务</text>
+      </view>
+
+      <view class="mine-list mine-list--secondary">
         <view class="mine-list-item" bindtap="handleFeedbackTap">
           <view class="mine-list-item__left">
             <text class="mine-list-item__label">意见反馈</text>
