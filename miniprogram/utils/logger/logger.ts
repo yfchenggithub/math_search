@@ -1,4 +1,6 @@
 import { readApiEnvVersion } from "../../config/runtime-env";
+import { appendLog } from "./log-store";
+import { STORAGE_KEYS } from "../storage/storage-keys";
 
 export type LogLevel = "debug" | "info" | "warn" | "error" | "off";
 
@@ -11,7 +13,7 @@ export interface Logger {
   error: LoggerMethod;
 }
 
-const LOG_LEVEL_STORAGE_KEY = "__debug_log_level__";
+const LOG_LEVEL_STORAGE_KEY = STORAGE_KEYS.DEBUG_LOG_LEVEL;
 
 const LOG_LEVEL_WEIGHT: Record<LogLevel, number> = {
   debug: 10,
@@ -463,15 +465,31 @@ function serializePayload(payload: unknown): string {
   }
 }
 
-function formatLogLine(
+type ResolvedLogLine = {
+  timestamp: number;
+  payloadText: string;
+  formattedLine: string;
+  fileName: string;
+  line: number;
+};
+
+function buildLogLine(
   scope: string,
   level: LogLevel,
   eventName: string,
   payload: unknown,
-): string {
+): ResolvedLogLine {
+  const now = new Date();
   const caller = getCallerLocation();
+  const payloadText = serializePayload(payload);
 
-  return `${formatTimestamp()} | ${formatLevel(level)} | ${scope} | ${caller.fileName}:${caller.line} | ${eventName} | ${serializePayload(payload)}`;
+  return {
+    timestamp: now.getTime(),
+    payloadText,
+    formattedLine: `${formatTimestamp(now)} | ${formatLevel(level)} | ${scope} | ${caller.fileName}:${caller.line} | ${eventName} | ${payloadText}`,
+    fileName: caller.fileName,
+    line: caller.line,
+  };
 }
 
 function resolveConsoleMethod(level: LogLevel): (...args: unknown[]) => void {
@@ -500,10 +518,29 @@ function emitLog(scope: string, level: LogLevel, eventName: string, payload?: un
     return;
   }
 
+  if (level === "off") {
+    return;
+  }
+
   const method = resolveConsoleMethod(level);
   const normalizedEventName = String(eventName || "").trim() || "event";
-  const message = formatLogLine(scope, level, normalizedEventName, payload);
-  method(message);
+  const output = buildLogLine(scope, level, normalizedEventName, payload);
+  method(output.formattedLine);
+
+  try {
+    appendLog({
+      timestamp: output.timestamp,
+      level,
+      scope,
+      eventName: normalizedEventName,
+      payloadText: output.payloadText,
+      formattedLine: output.formattedLine,
+      fileName: output.fileName,
+      line: output.line,
+    });
+  } catch (_error) {
+    // no-op
+  }
 }
 
 export function createLogger(scope: string): Logger {
@@ -527,4 +564,5 @@ export function createLogger(scope: string): Logger {
 
 export const LOGGER_STORAGE_KEYS = {
   DEBUG_LOG_LEVEL: LOG_LEVEL_STORAGE_KEY,
+  RUNTIME_LOGS: STORAGE_KEYS.RUNTIME_LOGS,
 } as const;

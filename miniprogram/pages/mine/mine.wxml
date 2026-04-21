@@ -106,6 +106,15 @@
           </view>
         </view>
 
+        <view class="mine-list-item" bindtap="handleRuntimeLogsTap">
+          <view class="mine-list-item__left">
+            <text class="mine-list-item__label">运行日志</text>
+          </view>
+          <view class="mine-list-item__right">
+            <text class="mine-list-item__arrow">></text>
+          </view>
+        </view>
+
         <view class="mine-list-item" bindtap="handleSettingsTap">
           <view class="mine-list-item__left">
             <text class="mine-list-item__label">设置</text>

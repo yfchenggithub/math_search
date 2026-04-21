@@ -2,6 +2,7 @@
   "pages": [
     "pages/index/index",
     "pages/logs/logs",
+    "pages/runtime-log-detail/runtime-log-detail",
     "pages/search/search",
     "pages/detail/detail",
     "pages/mine/mine",

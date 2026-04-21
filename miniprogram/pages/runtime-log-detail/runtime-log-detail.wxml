@@ -1,0 +1,58 @@
+<view class="runtime-log-detail-page">
+  <navigation-bar
+    title="日志详情"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="runtime-log-detail-page__container">
+    <block wx:if="{{notFound}}">
+      <view class="runtime-log-detail-empty">
+        <text class="runtime-log-detail-empty__title">日志不存在</text>
+        <text class="runtime-log-detail-empty__desc">
+          这条日志可能已被清空，返回日志列表后可刷新查看最新数据
+        </text>
+      </view>
+    </block>
+
+    <block wx:elif="{{log}}">
+      <view class="runtime-log-detail-card">
+        <view class="runtime-log-detail-row">
+          <text class="runtime-log-detail-row__label">时间</text>
+          <text class="runtime-log-detail-row__value">{{timestampText}}</text>
+        </view>
+        <view class="runtime-log-detail-row">
+          <text class="runtime-log-detail-row__label">级别</text>
+          <text class="runtime-log-detail-row__value">{{levelText}}</text>
+        </view>
+        <view class="runtime-log-detail-row">
+          <text class="runtime-log-detail-row__label">Scope</text>
+          <text class="runtime-log-detail-row__value">{{log.scope}}</text>
+        </view>
+        <view class="runtime-log-detail-row">
+          <text class="runtime-log-detail-row__label">Event</text>
+          <text class="runtime-log-detail-row__value">{{log.eventName}}</text>
+        </view>
+        <view class="runtime-log-detail-row">
+          <text class="runtime-log-detail-row__label">位置</text>
+          <text class="runtime-log-detail-row__value">{{locationText}}</text>
+        </view>
+      </view>
+
+      <view class="runtime-log-detail-card">
+        <text class="runtime-log-detail-block__label">Payload</text>
+        <text class="runtime-log-detail-block__content" selectable="{{true}}">{{log.payloadText}}</text>
+      </view>
+
+      <view class="runtime-log-detail-card">
+        <text class="runtime-log-detail-block__label">Formatted Line</text>
+        <text class="runtime-log-detail-block__content" selectable="{{true}}">{{log.formattedLine}}</text>
+
+        <button class="runtime-log-detail-copy" bindtap="handleCopyTap">
+          复制完整日志
+        </button>
+      </view>
+    </block>
+  </view>
+</view>

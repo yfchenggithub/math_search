@@ -52,6 +52,7 @@ type RefreshMineDataOptions = {
 
 const mineLoginLogger = createLogger("mine-login");
 const authStatusToastLogger = createLogger("auth-status-toast");
+const profileLogger = createLogger("profile");
 
 type MinePageData = {
   authStatus: AuthStatus;
@@ -732,6 +733,20 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     wx.showToast({
       title: "反馈页待接入",
       icon: "none",
+    });
+  },
+
+  handleRuntimeLogsTap() {
+    profileLogger.info("click_runtime_logs");
+
+    wx.navigateTo({
+      url: "/pages/logs/logs",
+      fail: () => {
+        wx.showToast({
+          title: "日志页打开失败",
+          icon: "none",
+        });
+      },
     });
   },
 

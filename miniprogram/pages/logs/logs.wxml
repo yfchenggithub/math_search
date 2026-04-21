@@ -1,7 +1,66 @@
-<!--logs.wxml-->
-<navigation-bar title="查看启动日志" back="{{true}}"></navigation-bar>
-<scroll-view class="scrollarea" scroll-y type="list">
-  <block wx:for="{{logs}}" wx:key="timeStamp" wx:for-item="log">
-    <view class="log-item">{{index + 1}}. {{log.date}}</view>
-  </block>
-</scroll-view>
+<view class="runtime-logs-page">
+  <navigation-bar
+    title="运行日志"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="runtime-logs-page__container">
+    <view class="runtime-logs-toolbar">
+      <scroll-view class="runtime-logs-filter" scroll-x="{{true}}" show-scrollbar="{{false}}">
+        <view class="runtime-logs-filter__inner">
+          <block wx:for="{{filters}}" wx:key="value" wx:for-item="item">
+            <view
+              class="runtime-logs-filter__chip {{activeFilter === item.value ? 'is-active' : ''}}"
+              data-level="{{item.value}}"
+              bindtap="handleFilterTap"
+            >
+              {{item.label}}
+            </view>
+          </block>
+        </view>
+      </scroll-view>
+
+      <view class="runtime-logs-toolbar__meta">
+        <text class="runtime-logs-toolbar__count">{{countText}}</text>
+        <button
+          class="runtime-logs-toolbar__clear"
+          bindtap="handleClearTap"
+          disabled="{{totalCount <= 0}}"
+        >
+          清空日志
+        </button>
+      </view>
+    </view>
+
+    <block wx:if="{{logs.length > 0}}">
+      <scroll-view class="runtime-logs-list" scroll-y="{{true}}">
+        <block wx:for="{{logs}}" wx:key="id" wx:for-item="item">
+          <view
+            class="runtime-log-item runtime-log-item--{{item.level}}"
+            data-id="{{item.id}}"
+            bindtap="handleLogTap"
+          >
+            <view class="runtime-log-item__head">
+              <text class="runtime-log-item__level runtime-log-item__level--{{item.level}}">
+                {{item.levelLabel}}
+              </text>
+              <text class="runtime-log-item__time">{{item.timestampText}}</text>
+            </view>
+
+            <text class="runtime-log-item__title">{{item.scope}} · {{item.eventName}}</text>
+            <text class="runtime-log-item__summary">{{item.summaryText}}</text>
+          </view>
+        </block>
+      </scroll-view>
+    </block>
+
+    <block wx:else>
+      <view class="runtime-logs-empty">
+        <text class="runtime-logs-empty__title">暂无运行日志</text>
+        <text class="runtime-logs-empty__desc">运行过程中产生的日志会显示在这里</text>
+      </view>
+    </block>
+  </view>
+</view>
