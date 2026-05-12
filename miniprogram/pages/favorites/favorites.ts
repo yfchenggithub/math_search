@@ -1,4 +1,3 @@
-import { getNavLayout } from "../../utils/nav";
 import {
   getFavoritesList,
   removeFavorite,
@@ -6,6 +5,7 @@ import {
 } from "../../services/api/favorites-api";
 import { authService } from "../../services/auth/auth-service";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
+import { getNavLayout } from "../../utils/nav";
 import { RequestError, getErrorMessage } from "../../utils/request";
 
 type FavoriteItem = FavoriteRecord & {
@@ -522,14 +522,14 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
 
   onShareAppMessage() {
     return {
-      title: "我收藏的高中数学二级结论",
+      title: "我收藏的结论卡片",
       path: "/pages/favorites/favorites",
     };
   },
 
   onShareTimeline() {
     return {
-      title: "我收藏的高中数学二级结论",
+      title: "我收藏的结论卡片",
       query: "from=favorites",
     };
   },

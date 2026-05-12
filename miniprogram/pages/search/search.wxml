@@ -1,6 +1,6 @@
 <view class="page">
   <navigation-bar
-    title="高中数学二级结论搜索"
+    title="我的知识查询网站"
     back="{{false}}"
     fixed="{{true}}"
     placeholder="{{true}}"
