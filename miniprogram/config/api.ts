@@ -10,11 +10,11 @@ const apiConfigLogger = createLogger("api-config");
 
 const BASE_URL_BY_ENV: Record<ApiEnv, string> = {
   // local debug
-  develop: "https://ok-shuxue.cloud/",
+  develop: "https://ok-shuxue.icu/",
   // placeholders for future deployment
-  trial: "https://ok-shuxue.cloud/",
+  trial: "https://ok-shuxue.icu/",
   // 146.56.223.203
-  release: "https://ok-shuxue.cloud/",
+  release: "https://ok-shuxue.icu/",
 };
 
 /**
