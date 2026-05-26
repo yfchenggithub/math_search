@@ -129,9 +129,17 @@
 | `formula-card` | 搜索结果卡片 |
 | `suggestion-list` | 输入建议下拉 |
 | `category-tag` | 分类/难度标签 |
-| `mixed-content-renderer` | 行内 LaTeX + 文本混排 |
+| `mixed-content-renderer` | 行内 LaTeX + 文本混排（消费适配层产出的 html） |
 | `detail-section-renderer` | 详情章节渲染（text/list/theorem-list/legacy） |
 | `navigation-bar` | 自定义导航栏（适配胶囊按钮） |
+
+### 详情混排策略（当前）
+
+- structured（`display_version=2`）为权威来源，text/math 边界由数据显式给出。
+- 适配层（`utils/detail-content.ts`）负责把 structured `segments` 转成最终 `block.html`，组件层不再做公式猜测。
+- 对明显长推导公式会做“行内 → 独立公式块”提升，优先保证移动端可读性和布局稳定。
+- legacy 文本才走启发式 mixed 渲染（`renderMixedTextHtml`）作为兼容回退。
+- 详见数据契约文档：`05 — 数据契约` 中“文本+公式混排处理约定（当前实现）”。
 
 ## 双源切换机制
 

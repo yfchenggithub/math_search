@@ -146,6 +146,57 @@ type ContentBlock =
   | { kind: "mixed"; segments: { type: "text"|"math"; content: string }[] };
 ```
 
+### 文本+公式混排处理约定（当前实现）
+
+以下约定对应当前代码实现（`utils/detail-content.ts` + `utils/math-render.ts`），用于后续修改时做一致性检查。
+
+#### 数据源与优先级
+
+- 详情入口优先远程 canonical v2：`getDetailDocumentById`（`USE_REMOTE_API=true` 时）。
+- 远程失败且 `ENABLE_LOCAL_FALLBACK=true` 时，回退本地 `content/*.js`。
+- 详情 section 构建优先级：
+  - `display_version=2 + sections`（structured）
+  - rich legacy 字段（`explanation/proof/examples/...`）
+  - `statement` 解析
+  - 最后仅摘要兜底
+
+#### Structured 混排（权威路径）
+
+- structured 的 text/math 边界以数据为准，适配层不再“拼回纯文本再猜公式”。
+- `segments` 先做归一化：
+  - 删除空 segment
+  - 规范化 math latex
+  - 合并相邻 text segment
+- 行内混排输出规则：
+  - `math` segment → `renderMath(latex, false)`（inline math）
+  - `text` segment → `renderPlainTextHtml(text, true)`
+  - 再组合为一个连续段落容器，保持“同段自然换行”
+- 长公式提升规则：命中下列条件会从 mixed 段中提升为独立 `formula` block（左对齐）
+  - 多行公式（含换行）
+  - 含 `\\` 换行
+  - 含 `\begin{aligned|align|gather|cases|array|matrix|...}`
+  - 命中长等式/不等式链启发式规则
+
+#### Legacy 混排（兼容路径）
+
+- `text` / `bullet` / `theorem` 的说明文本走 `renderMixedTextHtml`。
+- `renderMixedTextHtml` 为启发式分段：
+  - 按行处理
+  - 行内按 text/math 片段判断
+  - math 片段走 inline math 渲染，文本片段保留原文
+- 该路径用于旧数据兼容，不作为 v2 主渲染依据。
+
+#### 组件层职责边界
+
+- `detail-section-renderer` 只负责按 `block.kind` 选择模板。
+- `mixed-content-renderer` 当前只消费 `html` 并交给 `rich-text` 渲染。
+- `segments` 在组件层不做二次公式识别，主要用于保留结构语义与调试信息。
+
+#### 数学渲染兜底
+
+- `renderMath` 会先做 legacy 数学归一化，再走 KaTeX + 微信 rich-text 序列化。
+- 若 KaTeX 渲染失败，回退为可读文本 HTML，避免页面空白或崩溃。
+
 ### ID 命名规则
 
 `{模块首字母大写}{三位数字}`
