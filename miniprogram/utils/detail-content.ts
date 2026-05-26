@@ -46,10 +46,10 @@ const detailContentLogger = createLogger("detail-content");
 
 const READING_SUBHEADING_COLOR = "#315a88";
 const READING_ITEM_TITLE_COLOR = "#0f172a";
-const READING_SUBHEADING_PATTERN = /^(?:\u4e00\u53e5\u8bdd\u76f4\u89c9|\u6838\u5fc3\u62c6\u89e3|\u51e0\u4f55\u672c\u8d28(?:[（(][^）)]*[）)])?|\u4ee3\u6570\u610f\u4e49(?:[（(][^）)]*[）)])?|\u8003\u70b9\u4ef7\u503c(?:[（(][^）)]*[）)])?|\u987f\u609f\u70b9|\u4f7f\u7528\u573a\u666f)$/;
-const READING_INDEX_MARKER_PATTERN = /[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07\u4e24\d]+/;
+const READING_SUBHEADING_PATTERN = /^(?:一句话直觉|核心拆解|(?:几何本质|代数意义|考点价值)(?:[（(][^）)]*[）)])?|顿悟点|使用场景)$/;
+const READING_INDEX_MARKER_PATTERN = /[一二三四五六七八九十百千万两\d]+/;
 const READING_ITEM_LINE_PATTERN = new RegExp(
-  `^((?:\u8981\u70b9|\u8003\u70b9|\u8003\u6cd5|\u573a\u666f)${READING_INDEX_MARKER_PATTERN.source}(?:[（(][^）)]*[）)])?)(?:\\s*([：:])\\s*(.*))?$`,
+  `^((?:要点|考点|考法|场景)${READING_INDEX_MARKER_PATTERN.source}(?:[（(][^）)]*[）)])?)(?:\\s*([：:])\\s*(.*))?$`,
 );
 
 /**
