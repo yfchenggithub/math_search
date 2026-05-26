@@ -164,6 +164,8 @@ export interface DetailBlockView {
   titleHtml?: string;
   desc?: string;
   descHtml?: string;
+  descLeadHtml?: string;
+  descTailHtml?: string;
   text?: string;
   html?: string;
   segments?: DetailInlineSegmentView[];
@@ -616,6 +618,10 @@ function buildCanonicalTheoremBlock(
     normalizeUnknownText(item.formula_latex)
     || normalizeUnknownText(item.latex);
   const mathResult = latex ? renderMath(latex, true) : null;
+  const descSplit = splitCanonicalTheoremDescByFormula(descTokens, latex, `${blockId}-desc`);
+  const descLeadHtml = descSplit?.leadHtml || "";
+  const descTailHtml = descSplit?.tailHtml || "";
+  const mergedDescHtml = descSplit ? descLeadHtml : descHtml;
 
   if (!title && !descText && !mathResult) {
     return null;
@@ -627,10 +633,66 @@ function buildCanonicalTheoremBlock(
     title,
     titleHtml: title ? renderPlainTextHtml(title) : "",
     desc: descText,
-    descHtml,
+    descHtml: mergedDescHtml,
+    descLeadHtml,
+    descTailHtml,
     formulaText: mathResult?.source || "",
     formulaHtml: mathResult?.html || "",
   };
+}
+
+function splitCanonicalTheoremDescByFormula(
+  tokens: CanonicalDetailToken[],
+  formulaLatex: string,
+  blockId: string,
+): { leadHtml: string; tailHtml: string } | null {
+  const normalizedFormula = normalizeFormulaCompareKey(formulaLatex);
+  if (!normalizedFormula || tokens.length === 0) {
+    return null;
+  }
+
+  let matchedIndex = -1;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.type !== "math_inline") {
+      continue;
+    }
+
+    const tokenLatex = normalizeUnknownText(token.latex);
+    if (!tokenLatex) {
+      continue;
+    }
+
+    if (normalizeFormulaCompareKey(tokenLatex) === normalizedFormula) {
+      matchedIndex = index;
+      break;
+    }
+  }
+
+  if (matchedIndex < 0) {
+    return null;
+  }
+
+  const leadSegments = buildCanonicalInlineSegments(
+    tokens.slice(0, matchedIndex),
+    `${blockId}-lead`,
+  );
+  const tailSegments = buildCanonicalInlineSegments(
+    tokens.slice(matchedIndex + 1),
+    `${blockId}-tail`,
+  );
+
+  return {
+    leadHtml: leadSegments.length > 0 ? composeInlineSegmentHtml(leadSegments) : "",
+    tailHtml: tailSegments.length > 0 ? composeInlineSegmentHtml(tailSegments) : "",
+  };
+}
+
+function normalizeFormulaCompareKey(value: string): string {
+  return normalizeUnknownText(value)
+    .replace(/\s+/g, "")
+    .replace(/[。．，,;；:：]+$/g, "");
 }
 
 function buildCanonicalInlineSegments(

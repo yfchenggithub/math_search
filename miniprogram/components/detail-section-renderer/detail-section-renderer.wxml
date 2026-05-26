@@ -50,12 +50,12 @@
           <view wx:elif="{{block.title}}" class="theorem-title">
             {{block.title}}
           </view>
-          <view wx:if="{{block.descHtml}}" class="theorem-desc">
+          <view wx:if="{{block.descLeadHtml || block.descHtml}}" class="theorem-desc">
             <view class="rich-copy">
-              <rich-text nodes="{{block.descHtml}}"></rich-text>
+              <rich-text nodes="{{block.descLeadHtml || block.descHtml}}"></rich-text>
             </view>
           </view>
-          <view wx:elif="{{block.desc}}" class="theorem-desc">
+          <view wx:elif="{{block.desc && !block.descTailHtml && !block.descLeadHtml}}" class="theorem-desc">
             {{block.desc}}
           </view>
           <view wx:if="{{block.formulaHtml}}" class="formula-card inner formula-card--align-{{block.formulaAlign || 'center'}}">
@@ -64,6 +64,11 @@
                 <rich-text class="formula-rich" nodes="{{block.formulaHtml}}"></rich-text>
               </view>
             </scroll-view>
+          </view>
+          <view wx:if="{{block.descTailHtml}}" class="theorem-desc">
+            <view class="rich-copy">
+              <rich-text nodes="{{block.descTailHtml}}"></rich-text>
+            </view>
           </view>
         </view>
       </block>
