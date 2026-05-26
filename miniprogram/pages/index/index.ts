@@ -1,6 +1,7 @@
 import { createLogger } from "../../utils/logger/logger";
 
-const defaultAvatarUrl = "https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0";
+const defaultAvatarUrl =
+  "https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0";
 const indexLogger = createLogger("index-page");
 
 Component({
@@ -15,6 +16,11 @@ Component({
     canIUseNicknameComp: wx.canIUse("input.type.nickname"),
   },
   methods: {
+    onLoad() {
+      wx.switchTab({
+        url: "/pages/search/search",
+      });
+    },
     bindViewTap() {
       wx.navigateTo({
         url: "../logs/logs",
@@ -25,7 +31,9 @@ Component({
       const { nickName } = this.data.userInfo;
       this.setData({
         "userInfo.avatarUrl": avatarUrl,
-        hasUserInfo: Boolean(nickName && avatarUrl && avatarUrl !== defaultAvatarUrl),
+        hasUserInfo: Boolean(
+          nickName && avatarUrl && avatarUrl !== defaultAvatarUrl,
+        ),
       });
     },
     onInputChange(e: { detail: { value: string } }) {
@@ -33,7 +41,9 @@ Component({
       const { avatarUrl } = this.data.userInfo;
       this.setData({
         "userInfo.nickName": nickName,
-        hasUserInfo: Boolean(nickName && avatarUrl && avatarUrl !== defaultAvatarUrl),
+        hasUserInfo: Boolean(
+          nickName && avatarUrl && avatarUrl !== defaultAvatarUrl,
+        ),
       });
     },
     getUserProfile() {
