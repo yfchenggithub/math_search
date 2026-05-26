@@ -44,6 +44,14 @@ import { createLogger } from "./logger/logger";
 
 const detailContentLogger = createLogger("detail-content");
 
+const READING_SUBHEADING_COLOR = "#315a88";
+const READING_ITEM_TITLE_COLOR = "#0f172a";
+const READING_SUBHEADING_PATTERN = /^(?:\u4e00\u53e5\u8bdd\u76f4\u89c9|\u6838\u5fc3\u62c6\u89e3|\u51e0\u4f55\u672c\u8d28(?:[（(][^）)]*[）)])?|\u4ee3\u6570\u610f\u4e49(?:[（(][^）)]*[）)])?|\u8003\u70b9\u4ef7\u503c(?:[（(][^）)]*[）)])?|\u987f\u609f\u70b9|\u4f7f\u7528\u573a\u666f)$/;
+const READING_INDEX_MARKER_PATTERN = /[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07\u4e24\d]+/;
+const READING_ITEM_LINE_PATTERN = new RegExp(
+  `^((?:\u8981\u70b9|\u8003\u70b9|\u8003\u6cd5|\u573a\u666f)${READING_INDEX_MARKER_PATTERN.source}(?:[（(][^）)]*[）)])?)(?:\\s*([：:])\\s*(.*))?$`,
+);
+
 /**
  * 以下 Raw* 类型描述的是“构建脚本输出的数据形态”。
  * 这些类型并不直接用于页面渲染，而是作为适配层的输入。
@@ -507,7 +515,8 @@ function buildCanonicalParagraphBlock(
     return createStructuredFormulaBlock(blockId, normalizeUnknownText(tokens[0].latex));
   }
 
-  const segments = buildCanonicalInlineSegments(tokens, blockId);
+  const rawSegments = buildCanonicalRawSegments(tokens);
+  const segments = buildStructuredSegments(rawSegments, blockId);
   if (segments.length === 0) {
     const fallbackText = composeCanonicalTokenPlainText(tokens);
     return fallbackText ? createCanonicalTextBlock(sectionKey, blockId, fallbackText) : null;
@@ -521,7 +530,8 @@ function buildCanonicalParagraphBlock(
     }
   }
 
-  const html = composeInlineSegmentHtml(segments);
+  const styledHtml = composeReadingStyledInlineHtml(sectionKey, blockId, rawSegments);
+  const html = styledHtml || composeInlineSegmentHtml(segments);
 
   if (isCanonicalBulletSection(sectionKey)) {
     return {
@@ -699,6 +709,10 @@ function buildCanonicalInlineSegments(
   tokens: CanonicalDetailToken[],
   blockId: string,
 ): DetailInlineSegmentView[] {
+  return buildStructuredSegments(buildCanonicalRawSegments(tokens), blockId);
+}
+
+function buildCanonicalRawSegments(tokens: CanonicalDetailToken[]): RawStructuredSegment[] {
   const rawSegments: RawStructuredSegment[] = [];
 
   for (let index = 0; index < tokens.length; index += 1) {
@@ -735,7 +749,7 @@ function buildCanonicalInlineSegments(
     }
   }
 
-  return buildStructuredSegments(rawSegments, blockId);
+  return rawSegments;
 }
 
 function createCanonicalTextBlock(
@@ -743,12 +757,14 @@ function createCanonicalTextBlock(
   blockId: string,
   text: string,
 ): DetailBlockView {
+  const styledHtml = renderReadingStyledTextHtml(sectionKey, text);
+
   if (isCanonicalBulletSection(sectionKey)) {
     return {
       id: blockId,
       kind: "bullet",
       text,
-      html: renderMixedTextHtml(text),
+      html: styledHtml || renderMixedTextHtml(text),
     };
   }
 
@@ -756,7 +772,7 @@ function createCanonicalTextBlock(
     id: blockId,
     kind: "text",
     text,
-    html: renderMixedTextHtml(text),
+    html: styledHtml || renderMixedTextHtml(text),
   };
 }
 
@@ -1958,6 +1974,314 @@ function buildStructuredBlocks(
   return null;
 }
 
+function shouldApplyReadingHeadingStyle(sectionKey: string): boolean {
+  return sectionKey === "explanation";
+}
+
+function isReadingSubheadingLine(line: string): boolean {
+  const normalized = normalizeText(line)
+    .replace(/[：:]+\s*$/, "")
+    .trim();
+
+  if (!normalized) {
+    return false;
+  }
+
+  return READING_SUBHEADING_PATTERN.test(normalized);
+}
+
+function parseReadingItemLineText(
+  line: string,
+): { label: string; body: string; hasColon: boolean } | null {
+  const normalized = normalizeText(line);
+  if (!normalized) {
+    return null;
+  }
+
+  const matched = normalized.match(READING_ITEM_LINE_PATTERN);
+  if (!matched) {
+    return null;
+  }
+
+  const label = normalizeText(matched[1]);
+  const colon = normalizeText(matched[2]);
+  const body = normalizeText(matched[3]);
+
+  if (!label) {
+    return null;
+  }
+
+  return {
+    label: colon ? `${label}${colon}` : label,
+    body,
+    hasColon: Boolean(colon),
+  };
+}
+
+function wrapReadingSubheadingHtml(html: string): string {
+  if (!html) {
+    return "";
+  }
+
+  return `<span style="display:inline;color:${READING_SUBHEADING_COLOR};font-weight:700;">${html}</span>`;
+}
+
+function wrapReadingItemLabelHtml(html: string): string {
+  if (!html) {
+    return "";
+  }
+
+  return `<span style="display:inline;color:${READING_ITEM_TITLE_COLOR};font-weight:700;">${html}</span>`;
+}
+
+function renderReadingStyledTextHtml(sectionKey: string, text: string): string | null {
+  if (!shouldApplyReadingHeadingStyle(sectionKey) || !text) {
+    return null;
+  }
+
+  const lines = text.split(/\r?\n/);
+  const renderedLines: string[] = [];
+  let hasStyledLine = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const normalizedLine = normalizeText(line);
+
+    if (!normalizedLine) {
+      renderedLines.push("");
+      continue;
+    }
+
+    const baseLineHtml = renderPlainTextHtml(line, true);
+
+    if (isReadingSubheadingLine(normalizedLine)) {
+      hasStyledLine = true;
+      renderedLines.push(wrapReadingSubheadingHtml(baseLineHtml));
+      continue;
+    }
+
+    const itemLine = parseReadingItemLineText(normalizedLine);
+    if (!itemLine) {
+      renderedLines.push(baseLineHtml);
+      continue;
+    }
+
+    hasStyledLine = true;
+    const labelHtml = wrapReadingItemLabelHtml(renderPlainTextHtml(itemLine.label, true));
+    if (!itemLine.hasColon || !itemLine.body) {
+      renderedLines.push(labelHtml);
+      continue;
+    }
+
+    renderedLines.push(`${labelHtml}${renderPlainTextHtml(itemLine.body, true)}`);
+  }
+
+  if (!hasStyledLine) {
+    return null;
+  }
+
+  return renderedLines.join("<br/>");
+}
+
+function pushRawTextSegment(target: RawStructuredSegment[], text: string) {
+  if (!text) {
+    return;
+  }
+
+  const previous = target[target.length - 1];
+  if (previous && previous.type !== "math") {
+    previous.text = `${previous.text || ""}${text}`;
+    return;
+  }
+
+  target.push({
+    type: "text",
+    text,
+  });
+}
+
+function splitRawSegmentsByLine(segments: RawStructuredSegment[]): RawStructuredSegment[][] {
+  const lines: RawStructuredSegment[][] = [[]];
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    const activeLine = lines[lines.length - 1];
+
+    if (segment.type === "math") {
+      const latex = normalizeText(segment.latex);
+      if (!latex) {
+        continue;
+      }
+
+      activeLine.push({
+        type: "math",
+        latex,
+      });
+      continue;
+    }
+
+    const rawText = normalizeInlineText(segment.text);
+    if (!rawText) {
+      continue;
+    }
+
+    const parts = rawText.split("\n");
+    for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+      pushRawTextSegment(lines[lines.length - 1], parts[partIndex]);
+
+      if (partIndex < parts.length - 1) {
+        lines.push([]);
+      }
+    }
+  }
+
+  return lines;
+}
+
+function composeRawSegmentPlainText(segments: RawStructuredSegment[]): string {
+  return segments
+    .map((segment) => {
+      if (segment.type === "math") {
+        return normalizeText(segment.latex);
+      }
+
+      return normalizeText(segment.text);
+    })
+    .join("");
+}
+
+function splitRawSegmentsAtFirstColon(segments: RawStructuredSegment[]): {
+  labelSegments: RawStructuredSegment[];
+  bodySegments: RawStructuredSegment[];
+  hasColon: boolean;
+} {
+  const labelSegments: RawStructuredSegment[] = [];
+  const bodySegments: RawStructuredSegment[] = [];
+  let seenColon = false;
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+
+    if (segment.type === "math") {
+      const latex = normalizeText(segment.latex);
+      if (!latex) {
+        continue;
+      }
+
+      const target = seenColon ? bodySegments : labelSegments;
+      target.push({
+        type: "math",
+        latex,
+      });
+      continue;
+    }
+
+    const rawText = segment.text || "";
+    if (!rawText) {
+      continue;
+    }
+
+    if (seenColon) {
+      pushRawTextSegment(bodySegments, rawText);
+      continue;
+    }
+
+    const colonIndex = rawText.search(/[：:]/);
+    if (colonIndex < 0) {
+      pushRawTextSegment(labelSegments, rawText);
+      continue;
+    }
+
+    pushRawTextSegment(labelSegments, rawText.slice(0, colonIndex + 1));
+    seenColon = true;
+    pushRawTextSegment(bodySegments, rawText.slice(colonIndex + 1));
+  }
+
+  return {
+    labelSegments,
+    bodySegments,
+    hasColon: seenColon,
+  };
+}
+
+function composeReadingStyledInlineHtml(
+  sectionKey: string,
+  blockId: string,
+  sourceSegments: RawStructuredSegment[],
+): string | null {
+  if (!shouldApplyReadingHeadingStyle(sectionKey) || sourceSegments.length === 0) {
+    return null;
+  }
+
+  const lines = splitRawSegmentsByLine(sourceSegments);
+  const renderedLines: string[] = [];
+  let hasStyledLine = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const lineSegments = normalizeInlineSegments(lines[index]);
+    if (lineSegments.length === 0) {
+      renderedLines.push("");
+      continue;
+    }
+
+    const lineId = `${blockId}-line-${index + 1}`;
+    const baseLineHtml = composeInlineSegmentHtml(
+      buildStructuredSegments(lineSegments, lineId),
+    );
+    const lineText = normalizeText(composeRawSegmentPlainText(lineSegments));
+
+    if (!lineText) {
+      renderedLines.push(baseLineHtml);
+      continue;
+    }
+
+    if (isReadingSubheadingLine(lineText)) {
+      hasStyledLine = true;
+      renderedLines.push(wrapReadingSubheadingHtml(baseLineHtml));
+      continue;
+    }
+
+    const itemLine = parseReadingItemLineText(lineText);
+    if (!itemLine) {
+      renderedLines.push(baseLineHtml);
+      continue;
+    }
+
+    hasStyledLine = true;
+    const split = splitRawSegmentsAtFirstColon(lineSegments);
+    if (!split.hasColon) {
+      renderedLines.push(wrapReadingItemLabelHtml(baseLineHtml));
+      continue;
+    }
+
+    const labelHtml = composeInlineSegmentHtml(
+      buildStructuredSegments(
+        normalizeInlineSegments(split.labelSegments),
+        `${lineId}-label`,
+      ),
+    );
+    const bodyHtml = composeInlineSegmentHtml(
+      buildStructuredSegments(
+        normalizeInlineSegments(split.bodySegments),
+        `${lineId}-body`,
+      ),
+    );
+
+    if (!bodyHtml) {
+      renderedLines.push(wrapReadingItemLabelHtml(labelHtml || baseLineHtml));
+      continue;
+    }
+
+    renderedLines.push(`${wrapReadingItemLabelHtml(labelHtml)}${bodyHtml}`);
+  }
+
+  if (!hasStyledLine) {
+    return null;
+  }
+
+  return renderedLines.join("<br/>");
+}
+
 /**
  * structured 普通文本 block。
  * list / variables 场景会转成 bullet，其余场景保留为普通正文段。
@@ -1967,12 +2291,14 @@ function createStructuredTextBlock(
   blockId: string,
   text: string,
 ): DetailBlockView {
+  const styledHtml = renderReadingStyledTextHtml(section.key, text);
+
   if (section.layout === "list" || section.key === "variables") {
     return {
       id: blockId,
       kind: "bullet",
       text,
-      html: renderPlainTextHtml(text),
+      html: styledHtml || renderPlainTextHtml(text),
     };
   }
 
@@ -1980,7 +2306,7 @@ function createStructuredTextBlock(
     id: blockId,
     kind: "text",
     text,
-    html: renderPlainTextHtml(text),
+    html: styledHtml || renderPlainTextHtml(text),
   };
 }
 
@@ -2109,8 +2435,10 @@ function createStructuredInlineSegmentBlock(
   blockId: string,
   sourceSegments: RawStructuredSegment[],
 ): DetailBlockView | null {
-  const normalizedSegments = buildStructuredSegments(sourceSegments, blockId);
-  const inlineHtml = composeInlineSegmentHtml(normalizedSegments);
+  const normalizedSource = normalizeInlineSegments(sourceSegments);
+  const normalizedSegments = buildStructuredSegments(normalizedSource, blockId);
+  const styledHtml = composeReadingStyledInlineHtml(section.key, blockId, normalizedSource);
+  const inlineHtml = styledHtml || composeInlineSegmentHtml(normalizedSegments);
 
   if (normalizedSegments.length === 0) {
     return null;
@@ -2480,7 +2808,7 @@ function parseStatementContent(statement: string): DetailSectionView[] {
 function decorateLegacySections(sections: DetailSectionView[]): DetailSectionView[] {
   return sections.map((section) => ({
     ...section,
-    blocks: section.blocks.map((block) => decorateLegacyBlock(block)),
+    blocks: section.blocks.map((block) => decorateLegacyBlock(block, section.key)),
   }));
 }
 
@@ -2491,11 +2819,12 @@ function decorateLegacySections(sections: DetailSectionView[]): DetailSectionVie
  * - text / bullet 会走 mixed-text 渲染，以兼容旧文本中夹杂的简单公式。
  * - theorem 需要分别装饰标题和描述。
  */
-function decorateLegacyBlock(block: DetailBlockView): DetailBlockView {
+function decorateLegacyBlock(block: DetailBlockView, sectionKey = ""): DetailBlockView {
   if (block.kind === "text" || block.kind === "bullet") {
+    const styledHtml = renderReadingStyledTextHtml(sectionKey, block.text || "");
     return {
       ...block,
-      html: renderMixedTextHtml(block.text),
+      html: styledHtml || renderMixedTextHtml(block.text),
     };
   }
 
