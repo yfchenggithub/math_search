@@ -182,8 +182,8 @@
 
 .article-wrapper {
   padding: 8rpx 24rpx 72rpx;
-  padding-bottom: calc(constant(safe-area-inset-bottom) + 72rpx);
-  padding-bottom: calc(env(safe-area-inset-bottom) + 72rpx);
+  padding-bottom: calc(constant(safe-area-inset-bottom) + 236rpx);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 236rpx);
   box-sizing: border-box;
   transform-origin: 0 0;
   will-change: transform;
@@ -408,6 +408,81 @@
   background: rgba(15, 23, 42, 0.84);
   color: #ffffff;
   font-size: 22rpx;
+}
+
+.bottom-action-shell {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: 20rpx;
+  bottom: calc(constant(safe-area-inset-bottom) + 20rpx);
+  bottom: calc(env(safe-area-inset-bottom) + 20rpx);
+  z-index: 35;
+  padding: 14rpx 14rpx 12rpx;
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1rpx solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 18rpx 46rpx rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(22rpx);
+}
+
+.bottom-action-row {
+  display: flex;
+  gap: 12rpx;
+}
+
+.bottom-action-btn {
+  flex: 1;
+  margin: 0;
+  min-width: 0;
+  height: 68rpx;
+  line-height: 68rpx;
+  border-radius: 999rpx;
+  padding: 0 16rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  letter-spacing: 0.2rpx;
+  border: 1rpx solid transparent;
+}
+
+.bottom-action-btn::after {
+  border: 0;
+}
+
+.bottom-action-favorite-active {
+  background: linear-gradient(180deg, #dc2626 0%, #b91c1c 100%);
+  color: #ffffff;
+  border-color: #b91c1c;
+}
+
+.bottom-action-favorite-inactive {
+  background: #ffffff;
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.34);
+}
+
+.bottom-action-share {
+  background: rgba(255, 255, 255, 0.82);
+  color: #334155;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.bottom-action-pdf {
+  background: linear-gradient(180deg, #1f2937 0%, #0f172a 100%);
+  color: #ffffff;
+}
+
+.bottom-action-pdf-busy {
+  opacity: 0.96;
+  box-shadow: 0 8rpx 20rpx rgba(15, 23, 42, 0.12);
+}
+
+.bottom-copy-link {
+  margin-top: 10rpx;
+  text-align: center;
+  font-size: 22rpx;
+  line-height: 1.6;
+  color: #475569;
 }
 
 .pdf-status-layer {

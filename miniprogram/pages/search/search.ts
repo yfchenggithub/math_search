@@ -21,6 +21,11 @@ import {
   suggestWithFacade,
   searchWithFacade,
 } from "../../utils/search-engine";
+import {
+  buildHomeSharePayload,
+  buildHomeTimelinePayload,
+  showShareMenuSafely,
+} from "../../utils/share";
 
 const TAB_ALL = "all";
 const SET_DATA_WARN_BYTES = 180 * 1024;
@@ -226,8 +231,10 @@ Page({
   suggestTaskId: 0,
   allResultsCache: [] as SearchCardItem[],
   pdfEntitlementTimer: null as number | null,
+  shareMenuReady: false,
 
   onLoad() {
+    this.ensureShareMenu();
     initSearchEngine();
 
     const meta = getSearchMeta();
@@ -255,6 +262,8 @@ Page({
   },
 
   onShow() {
+    this.ensureShareMenu();
+
     if (ENABLE_PDF_ENTITLEMENT_FLOW) {
       this.refreshPdfEntitlementState();
       this.startPdfEntitlementTimerIfNeeded();
@@ -272,6 +281,23 @@ Page({
     }
 
     this.stopPdfEntitlementTimer();
+  },
+
+  ensureShareMenu() {
+    if (this.shareMenuReady) {
+      return;
+    }
+
+    this.shareMenuReady = true;
+    showShareMenuSafely();
+  },
+
+  onShareAppMessage() {
+    return buildHomeSharePayload("share");
+  },
+
+  onShareTimeline() {
+    return buildHomeTimelinePayload();
   },
 
   onInput(e: SearchInputEvent) {

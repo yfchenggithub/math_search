@@ -4,7 +4,11 @@
     back="{{false}}"
     fixed="{{true}}"
     placeholder="{{true}}"
-  ></navigation-bar>
+  >
+    <button slot="right" class="nav-share-btn" open-type="share">
+      分享
+    </button>
+  </navigation-bar>
 
   <view class="header">
     <view class="title">{{homeCopy.title}}</view>

@@ -12,25 +12,8 @@
     </view>
 
     <view class="toolbar-actions">
-      <button
-        bindtap="handleFavoriteToggleTap"
-        class="favorite-btn {{isFavorited ? 'favorite-btn-active' : 'favorite-btn-inactive'}}"
-        loading="{{favoriteActionBusy}}"
-        disabled="{{favoriteActionBusy}}"
-      >
-        {{favoriteActionBusy ? '处理中...' : (isFavorited ? '已收藏' : '收藏')}}
-      </button>
       <button bindtap="onToggleZoom" class="toolbar-btn">
         {{zoomActive ? '退出缩放' : '缩放阅读'}}
-      </button>
-      <button
-        wx:if="{{pdfAvailable}}"
-        bindtap="onDownloadPdfTap"
-        class="pdf-btn {{pdfActionBusy ? 'pdf-btn-busy' : ''}}"
-        loading="{{pdfActionBusy || isDownloadingPdf}}"
-        disabled="{{pdfActionBusy || isDownloadingPdf || isUnlockingPdfEntitlement}}"
-      >
-        {{pdfActionBusy ? pdfActionLabel : '查看高清 PDF'}}
       </button>
     </view>
   </view>
@@ -131,6 +114,33 @@
       <view wx:if="{{zoomActive}}" class="zoom-hint">
         双指缩放，单指拖动
       </view>
+    </view>
+  </view>
+
+  <view wx:if="{{viewState === 'content'}}" class="bottom-action-shell">
+    <view class="bottom-action-row">
+      <button
+        bindtap="handleFavoriteToggleTap"
+        class="bottom-action-btn bottom-action-favorite {{isFavorited ? 'bottom-action-favorite-active' : 'bottom-action-favorite-inactive'}}"
+        loading="{{favoriteActionBusy}}"
+        disabled="{{favoriteActionBusy}}"
+      >
+        {{favoriteActionBusy ? '处理中...' : (isFavorited ? '已收藏' : '收藏')}}
+      </button>
+      <button class="bottom-action-btn bottom-action-share" open-type="share">
+        分享
+      </button>
+      <button
+        bindtap="onDownloadPdfTap"
+        class="bottom-action-btn bottom-action-pdf {{pdfActionBusy ? 'bottom-action-pdf-busy' : ''}}"
+        loading="{{pdfActionBusy || isDownloadingPdf}}"
+        disabled="{{pdfActionBusy || isDownloadingPdf || isUnlockingPdfEntitlement}}"
+      >
+        {{pdfActionBusy ? pdfActionLabel : '查看高清 PDF'}}
+      </button>
+    </view>
+    <view class="bottom-copy-link" bindtap="onCopyConclusionTap">
+      复制标题/关键词
     </view>
   </view>
 

@@ -5,6 +5,24 @@
   flex-direction: column;
 }
 
+.nav-share-btn {
+  margin: 0;
+  padding: 0 20rpx;
+  min-width: 0;
+  height: 58rpx;
+  line-height: 58rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.86);
+  color: #334155;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.nav-share-btn::after {
+  border: 0;
+}
+
 .header {
   padding: 24rpx 24rpx 12rpx;
 }

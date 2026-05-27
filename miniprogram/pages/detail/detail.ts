@@ -23,6 +23,13 @@ import { createLogger } from "../../utils/logger/logger";
 import { getPdfEntitlement, isPdfEntitlementActive } from "../../utils/pdf-entitlement";
 import { unlockPdfEntitlement } from "../../utils/pdf-entitlement-unlock";
 import { getErrorMessage } from "../../utils/request";
+import {
+  SHARE_COPY,
+  buildDetailSharePayload,
+  buildDetailTimelinePayload,
+  copyConclusionText,
+  showShareMenuSafely,
+} from "../../utils/share";
 
 type TouchPoint = {
   pageX: number;
@@ -186,6 +193,7 @@ Page({
   currentDetailId: "",
   unsubscribeAuthStatusToast: undefined as undefined | (() => void),
   pendingPdfDownloadAfterUnlock: false,
+  shareMenuReady: false,
 
   
   raf(callback: Function) {
@@ -470,10 +478,15 @@ Page({
 
   
   onLoad(options: Record<string, string | undefined>) {
+    this.ensureShareMenu();
     this.unsubscribeAuthStatusToast = subscribeAuthStatusToast((state) => {
       this.syncAuthStatusToast(state);
     });
     void this.loadDetail(options);
+  },
+
+  onShow() {
+    this.ensureShareMenu();
   },
 
   
@@ -486,6 +499,56 @@ Page({
     this.unsubscribeAuthStatusToast?.();
     this.unsubscribeAuthStatusToast = undefined;
     hideAuthStatusToast("detail_unload");
+  },
+
+  ensureShareMenu() {
+    if (this.shareMenuReady) {
+      return;
+    }
+
+    this.shareMenuReady = true;
+    showShareMenuSafely();
+  },
+
+  getCurrentShareSource() {
+    const id = String(this.data.id || "").trim();
+    const title = String(this.data.title || "").trim();
+
+    const keywords = [
+      ...(Array.isArray(this.data.tags) ? this.data.tags : []),
+      ...(Array.isArray(this.data.aliases) ? this.data.aliases : []),
+    ]
+      .map((value) => String(value || "").trim())
+      .filter((value) => Boolean(value));
+
+    return {
+      id,
+      title,
+      keywords,
+    };
+  },
+
+  onShareAppMessage() {
+    return buildDetailSharePayload(this.getCurrentShareSource());
+  },
+
+  onShareTimeline() {
+    return buildDetailTimelinePayload(this.getCurrentShareSource());
+  },
+
+  async onCopyConclusionTap() {
+    try {
+      await copyConclusionText(this.getCurrentShareSource());
+      wx.showToast({
+        title: SHARE_COPY.copySuccessToast,
+        icon: "none",
+      });
+    } catch (_error) {
+      wx.showToast({
+        title: SHARE_COPY.copyFailedToast,
+        icon: "none",
+      });
+    }
   },
 
   
