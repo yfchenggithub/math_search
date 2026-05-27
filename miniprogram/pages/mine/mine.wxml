@@ -93,18 +93,25 @@
 
     <view class="mine-section mine-section--secondary">
       <view class="mine-section__header">
-        <text class="mine-section__title">更多服务</text>
+        <text class="mine-section__title">开发与支持</text>
       </view>
 
       <view class="mine-list mine-list--secondary">
-        <view class="mine-list-item" bindtap="handleFeedbackTap">
+        <label class="mine-list-item" for="mine-feedback-trigger">
           <view class="mine-list-item__left">
             <text class="mine-list-item__label">意见反馈</text>
           </view>
           <view class="mine-list-item__right">
             <text class="mine-list-item__arrow">></text>
           </view>
-        </view>
+          <button
+            id="mine-feedback-trigger"
+            class="mine-list-item__feedback-trigger-hidden"
+            open-type="feedback"
+            hover-class="none"
+            bindtap="onFeedbackTap"
+          ></button>
+        </label>
 
         <view class="mine-list-item" bindtap="handleRuntimeLogsTap">
           <view class="mine-list-item__left">

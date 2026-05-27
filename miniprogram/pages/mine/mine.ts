@@ -750,12 +750,9 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       icon: "none",
     });
   },
-
-  handleFeedbackTap() {
-    wx.showToast({
-      title: "反馈页待接入",
-      icon: "none",
-    });
+  onFeedbackTap() {
+    profileLogger.info("click_feedback");
+    console.log("[MinePage] feedback tapped");
   },
 
   handleRuntimeLogsTap() {

@@ -5,9 +5,9 @@
     fixed="{{true}}"
     placeholder="{{true}}"
   >
-    <button slot="right" class="nav-share-btn" open-type="share">
+    <!-- <button slot="right" class="nav-share-btn" open-type="share">
       分享
-    </button>
+    </button> -->
   </navigation-bar>
 
   <view class="header">

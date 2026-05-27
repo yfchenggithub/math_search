@@ -149,6 +149,21 @@ page {
   position: relative;
 }
 
+.mine-list-item__feedback-trigger-hidden {
+  position: absolute;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.mine-list-item__feedback-trigger-hidden::after {
+  border: none;
+}
+
 .mine-list-item + .mine-list-item {
   border-top: 1rpx solid #ededf0;
 }
