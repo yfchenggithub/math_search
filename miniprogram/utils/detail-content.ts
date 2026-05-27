@@ -39,7 +39,6 @@ import type {
   CanonicalDetailToken,
   CanonicalTheoremItem,
 } from "../types/detail";
-import { fetchConclusionDetail } from "./detail-api";
 import { createLogger } from "./logger/logger";
 
 const detailContentLogger = createLogger("detail-content");
@@ -51,6 +50,7 @@ type ReadingSectionRule = {
   subheadingColor: string;
   subheadingPattern: RegExp;
   itemPrefixes: string[];
+  itemLinePattern?: RegExp;
 };
 
 const READING_SECTION_RULES: Record<string, ReadingSectionRule> = {
@@ -63,6 +63,12 @@ const READING_SECTION_RULES: Record<string, ReadingSectionRule> = {
     subheadingColor: "#6f5a87",
     subheadingPattern: /^(?:思路提示|正式推导|结论回扣)$/,
     itemPrefixes: ["步骤"],
+  },
+  examples: {
+    subheadingColor: "#2f7d36",
+    subheadingPattern: /^(?:例\s*[一二三四五六七八九十百千万两\d]+(?:\s*(?:（[^）]*）|\([^)]*\)))?|题目|解题步骤|关键结论)$/,
+    itemPrefixes: [],
+    itemLinePattern: /^((?:第[一二三四五六七八九十百千万两\d]+步(?:\s*(?:（[^）]*）|\([^)]*\)))?|理由|关键结论)(?:\s*([：:])\s*(.*))?)$/,
   },
 };
 
@@ -245,6 +251,26 @@ export interface DetailDocumentView {
 }
 
 let detailContentCache: RawDetailMap | null = null;
+let fetchConclusionDetailRuntime:
+  | ((id: string) => Promise<CanonicalConclusionDetail>)
+  | null = null;
+
+function resolveDetailApiFetcher(): (id: string) => Promise<CanonicalConclusionDetail> {
+  if (fetchConclusionDetailRuntime) {
+    return fetchConclusionDetailRuntime;
+  }
+
+  const detailApiModule = require("./detail-api") as {
+    fetchConclusionDetail?: (id: string) => Promise<CanonicalConclusionDetail>;
+  };
+
+  if (!detailApiModule || typeof detailApiModule.fetchConclusionDetail !== "function") {
+    throw new Error("detail-api fetcher is unavailable");
+  }
+
+  fetchConclusionDetailRuntime = detailApiModule.fetchConclusionDetail;
+  return fetchConclusionDetailRuntime;
+}
 
 /**
  * 详情页对外的统一入口。
@@ -315,6 +341,7 @@ export async function getDetailDocumentById(id: string): Promise<DetailDocumentV
   }
 
   try {
+    const fetchConclusionDetail = resolveDetailApiFetcher();
     const remoteDetail = await fetchConclusionDetail(normalizedId);
     return buildCanonicalDetailDocument(remoteDetail, normalizedId);
   } catch (error) {
@@ -2002,7 +2029,15 @@ function escapeRegExpLiteral(value: string): string {
 
 function getReadingItemLinePattern(sectionKey: string): RegExp | null {
   const rule = getReadingSectionRule(sectionKey);
-  if (!rule || rule.itemPrefixes.length === 0) {
+  if (!rule) {
+    return null;
+  }
+
+  if (rule.itemLinePattern) {
+    return rule.itemLinePattern;
+  }
+
+  if (rule.itemPrefixes.length === 0) {
     return null;
   }
 
@@ -2083,6 +2118,33 @@ function wrapReadingItemLabelHtml(html: string): string {
   return `<span style="display:inline;color:${READING_ITEM_TITLE_COLOR};font-weight:700;">${html}</span>`;
 }
 
+function normalizeReadingLabelText(text: string): string {
+  return normalizeText(text)
+    .replace(/[：:]+\s*$/, "")
+    .trim();
+}
+
+function shouldUseSubheadingLabelStyle(sectionKey: string, labelText: string): boolean {
+  const normalizedLabel = normalizeReadingLabelText(labelText);
+  if (!normalizedLabel) {
+    return false;
+  }
+
+  return isReadingSubheadingLine(sectionKey, normalizedLabel);
+}
+
+function wrapReadingLineLabelHtml(
+  sectionKey: string,
+  labelText: string,
+  labelHtml: string,
+): string {
+  if (shouldUseSubheadingLabelStyle(sectionKey, labelText)) {
+    return wrapReadingSubheadingHtml(sectionKey, labelHtml);
+  }
+
+  return wrapReadingItemLabelHtml(labelHtml);
+}
+
 function renderReadingStyledTextHtml(sectionKey: string, text: string): string | null {
   if (!shouldApplyReadingHeadingStyle(sectionKey) || !text) {
     return null;
@@ -2116,7 +2178,11 @@ function renderReadingStyledTextHtml(sectionKey: string, text: string): string |
     }
 
     hasStyledLine = true;
-    const labelHtml = wrapReadingItemLabelHtml(renderPlainTextHtml(itemLine.label, true));
+    const labelHtml = wrapReadingLineLabelHtml(
+      sectionKey,
+      itemLine.label,
+      renderPlainTextHtml(itemLine.label, true),
+    );
     if (!itemLine.hasColon || !itemLine.body) {
       renderedLines.push(labelHtml);
       continue;
@@ -2299,7 +2365,9 @@ function composeReadingStyledInlineHtml(
     hasStyledLine = true;
     const split = splitRawSegmentsAtFirstColon(lineSegments);
     if (!split.hasColon) {
-      renderedLines.push(wrapReadingItemLabelHtml(baseLineHtml));
+      renderedLines.push(
+        wrapReadingLineLabelHtml(sectionKey, itemLine.label, baseLineHtml),
+      );
       continue;
     }
 
@@ -2317,11 +2385,23 @@ function composeReadingStyledInlineHtml(
     );
 
     if (!bodyHtml) {
-      renderedLines.push(wrapReadingItemLabelHtml(labelHtml || baseLineHtml));
+      renderedLines.push(
+        wrapReadingLineLabelHtml(
+          sectionKey,
+          composeRawSegmentPlainText(split.labelSegments),
+          labelHtml || baseLineHtml,
+        ),
+      );
       continue;
     }
 
-    renderedLines.push(`${wrapReadingItemLabelHtml(labelHtml)}${bodyHtml}`);
+    renderedLines.push(
+      `${wrapReadingLineLabelHtml(
+        sectionKey,
+        composeRawSegmentPlainText(split.labelSegments),
+        labelHtml,
+      )}${bodyHtml}`,
+    );
   }
 
   if (!hasStyledLine) {
