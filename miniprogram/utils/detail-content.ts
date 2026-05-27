@@ -44,13 +44,27 @@ import { createLogger } from "./logger/logger";
 
 const detailContentLogger = createLogger("detail-content");
 
-const READING_SUBHEADING_COLOR = "#315a88";
 const READING_ITEM_TITLE_COLOR = "#0f172a";
-const READING_SUBHEADING_PATTERN = /^(?:一句话直觉|核心拆解|(?:几何本质|代数意义|考点价值)(?:[（(][^）)]*[）)])?|顿悟点|使用场景)$/;
 const READING_INDEX_MARKER_PATTERN = /[一二三四五六七八九十百千万两\d]+/;
-const READING_ITEM_LINE_PATTERN = new RegExp(
-  `^((?:要点|考点|考法|场景)${READING_INDEX_MARKER_PATTERN.source}(?:[（(][^）)]*[）)])?)(?:\\s*([：:])\\s*(.*))?$`,
-);
+
+type ReadingSectionRule = {
+  subheadingColor: string;
+  subheadingPattern: RegExp;
+  itemPrefixes: string[];
+};
+
+const READING_SECTION_RULES: Record<string, ReadingSectionRule> = {
+  explanation: {
+    subheadingColor: "#315a88",
+    subheadingPattern: /^(?:一句话直觉|核心拆解|(?:几何本质|代数意义|考点价值)(?:[（(][^）)]*[）)])?|顿悟点|使用场景)$/,
+    itemPrefixes: ["要点", "考点", "考法", "场景"],
+  },
+  proof: {
+    subheadingColor: "#6f5a87",
+    subheadingPattern: /^(?:思路提示|正式推导|结论回扣)$/,
+    itemPrefixes: ["步骤"],
+  },
+};
 
 /**
  * 以下 Raw* 类型描述的是“构建脚本输出的数据形态”。
@@ -1975,10 +1989,38 @@ function buildStructuredBlocks(
 }
 
 function shouldApplyReadingHeadingStyle(sectionKey: string): boolean {
-  return sectionKey === "explanation";
+  return Boolean(getReadingSectionRule(sectionKey));
 }
 
-function isReadingSubheadingLine(line: string): boolean {
+function getReadingSectionRule(sectionKey: string): ReadingSectionRule | null {
+  return READING_SECTION_RULES[sectionKey] || null;
+}
+
+function escapeRegExpLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getReadingItemLinePattern(sectionKey: string): RegExp | null {
+  const rule = getReadingSectionRule(sectionKey);
+  if (!rule || rule.itemPrefixes.length === 0) {
+    return null;
+  }
+
+  const prefixPattern = rule.itemPrefixes
+    .map((prefix) => escapeRegExpLiteral(prefix))
+    .join("|");
+
+  return new RegExp(
+    `^((?:${prefixPattern})${READING_INDEX_MARKER_PATTERN.source}(?:[（(][^）)]*[）)])?)(?:\\s*([：:])\\s*(.*))?$`,
+  );
+}
+
+function isReadingSubheadingLine(sectionKey: string, line: string): boolean {
+  const rule = getReadingSectionRule(sectionKey);
+  if (!rule) {
+    return false;
+  }
+
   const normalized = normalizeText(line)
     .replace(/[：:]+\s*$/, "")
     .trim();
@@ -1987,10 +2029,11 @@ function isReadingSubheadingLine(line: string): boolean {
     return false;
   }
 
-  return READING_SUBHEADING_PATTERN.test(normalized);
+  return rule.subheadingPattern.test(normalized);
 }
 
 function parseReadingItemLineText(
+  sectionKey: string,
   line: string,
 ): { label: string; body: string; hasColon: boolean } | null {
   const normalized = normalizeText(line);
@@ -1998,7 +2041,12 @@ function parseReadingItemLineText(
     return null;
   }
 
-  const matched = normalized.match(READING_ITEM_LINE_PATTERN);
+  const itemLinePattern = getReadingItemLinePattern(sectionKey);
+  if (!itemLinePattern) {
+    return null;
+  }
+
+  const matched = normalized.match(itemLinePattern);
   if (!matched) {
     return null;
   }
@@ -2018,12 +2066,13 @@ function parseReadingItemLineText(
   };
 }
 
-function wrapReadingSubheadingHtml(html: string): string {
-  if (!html) {
+function wrapReadingSubheadingHtml(sectionKey: string, html: string): string {
+  const rule = getReadingSectionRule(sectionKey);
+  if (!rule || !html) {
     return "";
   }
 
-  return `<span style="display:inline;color:${READING_SUBHEADING_COLOR};font-weight:700;">${html}</span>`;
+  return `<span style="display:inline;color:${rule.subheadingColor};font-weight:700;">${html}</span>`;
 }
 
 function wrapReadingItemLabelHtml(html: string): string {
@@ -2054,13 +2103,13 @@ function renderReadingStyledTextHtml(sectionKey: string, text: string): string |
 
     const baseLineHtml = renderPlainTextHtml(line, true);
 
-    if (isReadingSubheadingLine(normalizedLine)) {
+    if (isReadingSubheadingLine(sectionKey, normalizedLine)) {
       hasStyledLine = true;
-      renderedLines.push(wrapReadingSubheadingHtml(baseLineHtml));
+      renderedLines.push(wrapReadingSubheadingHtml(sectionKey, baseLineHtml));
       continue;
     }
 
-    const itemLine = parseReadingItemLineText(normalizedLine);
+    const itemLine = parseReadingItemLineText(sectionKey, normalizedLine);
     if (!itemLine) {
       renderedLines.push(baseLineHtml);
       continue;
@@ -2235,13 +2284,13 @@ function composeReadingStyledInlineHtml(
       continue;
     }
 
-    if (isReadingSubheadingLine(lineText)) {
+    if (isReadingSubheadingLine(sectionKey, lineText)) {
       hasStyledLine = true;
-      renderedLines.push(wrapReadingSubheadingHtml(baseLineHtml));
+      renderedLines.push(wrapReadingSubheadingHtml(sectionKey, baseLineHtml));
       continue;
     }
 
-    const itemLine = parseReadingItemLineText(lineText);
+    const itemLine = parseReadingItemLineText(sectionKey, lineText);
     if (!itemLine) {
       renderedLines.push(baseLineHtml);
       continue;
@@ -2893,7 +2942,7 @@ function looksLikeFormula(line: string): boolean {
   }
 
   const candidate = unwrapFormulaLine(line);
-  const hasChinese = /[\u4e00-\u9fa5]/.test(candidate);
+  const hasChinese = /[一-龥]/.test(candidate);
   const hasLatexCommand = /\\[A-Za-z]+/.test(candidate);
   const hasMathToken =
     hasLatexCommand
