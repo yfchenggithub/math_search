@@ -9,6 +9,11 @@ import type {
   RequireAuthOptions,
 } from "../../services/auth/auth-types";
 import { authStore } from "../../stores/auth-store";
+import {
+  OFFICIAL_ACCOUNT_DESC,
+  OFFICIAL_ACCOUNT_NAME,
+  OFFICIAL_ACCOUNT_QR_IMAGE,
+} from "../../config/mine";
 import { trackPageView } from "../../utils/analytics";
 import type { AuthFlowErrorCategory } from "../../utils/auth/auth-login-feedback";
 import {
@@ -29,6 +34,7 @@ import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
 import { getPdfEntitlement } from "../../utils/pdf-entitlement";
 import { RequestError } from "../../utils/request";
+import { STORAGE_KEYS } from "../../utils/storage/storage-keys";
 
 type LoginSource = NonNullable<RequireAuthOptions["loginSource"]>;
 
@@ -55,6 +61,30 @@ type RefreshMineDataOptions = {
 const mineLoginLogger = createLogger("mine-login");
 const authStatusToastLogger = createLogger("auth-status-toast");
 const profileLogger = createLogger("profile");
+const SHOW_RUNTIME_LOG_ENTRY_STORAGE_KEY = STORAGE_KEYS.DEBUG_SHOW_RUNTIME_LOGS;
+
+function toStoredBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") {
+      return true;
+    }
+
+    if (normalized === "false" || normalized === "0") {
+      return false;
+    }
+  }
+
+  return fallback;
+}
 
 function resolveMineUnlockStatus(): "locked" | "unlocked" | "expired" {
   const entitlement = getPdfEntitlement();
@@ -91,6 +121,12 @@ type MinePageData = {
   authStatusToastMessage: string;
   authStatusToastRetryable: boolean;
   authStatusToastClosable: boolean;
+  showRuntimeLogEntry: boolean;
+  officialAccountModalVisible: boolean;
+  officialAccountName: string;
+  officialAccountDesc: string;
+  officialAccountQrImage: string;
+  officialAccountQrVisible: boolean;
 };
 
 Page<MinePageData, WechatMiniprogram.IAnyObject>({
@@ -116,6 +152,12 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     authStatusToastMessage: "",
     authStatusToastRetryable: false,
     authStatusToastClosable: false,
+    showRuntimeLogEntry: false,
+    officialAccountModalVisible: false,
+    officialAccountName: OFFICIAL_ACCOUNT_NAME,
+    officialAccountDesc: OFFICIAL_ACCOUNT_DESC,
+    officialAccountQrImage: OFFICIAL_ACCOUNT_QR_IMAGE,
+    officialAccountQrVisible: Boolean(OFFICIAL_ACCOUNT_QR_IMAGE),
   },
 
   unsubscribeAuthStore: undefined as undefined | (() => void),
@@ -132,6 +174,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     this.setData({
       loginDebugVisible: this.isLoginDebugEnv,
     });
+    this.loadRuntimeLogEntryVisibility();
 
     authService.init();
     this.unsubscribeAuthStore = authStore.subscribe(() => {
@@ -144,6 +187,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
 
   onShow() {
     this.isPageVisible = true;
+    this.loadRuntimeLogEntryVisibility();
     this.syncAuthState();
     trackPageView("mine", {
       source: "mine",
@@ -163,6 +207,65 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
         }
       });
     }
+  },
+
+  loadRuntimeLogEntryVisibility() {
+    let showRuntimeLogEntry = false;
+    try {
+      showRuntimeLogEntry = toStoredBoolean(
+        wx.getStorageSync(SHOW_RUNTIME_LOG_ENTRY_STORAGE_KEY),
+        false,
+      );
+    } catch (error) {
+      profileLogger.warn("runtime_log_entry_visibility_read_failed", {
+        error,
+      });
+      showRuntimeLogEntry = false;
+    }
+
+    if (this.data.showRuntimeLogEntry === showRuntimeLogEntry) {
+      return;
+    }
+
+    this.setData({
+      showRuntimeLogEntry,
+    });
+  },
+
+  persistRuntimeLogEntryVisibility(showRuntimeLogEntry: boolean) {
+    try {
+      wx.setStorageSync(SHOW_RUNTIME_LOG_ENTRY_STORAGE_KEY, showRuntimeLogEntry);
+    } catch (error) {
+      profileLogger.warn("runtime_log_entry_visibility_write_failed", {
+        showRuntimeLogEntry,
+        error,
+      });
+    }
+  },
+
+  shouldShowRuntimeLogEntry(): boolean {
+    return this.data.showRuntimeLogEntry;
+  },
+
+  handleDevSupportLongPress() {
+    const showRuntimeLogEntry = !this.shouldShowRuntimeLogEntry();
+    this.setData({
+      showRuntimeLogEntry,
+    });
+    this.persistRuntimeLogEntryVisibility(showRuntimeLogEntry);
+
+    try {
+      wx.vibrateShort({
+        type: "light",
+      });
+    } catch (_error) {
+      // Ignore unsupported vibration APIs on older devices.
+    }
+
+    wx.showToast({
+      title: showRuntimeLogEntry ? "已显示运行日志" : "已隐藏运行日志",
+      icon: "none",
+    });
   },
 
   onHide() {
@@ -750,6 +853,62 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       icon: "none",
     });
   },
+
+  handleOfficialAccountTap() {
+    profileLogger.info("click_official_account");
+    this.setData({
+      officialAccountModalVisible: true,
+      officialAccountQrVisible: Boolean(this.data.officialAccountQrImage),
+    });
+  },
+
+  closeOfficialAccountModal() {
+    if (!this.data.officialAccountModalVisible) {
+      return;
+    }
+
+    this.setData({
+      officialAccountModalVisible: false,
+    });
+  },
+
+  handleOfficialAccountQrError() {
+    if (!this.data.officialAccountQrVisible) {
+      return;
+    }
+
+    this.setData({
+      officialAccountQrVisible: false,
+    });
+  },
+
+  handleCopyOfficialAccountTap() {
+    const accountName = String(this.data.officialAccountName || "").trim();
+    if (!accountName) {
+      wx.showToast({
+        title: "复制失败，请手动搜索公众号",
+        icon: "none",
+      });
+      return;
+    }
+
+    wx.setClipboardData({
+      data: accountName,
+      success: () => {
+        wx.showToast({
+          title: "已复制公众号名称",
+          icon: "none",
+        });
+      },
+      fail: () => {
+        wx.showToast({
+          title: "复制失败，请手动搜索公众号",
+          icon: "none",
+        });
+      },
+    });
+  },
+
   onFeedbackTap() {
     profileLogger.info("click_feedback");
     console.log("[MinePage] feedback tapped");

@@ -91,12 +91,25 @@
       </view>
     </view>
 
-    <view class="mine-section mine-section--secondary">
+    <view
+      class="mine-section mine-section--secondary"
+      bindlongpress="handleDevSupportLongPress"
+    >
       <view class="mine-section__header">
         <text class="mine-section__title">开发与支持</text>
       </view>
 
       <view class="mine-list mine-list--secondary">
+        <view class="mine-list-item mine-list-item--with-subtitle" bindtap="handleOfficialAccountTap">
+          <view class="mine-list-item__left mine-list-item__left--stacked">
+            <text class="mine-list-item__label">开发者公众号</text>
+            <text class="mine-list-item__desc">{{officialAccountDesc}}</text>
+          </view>
+          <view class="mine-list-item__right">
+            <text class="mine-list-item__arrow">></text>
+          </view>
+        </view>
+
         <label class="mine-list-item" for="mine-feedback-trigger">
           <view class="mine-list-item__left">
             <text class="mine-list-item__label">意见反馈</text>
@@ -113,14 +126,16 @@
           ></button>
         </label>
 
-        <view class="mine-list-item" bindtap="handleRuntimeLogsTap">
-          <view class="mine-list-item__left">
-            <text class="mine-list-item__label">运行日志</text>
+        <block wx:if="{{showRuntimeLogEntry}}">
+          <view class="mine-list-item" bindtap="handleRuntimeLogsTap">
+            <view class="mine-list-item__left">
+              <text class="mine-list-item__label">运行日志</text>
+            </view>
+            <view class="mine-list-item__right">
+              <text class="mine-list-item__arrow">></text>
+            </view>
           </view>
-          <view class="mine-list-item__right">
-            <text class="mine-list-item__arrow">></text>
-          </view>
-        </view>
+        </block>
 
         <view class="mine-list-item" bindtap="handleSettingsTap">
           <view class="mine-list-item__left">
@@ -137,6 +152,47 @@
       <text class="mine-footer__link" bindtap="handleUserAgreementTap">用户协议</text>
       <text class="mine-footer__divider"> / </text>
       <text class="mine-footer__link" bindtap="handlePrivacyTap">隐私政策</text>
+    </view>
+  </view>
+
+  <view
+    wx:if="{{officialAccountModalVisible}}"
+    class="mine-modal-layer"
+    catchtouchmove="noop"
+  >
+    <view class="mine-modal-card" catchtap="noop">
+      <view class="mine-modal-head">
+        <text class="mine-modal-title">开发者公众号</text>
+        <text class="mine-modal-desc">关注公众号，获取产品更新、使用帮助和问题反馈。</text>
+      </view>
+
+      <image
+        wx:if="{{officialAccountQrVisible && officialAccountQrImage}}"
+        class="mine-modal-qr"
+        src="{{officialAccountQrImage}}"
+        mode="aspectFill"
+        binderror="handleOfficialAccountQrError"
+      />
+
+      <view class="mine-modal-account">
+        <text class="mine-modal-account__label">公众号名称</text>
+        <text class="mine-modal-account__name">{{officialAccountName}}</text>
+      </view>
+
+      <view class="mine-modal-actions">
+        <button
+          class="mine-modal-btn mine-modal-btn--primary"
+          bindtap="handleCopyOfficialAccountTap"
+        >
+          复制公众号名称
+        </button>
+        <button
+          class="mine-modal-btn mine-modal-btn--ghost"
+          bindtap="closeOfficialAccountModal"
+        >
+          我知道了
+        </button>
+      </view>
     </view>
   </view>
 

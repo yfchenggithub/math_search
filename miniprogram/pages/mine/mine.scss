@@ -175,11 +175,23 @@ page {
   align-items: center;
 }
 
+.mine-list-item__left--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6rpx;
+}
+
 .mine-list-item__label {
   font-size: 30rpx;
   color: #111111;
   line-height: 1.4;
   font-weight: 450;
+}
+
+.mine-list-item__desc {
+  font-size: 22rpx;
+  color: #8e8e93;
+  line-height: 1.45;
 }
 
 .mine-list-item__right {
@@ -210,6 +222,12 @@ page {
   min-height: 90rpx;
 }
 
+.mine-list--secondary .mine-list-item--with-subtitle {
+  min-height: 122rpx;
+  padding-top: 14rpx;
+  padding-bottom: 14rpx;
+}
+
 .mine-list--secondary .mine-list-item__label {
   font-size: 28rpx;
   color: #3a3a3c;
@@ -237,4 +255,116 @@ page {
   font-size: 22rpx;
   color: #c7c7cc;
   line-height: 1.5;
+}
+
+/* Official Account Modal */
+.mine-modal-layer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 90;
+  background: rgba(17, 17, 17, 0.36);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 36rpx;
+  box-sizing: border-box;
+}
+
+.mine-modal-card {
+  width: 100%;
+  max-width: 640rpx;
+  background: #ffffff;
+  border-radius: 28rpx;
+  padding: 28rpx 24rpx 24rpx;
+  box-sizing: border-box;
+  box-shadow: 0 20rpx 50rpx rgba(0, 0, 0, 0.18);
+}
+
+.mine-modal-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.mine-modal-title {
+  font-size: 32rpx;
+  line-height: 1.35;
+  color: #111111;
+  font-weight: 600;
+}
+
+.mine-modal-desc {
+  font-size: 24rpx;
+  line-height: 1.55;
+  color: #6e6e73;
+}
+
+.mine-modal-qr {
+  width: 240rpx;
+  height: 240rpx;
+  border-radius: 18rpx;
+  margin: 20rpx auto 0;
+  display: block;
+  background: #f2f2f7;
+}
+
+.mine-modal-account {
+  margin-top: 20rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: #f7f7f8;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.mine-modal-account__label {
+  font-size: 22rpx;
+  color: #8e8e93;
+  line-height: 1.4;
+}
+
+.mine-modal-account__name {
+  font-size: 28rpx;
+  color: #111111;
+  line-height: 1.4;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.mine-modal-actions {
+  margin-top: 22rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.mine-modal-btn {
+  height: 76rpx;
+  line-height: 76rpx;
+  border-radius: 999rpx;
+  border: none;
+  font-size: 26rpx;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28rpx;
+}
+
+.mine-modal-btn::after {
+  border: none;
+}
+
+.mine-modal-btn--primary {
+  background: #111111;
+  color: #ffffff;
+}
+
+.mine-modal-btn--ghost {
+  background: #f2f2f7;
+  color: #3a3a3c;
 }
