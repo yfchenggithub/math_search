@@ -106,6 +106,57 @@
   color: #94a3b8;
 }
 
+.pdf-entitlement-card {
+  margin: 12rpx 20rpx 0;
+  padding: 22rpx 24rpx;
+  border-radius: 32rpx;
+  background: #ffffff;
+  border: 2rpx solid #e7edf9;
+}
+
+.pdf-entitlement-card-unlocked {
+  border-color: #cfe8dc;
+}
+
+.pdf-entitlement-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.pdf-entitlement-subtitle {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #64748b;
+}
+
+.pdf-entitlement-description {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #334155;
+}
+
+.pdf-entitlement-hint {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #64748b;
+}
+
+.pdf-entitlement-action {
+  margin-top: 16rpx;
+  height: 68rpx;
+  line-height: 68rpx;
+  border-radius: 20rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.pdf-entitlement-action::after {
+  border: 0;
+}
+
 .tabs {
   padding: 18rpx 20rpx 10rpx;
   white-space: nowrap;

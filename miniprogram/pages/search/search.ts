@@ -1,5 +1,13 @@
 import type { ResultItem } from "../../types/search";
+import { readApiEnvVersion } from "../../config/runtime-env";
 import { renderMath } from "../../utils/math-render";
+import {
+  formatPdfRemainingTime,
+  getPdfEntitlement,
+  isPdfEntitlementActive,
+  PDF_UNLOCK_DURATION_MS,
+  setPdfEntitlementUnlockedForDuration,
+} from "../../utils/pdf-entitlement";
 import { getErrorMessage } from "../../utils/request";
 import { createLogger } from "../../utils/logger/logger";
 import type {
@@ -16,7 +24,27 @@ import {
 
 const TAB_ALL = "all";
 const SET_DATA_WARN_BYTES = 180 * 1024;
+const PDF_ENTITLEMENT_REFRESH_INTERVAL_MS = 30 * 1000;
 const searchPageLogger = createLogger("search-page");
+
+const PDF_COPY = {
+  lockedTitle: "\u9ad8\u6e05 PDF \u4e0b\u8f7d\u6743\u76ca",
+  lockedSubtitle: "\u5185\u5bb9\u53ef\u514d\u8d39\u67e5\u770b\uff0cPDF \u4e0b\u8f7d\u9700\u89e3\u9501",
+  lockedDescription: "\u770b\u4e00\u6b21\u89c6\u9891\uff0c2 \u5c0f\u65f6\u5185\u53ef\u4e0b\u8f7d PDF",
+  lockedHint: "\u9002\u5408\u79bb\u7ebf\u67e5\u770b\u3001\u6253\u5370\u6574\u7406",
+  lockedAction: "\u89e3\u9501\u4e0b\u8f7d\u6743\u76ca",
+  unlockedTitle: "PDF \u4e0b\u8f7d\u6743\u76ca\u5df2\u5f00\u542f",
+  unlockedSubtitle: "2 \u5c0f\u65f6\u5185\u53ef\u4e0b\u8f7d PDF",
+  unlockedHint: "\u6743\u76ca\u5230\u671f\u540e\u53ef\u518d\u6b21\u89e3\u9501",
+  unlockedAction: "\u67e5\u770b\u53ef\u4e0b\u8f7d\u5185\u5bb9",
+  remainingPrefix: "\u5269\u4f59",
+  searchFirstToast: "\u8bf7\u5148\u641c\u7d22\u9700\u8981\u67e5\u770b\u7684\u5185\u5bb9",
+  unlockSuccessToast: "\u4e0b\u8f7d\u6743\u76ca\u5df2\u5f00\u542f\uff0c2 \u5c0f\u65f6\u5185\u53ef\u4e0b\u8f7d PDF",
+  unlockDebugToast: "\u5f00\u53d1\u73af\u5883\uff1a\u5df2\u6a21\u62df\u5f00\u542f PDF \u4e0b\u8f7d\u6743\u76ca",
+  unlockUnavailableToast: "\u6682\u65f6\u65e0\u6cd5\u6253\u5f00\u89c6\u9891\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5",
+  unlockNeedFullWatchToast: "\u9700\u8981\u5b8c\u6574\u89c2\u770b\u540e\u624d\u80fd\u89e3\u9501\u4e0b\u8f7d\u6743\u76ca",
+  actionPending: "\u5904\u7406\u4e2d...",
+} as const;
 
 const HOME_COPY = {
   title: "数秒查",
@@ -95,6 +123,12 @@ interface SearchCardItem extends ResultItem {
   freq: string;
 }
 
+type PdfEntitlementState = {
+  unlocked: boolean;
+  expireAt: number | null;
+  remainingSeconds: number;
+};
+
 let timer: number | null = null;
 
 Page({
@@ -120,11 +154,24 @@ Page({
     quickFilters: QUICK_FILTERS as QuickFilter[],
     activeTab: TAB_ALL,
     showClear: false,
+    listScrollTop: 0,
+    pdfEntitlement: {
+      unlocked: false,
+      expireAt: null,
+      remainingSeconds: 0,
+    } as PdfEntitlementState,
+    pdfEntitlementTitle: PDF_COPY.lockedTitle as string,
+    pdfEntitlementSubtitle: PDF_COPY.lockedSubtitle as string,
+    pdfEntitlementDescription: PDF_COPY.lockedDescription as string,
+    pdfEntitlementHint: PDF_COPY.lockedHint as string,
+    pdfEntitlementActionText: PDF_COPY.lockedAction as string,
+    pdfEntitlementActionBusy: false,
   },
 
   searchTaskId: 0,
   suggestTaskId: 0,
   allResultsCache: [] as SearchCardItem[],
+  pdfEntitlementTimer: null as number | null,
 
   onLoad() {
     initSearchEngine();
@@ -142,6 +189,27 @@ Page({
       rate2: this.calculateRate(highExamFrequencyCount, total),
       quickFilters: this.buildQuickFilters(meta.categories),
     });
+
+    this.refreshPdfEntitlementState();
+    this.startPdfEntitlementTimerIfNeeded();
+  },
+
+  onShow() {
+    this.refreshPdfEntitlementState();
+    this.startPdfEntitlementTimerIfNeeded();
+  },
+
+  onHide() {
+    this.stopPdfEntitlementTimer();
+  },
+
+  onUnload() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+
+    this.stopPdfEntitlementTimer();
   },
 
   onInput(e: SearchInputEvent) {
@@ -250,6 +318,19 @@ Page({
     wx.navigateTo({
       url: `/pages/detail/detail?id=${id}`,
     });
+  },
+
+  onPdfEntitlementActionTap() {
+    if (this.data.pdfEntitlementActionBusy) {
+      return;
+    }
+
+    if (this.data.pdfEntitlement.unlocked) {
+      this.scrollToDownloadableContent();
+      return;
+    }
+
+    void this.handleUnlockPdfEntitlement();
   },
 
   async executeInputFlow(query: string) {
@@ -822,6 +903,143 @@ Page({
     }
 
     return result.length > 0 ? result : [{ text, highlight: false }];
+  },
+
+  refreshPdfEntitlementState() {
+    const entitlement = getPdfEntitlement();
+    const isUnlocked = isPdfEntitlementActive(entitlement);
+    const normalizedEntitlement: PdfEntitlementState = isUnlocked
+      ? entitlement
+      : {
+        unlocked: false,
+        expireAt: null,
+        remainingSeconds: 0,
+      };
+
+    const nextData = isUnlocked
+      ? {
+        pdfEntitlement: normalizedEntitlement,
+        pdfEntitlementTitle: PDF_COPY.unlockedTitle,
+        pdfEntitlementSubtitle: PDF_COPY.unlockedSubtitle,
+        pdfEntitlementDescription: `${PDF_COPY.remainingPrefix}${formatPdfRemainingTime(normalizedEntitlement.remainingSeconds)}`,
+        pdfEntitlementHint: PDF_COPY.unlockedHint,
+        pdfEntitlementActionText: PDF_COPY.unlockedAction,
+      }
+      : {
+        pdfEntitlement: normalizedEntitlement,
+        pdfEntitlementTitle: PDF_COPY.lockedTitle,
+        pdfEntitlementSubtitle: PDF_COPY.lockedSubtitle,
+        pdfEntitlementDescription: PDF_COPY.lockedDescription,
+        pdfEntitlementHint: PDF_COPY.lockedHint,
+        pdfEntitlementActionText: PDF_COPY.lockedAction,
+      };
+
+    this.setData(nextData);
+
+    if (!isUnlocked) {
+      this.stopPdfEntitlementTimer();
+    }
+  },
+
+  startPdfEntitlementTimerIfNeeded() {
+    if (this.pdfEntitlementTimer !== null) {
+      return;
+    }
+
+    if (!this.data.pdfEntitlement.unlocked) {
+      return;
+    }
+
+    this.pdfEntitlementTimer = setInterval(() => {
+      this.refreshPdfEntitlementState();
+    }, PDF_ENTITLEMENT_REFRESH_INTERVAL_MS);
+  },
+
+  stopPdfEntitlementTimer() {
+    if (this.pdfEntitlementTimer === null) {
+      return;
+    }
+
+    clearInterval(this.pdfEntitlementTimer);
+    this.pdfEntitlementTimer = null;
+  },
+
+  scrollToDownloadableContent() {
+    if (this.data.results.length <= 0) {
+      wx.showToast({
+        title: PDF_COPY.searchFirstToast,
+        icon: "none",
+      });
+      return;
+    }
+
+    const nextScrollTop = this.data.listScrollTop === 0 ? 1 : 0;
+    this.setData({
+      listScrollTop: nextScrollTop,
+    });
+  },
+
+  async handleUnlockPdfEntitlement() {
+    if (this.data.pdfEntitlementActionBusy) {
+      return;
+    }
+
+    this.setData({
+      pdfEntitlementActionBusy: true,
+      pdfEntitlementActionText: PDF_COPY.actionPending,
+    });
+
+    try {
+      // TODO: 接入真实激励视频后，在该方法内返回 true。
+      const unlockedByRewardVideo = await this.tryUnlockPdfEntitlementWithRewardedVideo();
+      if (unlockedByRewardVideo) {
+        this.refreshPdfEntitlementState();
+        this.startPdfEntitlementTimerIfNeeded();
+        wx.showToast({
+          title: PDF_COPY.unlockSuccessToast,
+          icon: "none",
+        });
+        return;
+      }
+
+      if (readApiEnvVersion() === "develop") {
+        this.unlockPdfEntitlementForDebug();
+        wx.showToast({
+          title: PDF_COPY.unlockDebugToast,
+          icon: "none",
+        });
+        return;
+      }
+
+      wx.showToast({
+        title: PDF_COPY.unlockUnavailableToast,
+        icon: "none",
+      });
+    } catch (error) {
+      searchPageLogger.warn("unlock_pdf_entitlement_failed", { error });
+      wx.showToast({
+        title: PDF_COPY.unlockUnavailableToast,
+        icon: "none",
+      });
+    } finally {
+      this.setData({
+        pdfEntitlementActionBusy: false,
+      });
+      this.refreshPdfEntitlementState();
+      this.startPdfEntitlementTimerIfNeeded();
+    }
+  },
+
+  async tryUnlockPdfEntitlementWithRewardedVideo(): Promise<boolean> {
+    // TODO: adUnitId 接入后，在用户完整观看激励视频时返回 true。
+    return false;
+  },
+
+  unlockPdfEntitlementForDebug() {
+    // 开发期临时逻辑：模拟开启 2 小时 PDF 下载权益。
+    setPdfEntitlementUnlockedForDuration(PDF_UNLOCK_DURATION_MS);
+    this.refreshPdfEntitlementState();
+    this.startPdfEntitlementTimerIfNeeded();
   },
 
   formatDifficulty(difficulty?: number): string {

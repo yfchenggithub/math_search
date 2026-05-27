@@ -46,6 +46,21 @@
     </block>
   </view>
 
+  <view class="pdf-entitlement-card {{pdfEntitlement.unlocked ? 'pdf-entitlement-card-unlocked' : ''}}">
+    <view class="pdf-entitlement-title">{{pdfEntitlementTitle}}</view>
+    <view class="pdf-entitlement-subtitle">{{pdfEntitlementSubtitle}}</view>
+    <view class="pdf-entitlement-description">{{pdfEntitlementDescription}}</view>
+    <view class="pdf-entitlement-hint">{{pdfEntitlementHint}}</view>
+    <button
+      class="pdf-entitlement-action"
+      loading="{{pdfEntitlementActionBusy}}"
+      disabled="{{pdfEntitlementActionBusy}}"
+      bindtap="onPdfEntitlementActionTap"
+    >
+      {{pdfEntitlementActionText}}
+    </button>
+  </view>
+
   <scroll-view scroll-x class="tabs">
     <view
       class="tab {{activeTab === item.key ? 'active' : ''}}"
@@ -58,7 +73,7 @@
     </view>
   </scroll-view>
 
-  <scroll-view scroll-y class="list">
+  <scroll-view scroll-y class="list" scroll-top="{{listScrollTop}}">
     <view wx:if="{{loading}}" class="state-box state-loading">
       搜索中...
     </view>
