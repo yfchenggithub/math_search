@@ -42,6 +42,8 @@
       <view
         class="suggest-item"
         data-text="{{item.text}}"
+        data-id="{{item.id}}"
+        data-module="{{item.module}}"
         bindtap="onSuggestionTap"
       >
         <text class="suggest-text">{{item.text}}</text>
@@ -103,6 +105,11 @@
                 class="recommend-card"
                 bindtap="onDetailTap"
                 data-id="{{recommend.id}}"
+                data-entry="recommend_card"
+                data-section="{{section.key}}"
+                data-title="{{recommend.title}}"
+                data-module="{{recommend.module}}"
+                data-has-pdf="{{recommend.hasPdf}}"
               >
                 <view class="recommend-card-title">{{recommend.title}}</view>
                 <view class="recommend-card-summary">{{recommend.summary}}</view>
@@ -146,6 +153,11 @@
           class="recommend-card recommend-card-compact"
           bindtap="onDetailTap"
           data-id="{{recommend.id}}"
+          data-entry="no_result_recommend_card"
+          data-section="no_result"
+          data-title="{{recommend.title}}"
+          data-module="{{recommend.module}}"
+          data-has-pdf="{{recommend.hasPdf}}"
         >
           <view class="recommend-card-title">{{recommend.title}}</view>
           <view class="recommend-card-summary">{{recommend.summary}}</view>
@@ -162,6 +174,8 @@
       wx:key="id"
       bindtap="onDetailTap"
       data-id="{{item.id}}"
+      data-entry="search_result_card"
+      data-module="{{item.module}}"
     >
       <view class="card-top">
         <view class="card-title">
@@ -197,6 +211,8 @@
           class="detail-btn"
           catchtap="onDetailTap"
           data-id="{{item.id}}"
+          data-entry="search_result_button"
+          data-module="{{item.module}}"
         >
           查看详情
         </view>

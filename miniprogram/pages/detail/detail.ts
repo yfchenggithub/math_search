@@ -5,6 +5,14 @@ import type {
 } from "../../utils/detail-content";
 import { FEATURE_FLAGS } from "../../config/feature-flags";
 import {
+  trackDetailView,
+  trackEvent,
+  trackFavorite,
+  trackPdfDownloadClick,
+  trackPdfUnlockFlow,
+  trackShare,
+} from "../../utils/analytics";
+import {
   buildAbsoluteApiUrl,
   extractFilenameFromUrl,
 } from "../../utils/api-url";
@@ -21,7 +29,10 @@ import {
 import { getDetailDocumentById } from "../../utils/detail-content";
 import { createLogger } from "../../utils/logger/logger";
 import { getPdfEntitlement, isPdfEntitlementActive } from "../../utils/pdf-entitlement";
-import { unlockPdfEntitlement } from "../../utils/pdf-entitlement-unlock";
+import {
+  resolvePdfUnlockProvider,
+  unlockPdfEntitlement,
+} from "../../utils/pdf-entitlement-unlock";
 import { getErrorMessage } from "../../utils/request";
 import {
   SHARE_COPY,
@@ -73,6 +84,8 @@ type PdfErrorPresentation = {
   message: string;
   stageLabel: string;
 };
+
+type PdfUnlockStatus = "locked" | "unlocked" | "expired";
 
 class PdfOperationError extends Error {
   stage: PdfOperationStage;
@@ -194,6 +207,9 @@ Page({
   unsubscribeAuthStatusToast: undefined as undefined | (() => void),
   pendingPdfDownloadAfterUnlock: false,
   shareMenuReady: false,
+  routeSource: "detail",
+  routeEntry: "unknown",
+  detailViewTracked: false,
 
   
   raf(callback: Function) {
@@ -292,6 +308,24 @@ Page({
       },
       () => {
         this.scheduleMeasure();
+        if (!this.detailViewTracked) {
+          this.detailViewTracked = true;
+          trackDetailView(
+            {
+              item_id: detail.id,
+              title: detail.title,
+              module: detail.category,
+              has_pdf: Boolean(detail.pdfAvailable),
+              source: this.routeSource,
+              page: "detail",
+              entry: this.routeEntry,
+            },
+            {
+              dedupeKey: `detail_view:${detail.id}`,
+              dedupeMs: 10 * 60 * 1000,
+            },
+          );
+        }
       },
     );
   },
@@ -408,6 +442,13 @@ Page({
     }
 
     const nextFavoriteState = !this.data.isFavorited;
+    trackFavorite("favorite_click", {
+      item_id: conclusionId,
+      module: String(this.data.category || ""),
+      source: "detail",
+      page: "detail",
+      entry: "favorite_button",
+    });
 
     await requireAuthAndRun(
       async () => {
@@ -441,6 +482,17 @@ Page({
         favoriteStatusText: nextFavoriteState ? "已收藏" : "未收藏",
       });
 
+      trackFavorite(
+        nextFavoriteState ? "favorite_success" : "favorite_cancel",
+        {
+          item_id: conclusionId,
+          module: String(this.data.category || ""),
+          source: "detail",
+          page: "detail",
+          entry: "favorite_button",
+        },
+      );
+
       detailPageLogger.info("favorite_toggle_success", {
         conclusionId,
         isFavorited: nextFavoriteState,
@@ -457,6 +509,14 @@ Page({
         conclusionId,
         targetState: nextFavoriteState,
         error,
+      });
+      trackFavorite("favorite_fail", {
+        item_id: conclusionId,
+        module: String(this.data.category || ""),
+        source: "detail",
+        page: "detail",
+        entry: "favorite_button",
+        error_type: "request_failed",
       });
       showAuthStatusToast({
         type: "error",
@@ -479,6 +539,9 @@ Page({
   
   onLoad(options: Record<string, string | undefined>) {
     this.ensureShareMenu();
+    this.routeSource = String(options.source || "detail").trim() || "detail";
+    this.routeEntry = String(options.entry || "unknown").trim() || "unknown";
+    this.detailViewTracked = false;
     this.unsubscribeAuthStatusToast = subscribeAuthStatusToast((state) => {
       this.syncAuthStatusToast(state);
     });
@@ -529,21 +592,58 @@ Page({
   },
 
   onShareAppMessage() {
+    trackShare("share_click", {
+      item_id: String(this.data.id || ""),
+      source: this.routeSource,
+      page: "detail",
+      entry: "share_button",
+      share_type: "app_message",
+    });
     return buildDetailSharePayload(this.getCurrentShareSource());
   },
 
   onShareTimeline() {
+    trackShare("share_click", {
+      item_id: String(this.data.id || ""),
+      source: this.routeSource,
+      page: "detail",
+      entry: "share_button",
+      share_type: "timeline",
+    });
     return buildDetailTimelinePayload(this.getCurrentShareSource());
   },
 
   async onCopyConclusionTap() {
+    trackShare("copy_keyword_click", {
+      item_id: String(this.data.id || ""),
+      source: this.routeSource,
+      page: "detail",
+      entry: "copy_keyword_button",
+      share_type: "copy_keyword",
+    });
+
     try {
       await copyConclusionText(this.getCurrentShareSource());
+      trackShare("copy_keyword_success", {
+        item_id: String(this.data.id || ""),
+        source: this.routeSource,
+        page: "detail",
+        entry: "copy_keyword_button",
+        share_type: "copy_keyword",
+      });
       wx.showToast({
         title: SHARE_COPY.copySuccessToast,
         icon: "none",
       });
     } catch (_error) {
+      trackShare("copy_keyword_fail", {
+        item_id: String(this.data.id || ""),
+        source: this.routeSource,
+        page: "detail",
+        entry: "copy_keyword_button",
+        share_type: "copy_keyword",
+        error_type: "copy_failed",
+      });
       wx.showToast({
         title: SHARE_COPY.copyFailedToast,
         icon: "none",
@@ -634,6 +734,32 @@ Page({
     return isPdfEntitlementActive(entitlement);
   },
 
+  resolveUnlockStatus(): PdfUnlockStatus {
+    const entitlement = getPdfEntitlement();
+    if (entitlement.unlocked && entitlement.remainingSeconds > 0) {
+      return "unlocked";
+    }
+
+    if (entitlement.expireAt && entitlement.remainingSeconds <= 0) {
+      return "expired";
+    }
+
+    return "locked";
+  },
+
+  getPdfAnalyticsContext() {
+    return {
+      item_id: String(this.data.id || this.currentDetailId || ""),
+      module: String(this.data.category || ""),
+      has_pdf: Boolean(this.data.pdfAvailable),
+      unlock_status: this.resolveUnlockStatus(),
+      unlock_provider: resolvePdfUnlockProvider(),
+      source: "detail",
+      page: "detail",
+      entry: "pdf_button",
+    };
+  },
+
   onDownloadPdfTap() {
     if (
       this.data.isDownloadingPdf ||
@@ -643,7 +769,17 @@ Page({
       return;
     }
 
+    trackPdfDownloadClick(this.getPdfAnalyticsContext());
+
     if (!this.data.pdfAvailable) {
+      trackEvent("detail_pdf_no_file", {
+        item_id: String(this.data.id || this.currentDetailId || ""),
+        module: String(this.data.category || ""),
+        source: "detail",
+        page: "detail",
+        entry: "pdf_button",
+        reason: "pdf_unavailable",
+      });
       wx.showToast({
         title: "当前内容暂未提供 PDF",
         icon: "none",
@@ -653,6 +789,14 @@ Page({
 
     const rawPdfUrl = String(this.data.pdfUrl || "").trim();
     if (!rawPdfUrl) {
+      trackEvent("detail_pdf_no_file", {
+        item_id: String(this.data.id || this.currentDetailId || ""),
+        module: String(this.data.category || ""),
+        source: "detail",
+        page: "detail",
+        entry: "pdf_button",
+        reason: "pdf_url_empty",
+      });
       wx.showToast({
         title: "暂时无法获取 PDF，请稍后再试",
         icon: "none",
@@ -673,6 +817,7 @@ Page({
     }
 
     this.pendingPdfDownloadAfterUnlock = true;
+    trackPdfUnlockFlow("pdf_unlock_modal_show", this.getPdfAnalyticsContext());
     this.setData({
       isUnlockModalVisible: true,
     });
@@ -736,12 +881,18 @@ Page({
     this.setData({
       isUnlockingPdfEntitlement: true,
     });
+    trackPdfUnlockFlow("pdf_unlock_click", this.getPdfAnalyticsContext());
 
     try {
       const unlockResult = await unlockPdfEntitlement();
       if (unlockResult.unlocked) {
         const shouldContinueDownload = this.pendingPdfDownloadAfterUnlock;
         this.pendingPdfDownloadAfterUnlock = false;
+        trackPdfUnlockFlow("pdf_unlock_success", {
+          ...this.getPdfAnalyticsContext(),
+          unlock_provider: unlockResult.source || resolvePdfUnlockProvider(),
+          duration_seconds: 7200,
+        });
         this.setData({
           isUnlockModalVisible: false,
         });
@@ -759,6 +910,11 @@ Page({
       }
 
       if (unlockResult.reason === "cancelled") {
+        trackPdfUnlockFlow("pdf_unlock_fail", {
+          ...this.getPdfAnalyticsContext(),
+          unlock_provider: unlockResult.source || resolvePdfUnlockProvider(),
+          error_type: "cancelled",
+        });
         wx.showToast({
           title: PDF_UNLOCK_COPY.unlockNeedFullWatchToast,
           icon: "none",
@@ -766,6 +922,11 @@ Page({
         return;
       }
 
+      trackPdfUnlockFlow("pdf_unlock_fail", {
+        ...this.getPdfAnalyticsContext(),
+        unlock_provider: unlockResult.source || resolvePdfUnlockProvider(),
+        error_type: "unavailable",
+      });
       wx.showToast({
         title: PDF_UNLOCK_COPY.unlockUnavailableToast,
         icon: "none",
@@ -773,6 +934,10 @@ Page({
     } catch (error) {
       detailPageLogger.warn("unlock_pdf_entitlement_failed", {
         error,
+      });
+      trackPdfUnlockFlow("pdf_unlock_fail", {
+        ...this.getPdfAnalyticsContext(),
+        error_type: "exception",
       });
       wx.showToast({
         title: PDF_UNLOCK_COPY.unlockUnavailableToast,
@@ -1326,6 +1491,15 @@ Page({
       return;
     }
 
+    const downloadStartedAt = Date.now();
+    trackEvent("pdf_download_start", {
+      item_id: String(this.data.id || this.currentDetailId || ""),
+      module: String(this.data.category || ""),
+      source: "detail",
+      page: "detail",
+      entry: "pdf_button",
+    });
+
     this.setData({
       isDownloadingPdf: true,
     });
@@ -1339,21 +1513,30 @@ Page({
         message: "正在检查文档资源...",
       });
 
-      context = this.resolvePdfOpenContext();
-      activeCacheKey = context.cacheKey;
+      const resolvedContext = this.resolvePdfOpenContext();
+      context = resolvedContext;
+      activeCacheKey = resolvedContext.cacheKey;
 
-      const cachedFilePath = await this.resolveValidCachedPdfPath(context.cacheKey);
+      const cachedFilePath = await this.resolveValidCachedPdfPath(resolvedContext.cacheKey);
       if (cachedFilePath) {
         this.setPdfStatusStage("cacheHit");
         this.setPdfStatusStage("opening", {
           message: "正在打开已缓存的 PDF...",
         });
 
-        await this.openPdfFile(cachedFilePath, context.pdfFilename);
+        await this.openPdfFile(cachedFilePath, resolvedContext.pdfFilename);
 
         this.setPdfStatusStage("success", {
           title: "PDF 已打开",
           message: "已从本地缓存打开，体验更顺滑。",
+        });
+        trackEvent("pdf_download_success", {
+          item_id: String(this.data.id || this.currentDetailId || ""),
+          module: String(this.data.category || ""),
+          source: "detail",
+          page: "detail",
+          entry: "pdf_button",
+          duration_ms: Date.now() - downloadStartedAt,
         });
         this.schedulePdfStatusDismiss();
         return;
@@ -1365,9 +1548,9 @@ Page({
       });
 
       const tempFilePath = await this.downloadPdfWithProgress(
-        context.fullPdfUrl,
-        context.pdfFilename,
-        (progress) => {
+        resolvedContext.fullPdfUrl,
+        resolvedContext.pdfFilename,
+        (progress: number) => {
           this.updatePdfDownloadProgress(progress);
         },
       );
@@ -1378,22 +1561,30 @@ Page({
 
       const savedFilePath = await this.savePdfFromTempFile(
         tempFilePath,
-        context.pdfFilename,
+        resolvedContext.pdfFilename,
       );
 
-      if (context.cacheKey) {
-        this.setCachedPdfFilePath(context.cacheKey, savedFilePath);
+      if (resolvedContext.cacheKey) {
+        this.setCachedPdfFilePath(resolvedContext.cacheKey, savedFilePath);
       }
 
       this.setPdfStatusStage("opening", {
         message: "正在调用系统阅读器...",
       });
 
-      await this.openPdfFile(savedFilePath, context.pdfFilename);
+      await this.openPdfFile(savedFilePath, resolvedContext.pdfFilename);
 
       this.setPdfStatusStage("success", {
         title: "PDF 已打开",
         message: "下载并缓存完成，下次会更快。",
+      });
+      trackEvent("pdf_download_success", {
+        item_id: String(this.data.id || this.currentDetailId || ""),
+        module: String(this.data.category || ""),
+        source: "detail",
+        page: "detail",
+        entry: "pdf_button",
+        duration_ms: Date.now() - downloadStartedAt,
       });
       this.schedulePdfStatusDismiss();
     } catch (error) {
@@ -1415,6 +1606,15 @@ Page({
         stage,
         error,
         context,
+      });
+      trackEvent("pdf_download_fail", {
+        item_id: String(this.data.id || this.currentDetailId || ""),
+        module: String(this.data.category || ""),
+        source: "detail",
+        page: "detail",
+        entry: "pdf_button",
+        error_type: stage,
+        duration_ms: Date.now() - downloadStartedAt,
       });
     } finally {
       this.abortPdfDownloadTask();

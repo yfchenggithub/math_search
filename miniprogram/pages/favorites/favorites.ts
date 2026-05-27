@@ -4,6 +4,7 @@ import {
   type FavoriteRecord,
 } from "../../services/api/favorites-api";
 import { authService } from "../../services/auth/auth-service";
+import { trackShare } from "../../utils/analytics";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { getNavLayout } from "../../utils/nav";
 import { RequestError, getErrorMessage } from "../../utils/request";
@@ -521,6 +522,12 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
   },
 
   onShareAppMessage() {
+    trackShare("share_click", {
+      source: "favorites",
+      page: "favorites",
+      entry: "share_button",
+      share_type: "app_message",
+    });
     return {
       title: "我收藏的结论卡片",
       path: "/pages/favorites/favorites",
@@ -528,6 +535,12 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
   },
 
   onShareTimeline() {
+    trackShare("share_click", {
+      source: "favorites",
+      page: "favorites",
+      entry: "share_button",
+      share_type: "timeline",
+    });
     return {
       title: "我收藏的结论卡片",
       query: "from=favorites",

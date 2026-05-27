@@ -9,6 +9,7 @@ import type {
   RequireAuthOptions,
 } from "../../services/auth/auth-types";
 import { authStore } from "../../stores/auth-store";
+import { trackPageView } from "../../utils/analytics";
 import type { AuthFlowErrorCategory } from "../../utils/auth/auth-login-feedback";
 import {
   createLoginTraceId,
@@ -26,6 +27,7 @@ import {
 } from "../../utils/auth/auth-status-feedback";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
+import { getPdfEntitlement } from "../../utils/pdf-entitlement";
 import { RequestError } from "../../utils/request";
 
 type LoginSource = NonNullable<RequireAuthOptions["loginSource"]>;
@@ -53,6 +55,19 @@ type RefreshMineDataOptions = {
 const mineLoginLogger = createLogger("mine-login");
 const authStatusToastLogger = createLogger("auth-status-toast");
 const profileLogger = createLogger("profile");
+
+function resolveMineUnlockStatus(): "locked" | "unlocked" | "expired" {
+  const entitlement = getPdfEntitlement();
+  if (entitlement.unlocked && entitlement.remainingSeconds > 0) {
+    return "unlocked";
+  }
+
+  if (entitlement.expireAt && entitlement.remainingSeconds <= 0) {
+    return "expired";
+  }
+
+  return "locked";
+}
 
 type MinePageData = {
   authStatus: AuthStatus;
@@ -130,6 +145,13 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
   onShow() {
     this.isPageVisible = true;
     this.syncAuthState();
+    trackPageView("mine", {
+      source: "mine",
+      page: "mine",
+      has_login: this.data.isLoggedIn,
+      favorite_count: this.data.favoriteCount,
+      unlock_status: resolveMineUnlockStatus(),
+    });
 
     if (this.data.isLoggedIn) {
       void this.refreshMineData().then((result: MineRefreshResult) => {

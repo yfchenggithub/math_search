@@ -1,4 +1,5 @@
 import { authService } from "./services/auth/auth-service";
+import { trackEvent } from "./utils/analytics";
 import { createLogger } from "./utils/logger/logger";
 
 const appLogger = createLogger("app");
@@ -12,6 +13,10 @@ App<IAppOption>({
     const systemInfo = wx.getSystemInfoSync();
     this.globalData.statusBarHeight = systemInfo.statusBarHeight;
     authService.init();
+    trackEvent("app_launch", {
+      source: "app",
+      page: "app",
+    });
   },
 
   onError(error: string) {

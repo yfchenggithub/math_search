@@ -1,5 +1,11 @@
 import type { ResultItem } from "../../types/search";
 import { FEATURE_FLAGS } from "../../config/feature-flags";
+import {
+  trackEvent,
+  trackPageView,
+  trackSearch,
+  trackShare,
+} from "../../utils/analytics";
 import { renderMath } from "../../utils/math-render";
 import {
   formatPdfRemainingTime,
@@ -150,6 +156,8 @@ type SearchTextTapEvent = {
   currentTarget: {
     dataset: {
       text?: string;
+      id?: string;
+      module?: string;
     };
   };
 };
@@ -166,8 +174,18 @@ type SearchDetailTapEvent = {
   currentTarget: {
     dataset: {
       id?: string;
+      entry?: string;
+      section?: string;
+      title?: string;
+      module?: string;
+      hasPdf?: string | boolean;
     };
   };
+};
+
+type ExecuteSearchOptions = {
+  trackSubmit?: boolean;
+  entry?: string;
 };
 
 interface SearchCardItem extends ResultItem {
@@ -232,6 +250,7 @@ Page({
   allResultsCache: [] as SearchCardItem[],
   pdfEntitlementTimer: null as number | null,
   shareMenuReady: false,
+  homeViewTracked: false,
 
   onLoad() {
     this.ensureShareMenu();
@@ -263,6 +282,20 @@ Page({
 
   onShow() {
     this.ensureShareMenu();
+    if (!this.homeViewTracked) {
+      this.homeViewTracked = true;
+      trackPageView(
+        "home",
+        {
+          source: "home",
+          page: "home",
+        },
+        {
+          dedupeKey: "home_view_once",
+          dedupeMs: 5 * 60 * 1000,
+        },
+      );
+    }
 
     if (ENABLE_PDF_ENTITLEMENT_FLOW) {
       this.refreshPdfEntitlementState();
@@ -293,10 +326,22 @@ Page({
   },
 
   onShareAppMessage() {
+    trackShare("share_click", {
+      source: "home",
+      page: "home",
+      entry: "share_button",
+      share_type: "app_message",
+    });
     return buildHomeSharePayload("share");
   },
 
   onShareTimeline() {
+    trackShare("share_click", {
+      source: "home",
+      page: "home",
+      entry: "share_button",
+      share_type: "timeline",
+    });
     return buildHomeTimelinePayload();
   },
 
@@ -325,6 +370,16 @@ Page({
       return;
     }
 
+    trackSearch("home_suggest_click", {
+      source: "home",
+      page: "home",
+      entry: "suggest_list",
+      query: this.data.query,
+      suggest_text: text,
+      item_id: String(e.currentTarget.dataset.id || ""),
+      module: String(e.currentTarget.dataset.module || ""),
+    });
+
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
@@ -340,7 +395,10 @@ Page({
       suggestErrorMessage: "",
     });
 
-    void this.executeSearch(text);
+    void this.executeSearch(text, {
+      trackSubmit: true,
+      entry: "suggest_item",
+    });
   },
 
   onConfirm() {
@@ -356,7 +414,10 @@ Page({
       suggestLoading: false,
       suggestErrorMessage: "",
     });
-    void this.executeSearch(this.data.query);
+    void this.executeSearch(this.data.query, {
+      trackSubmit: true,
+      entry: "search_box",
+    });
   },
 
   onClear() {
@@ -387,6 +448,15 @@ Page({
 
   onTabTap(e: SearchTabTapEvent) {
     const tab = String(e.currentTarget.dataset.tab || TAB_ALL);
+    const tabConfig = this.data.quickFilters.find((item) => item.key === tab);
+    trackEvent("home_quick_filter_click", {
+      source: "home",
+      page: "home",
+      entry: "quick_filter",
+      filter_key: tab,
+      filter_label: tabConfig?.label || tab,
+    });
+
     const filteredResults = this.filterResults(
       this.allResultsCache,
       tab,
@@ -408,8 +478,32 @@ Page({
       return;
     }
 
+    const entry = String(e.currentTarget.dataset.entry || "search_result");
+    const section = String(e.currentTarget.dataset.section || "");
+    const title = String(e.currentTarget.dataset.title || "");
+    const module = String(e.currentTarget.dataset.module || "");
+    const hasPdfRaw = e.currentTarget.dataset.hasPdf;
+    const hasPdf = hasPdfRaw === true || hasPdfRaw === "true";
+
+    if (entry === "recommend_card" || entry === "no_result_recommend_card") {
+      trackEvent("home_recommend_click", {
+        source: "home",
+        page: "home",
+        entry,
+        section: section || "unknown",
+        item_id: id,
+        title,
+        module,
+        has_pdf: hasPdf,
+      });
+    }
+
+    const source = entry === "recommend_card" || entry === "no_result_recommend_card"
+      ? "recommend"
+      : "search";
+
     wx.navigateTo({
-      url: `/pages/detail/detail?id=${id}`,
+      url: `/pages/detail/detail?id=${id}&source=${encodeURIComponent(source)}&entry=${encodeURIComponent(entry)}`,
     });
   },
 
@@ -491,14 +585,26 @@ Page({
     }
   },
 
-  async executeSearch(query: string) {
+  async executeSearch(query: string, options: ExecuteSearchOptions = {}) {
     const rawQuery = String(query || "");
     const trimmedQuery = rawQuery.trim();
     const searchTaskId = this.createSearchTaskId();
+    const trackSubmit = Boolean(options.trackSubmit);
+    const submitEntry = String(options.entry || "search_box");
+    const searchStartedAt = Date.now();
 
     if (!trimmedQuery) {
       this.applyEmptySearchState(rawQuery);
       return;
+    }
+
+    if (trackSubmit) {
+      trackSearch("home_search_submit", {
+        source: "home",
+        page: "home",
+        entry: submitEntry,
+        query: rawQuery,
+      });
     }
 
     this.setDataWithTrace("search_loading_start", {
@@ -532,6 +638,28 @@ Page({
         allResults,
         response.debug,
       );
+
+      if (trackSubmit) {
+        const durationMs = Date.now() - searchStartedAt;
+        if (allResults.length > 0) {
+          trackSearch("home_search_result", {
+            source: "home",
+            page: "home",
+            entry: submitEntry,
+            query: rawQuery,
+            result_count: allResults.length,
+            duration_ms: durationMs,
+          });
+        } else {
+          trackSearch("home_search_no_result", {
+            source: "home",
+            page: "home",
+            entry: submitEntry,
+            query: rawQuery,
+            duration_ms: durationMs,
+          });
+        }
+      }
     } catch (error) {
       if (!this.isLatestSearchTask(searchTaskId)) {
         return;

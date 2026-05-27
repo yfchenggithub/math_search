@@ -7,15 +7,25 @@ import {
 
 const pdfUnlockLogger = createLogger("pdf-entitlement-unlock");
 
+export type PdfUnlockProvider = "mock" | "free_quota" | "manual" | "rewarded_video";
 export type PdfEntitlementUnlockResult =
   | {
       unlocked: true;
-      source: "rewarded_video" | "mock";
+      source: PdfUnlockProvider;
     }
   | {
       unlocked: false;
       reason: "cancelled" | "unavailable";
+      source?: PdfUnlockProvider;
     };
+
+export function resolvePdfUnlockProvider(): PdfUnlockProvider {
+  if (readApiEnvVersion() === "develop") {
+    return "mock";
+  }
+
+  return "manual";
+}
 
 export async function unlockPdfEntitlement(): Promise<PdfEntitlementUnlockResult> {
   try {
@@ -38,6 +48,7 @@ export async function unlockPdfEntitlement(): Promise<PdfEntitlementUnlockResult
   return {
     unlocked: false,
     reason: "unavailable",
+    source: resolvePdfUnlockProvider(),
   };
 }
 
@@ -46,6 +57,7 @@ export async function showRewardedVideoAdIfAvailable(): Promise<PdfEntitlementUn
   return {
     unlocked: false,
     reason: "unavailable",
+    source: resolvePdfUnlockProvider(),
   };
 }
 
