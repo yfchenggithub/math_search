@@ -183,7 +183,7 @@
   </view>
 
   <view
-    wx:if="{{isUnlockModalVisible}}"
+    wx:if="{{enablePdfEntitlementFlow && isUnlockModalVisible}}"
     class="pdf-unlock-layer"
     catchtap="onPdfUnlockMaskTap"
     catchtouchmove="noop"

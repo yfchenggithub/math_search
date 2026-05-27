@@ -1,4 +1,5 @@
 import type { ResultItem } from "../../types/search";
+import { FEATURE_FLAGS } from "../../config/feature-flags";
 import { renderMath } from "../../utils/math-render";
 import {
   formatPdfRemainingTime,
@@ -28,6 +29,7 @@ const HOME_RECOMMEND_LIMIT = 4;
 const NO_RESULT_RECOMMEND_LIMIT = 2;
 const HOME_RECOMMEND_TAG_LIMIT = 3;
 const searchPageLogger = createLogger("search-page");
+const ENABLE_PDF_ENTITLEMENT_FLOW = FEATURE_FLAGS.ENABLE_PDF_ENTITLEMENT_FLOW;
 
 const PDF_COPY = {
   lockedTitle: "\u9ad8\u6e05 PDF \u4e0b\u8f7d\u6743\u76ca",
@@ -206,6 +208,7 @@ Page({
     listScrollTop: 0,
     homeRecommendSections: [] as HomeRecommendSection[],
     noResultRecommendItems: [] as HomeRecommendItem[],
+    showPdfEntitlementCard: ENABLE_PDF_ENTITLEMENT_FLOW,
     pdfEntitlement: {
       unlocked: false,
       expireAt: null,
@@ -243,13 +246,19 @@ Page({
 
     void this.loadHomeRecommendations();
 
-    this.refreshPdfEntitlementState();
-    this.startPdfEntitlementTimerIfNeeded();
+    if (ENABLE_PDF_ENTITLEMENT_FLOW) {
+      this.refreshPdfEntitlementState();
+      this.startPdfEntitlementTimerIfNeeded();
+    } else {
+      this.stopPdfEntitlementTimer();
+    }
   },
 
   onShow() {
-    this.refreshPdfEntitlementState();
-    this.startPdfEntitlementTimerIfNeeded();
+    if (ENABLE_PDF_ENTITLEMENT_FLOW) {
+      this.refreshPdfEntitlementState();
+      this.startPdfEntitlementTimerIfNeeded();
+    }
   },
 
   onHide() {
@@ -379,6 +388,10 @@ Page({
   },
 
   onPdfEntitlementActionTap() {
+    if (!ENABLE_PDF_ENTITLEMENT_FLOW) {
+      return;
+    }
+
     if (this.data.pdfEntitlementActionBusy) {
       return;
     }
@@ -1475,6 +1488,10 @@ Page({
   },
 
   async handleUnlockPdfEntitlement() {
+    if (!ENABLE_PDF_ENTITLEMENT_FLOW) {
+      return;
+    }
+
     if (this.data.pdfEntitlementActionBusy) {
       return;
     }

@@ -3,6 +3,7 @@ import type {
   DetailDocumentView,
   DetailSectionView,
 } from "../../utils/detail-content";
+import { FEATURE_FLAGS } from "../../config/feature-flags";
 import {
   buildAbsoluteApiUrl,
   extractFilenameFromUrl,
@@ -81,6 +82,7 @@ class PdfOperationError extends Error {
 const DEFAULT_PDF_FILENAME = "hd-pdf.pdf";
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
 const PDF_STATUS_AUTO_HIDE_MS = 900;
+const ENABLE_PDF_ENTITLEMENT_FLOW = FEATURE_FLAGS.ENABLE_PDF_ENTITLEMENT_FLOW;
 const detailPageLogger = createLogger("detail-page");
 const PDF_UNLOCK_COPY = {
   unlockSuccessToast: "下载权益已开启，2 小时内可下载 PDF",
@@ -129,6 +131,7 @@ Page({
     pdfActionBusy: false,
     pdfActionLabel: "",
     pdfStatus: createIdlePdfStatus() as PdfStatusView,
+    enablePdfEntitlementFlow: ENABLE_PDF_ENTITLEMENT_FLOW,
     isUnlockModalVisible: false,
     isUnlockingPdfEntitlement: false,
     isDownloadingPdf: false,
@@ -594,6 +597,12 @@ Page({
       return;
     }
 
+    if (!ENABLE_PDF_ENTITLEMENT_FLOW) {
+      this.pendingPdfDownloadAfterUnlock = false;
+      void this.openPdf();
+      return;
+    }
+
     if (this.hasActivePdfEntitlement()) {
       this.pendingPdfDownloadAfterUnlock = false;
       void this.openPdf();
@@ -607,6 +616,14 @@ Page({
   },
 
   onPdfUnlockMaskTap() {
+    if (!ENABLE_PDF_ENTITLEMENT_FLOW) {
+      this.pendingPdfDownloadAfterUnlock = false;
+      this.setData({
+        isUnlockModalVisible: false,
+      });
+      return;
+    }
+
     if (this.data.isUnlockingPdfEntitlement) {
       return;
     }
@@ -618,6 +635,14 @@ Page({
   },
 
   onUnlockPdfLaterTap() {
+    if (!ENABLE_PDF_ENTITLEMENT_FLOW) {
+      this.pendingPdfDownloadAfterUnlock = false;
+      this.setData({
+        isUnlockModalVisible: false,
+      });
+      return;
+    }
+
     if (this.data.isUnlockingPdfEntitlement) {
       return;
     }
@@ -629,6 +654,14 @@ Page({
   },
 
   async onUnlockPdfConfirmTap() {
+    if (!ENABLE_PDF_ENTITLEMENT_FLOW) {
+      this.pendingPdfDownloadAfterUnlock = false;
+      this.setData({
+        isUnlockModalVisible: false,
+      });
+      return;
+    }
+
     if (
       this.data.isUnlockingPdfEntitlement ||
       this.data.isDownloadingPdf ||

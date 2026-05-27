@@ -46,7 +46,10 @@
     </block>
   </view>
 
-  <view class="pdf-entitlement-card {{pdfEntitlement.unlocked ? 'pdf-entitlement-card-unlocked' : ''}}">
+  <view
+    wx:if="{{showPdfEntitlementCard}}"
+    class="pdf-entitlement-card {{pdfEntitlement.unlocked ? 'pdf-entitlement-card-unlocked' : ''}}"
+  >
     <view class="pdf-entitlement-title">{{pdfEntitlementTitle}}</view>
     <view class="pdf-entitlement-subtitle">{{pdfEntitlementSubtitle}}</view>
     <view class="pdf-entitlement-description">{{pdfEntitlementDescription}}</view>
