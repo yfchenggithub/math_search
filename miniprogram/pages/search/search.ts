@@ -1,13 +1,11 @@
 import type { ResultItem } from "../../types/search";
-import { readApiEnvVersion } from "../../config/runtime-env";
 import { renderMath } from "../../utils/math-render";
 import {
   formatPdfRemainingTime,
   getPdfEntitlement,
   isPdfEntitlementActive,
-  PDF_UNLOCK_DURATION_MS,
-  setPdfEntitlementUnlockedForDuration,
 } from "../../utils/pdf-entitlement";
+import { unlockPdfEntitlement } from "../../utils/pdf-entitlement-unlock";
 import { getErrorMessage } from "../../utils/request";
 import { createLogger } from "../../utils/logger/logger";
 import type {
@@ -1487,22 +1485,22 @@ Page({
     });
 
     try {
-      // TODO: 接入真实激励视频后，在该方法内返回 true。
-      const unlockedByRewardVideo = await this.tryUnlockPdfEntitlementWithRewardedVideo();
-      if (unlockedByRewardVideo) {
+      const unlockResult = await unlockPdfEntitlement();
+      if (unlockResult.unlocked) {
         this.refreshPdfEntitlementState();
         this.startPdfEntitlementTimerIfNeeded();
         wx.showToast({
-          title: PDF_COPY.unlockSuccessToast,
+          title: unlockResult.source === "mock"
+            ? PDF_COPY.unlockDebugToast
+            : PDF_COPY.unlockSuccessToast,
           icon: "none",
         });
         return;
       }
 
-      if (readApiEnvVersion() === "develop") {
-        this.unlockPdfEntitlementForDebug();
+      if (unlockResult.reason === "cancelled") {
         wx.showToast({
-          title: PDF_COPY.unlockDebugToast,
+          title: PDF_COPY.unlockNeedFullWatchToast,
           icon: "none",
         });
         return;
@@ -1525,18 +1523,6 @@ Page({
       this.refreshPdfEntitlementState();
       this.startPdfEntitlementTimerIfNeeded();
     }
-  },
-
-  async tryUnlockPdfEntitlementWithRewardedVideo(): Promise<boolean> {
-    // TODO: adUnitId 接入后，在用户完整观看激励视频时返回 true。
-    return false;
-  },
-
-  unlockPdfEntitlementForDebug() {
-    // 开发期临时逻辑：模拟开启 2 小时 PDF 下载权益。
-    setPdfEntitlementUnlockedForDuration(PDF_UNLOCK_DURATION_MS);
-    this.refreshPdfEntitlementState();
-    this.startPdfEntitlementTimerIfNeeded();
   },
 
   formatDifficulty(difficulty?: number): string {

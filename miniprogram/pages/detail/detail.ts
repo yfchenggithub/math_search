@@ -19,6 +19,8 @@ import {
 } from "../../utils/auth/auth-status-feedback";
 import { getDetailDocumentById } from "../../utils/detail-content";
 import { createLogger } from "../../utils/logger/logger";
+import { getPdfEntitlement, isPdfEntitlementActive } from "../../utils/pdf-entitlement";
+import { unlockPdfEntitlement } from "../../utils/pdf-entitlement-unlock";
 import { getErrorMessage } from "../../utils/request";
 
 type TouchPoint = {
@@ -80,6 +82,12 @@ const DEFAULT_PDF_FILENAME = "hd-pdf.pdf";
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
 const PDF_STATUS_AUTO_HIDE_MS = 900;
 const detailPageLogger = createLogger("detail-page");
+const PDF_UNLOCK_COPY = {
+  unlockSuccessToast: "下载权益已开启，2 小时内可下载 PDF",
+  unlockAndContinueToast: "下载权益已开启，正在准备 PDF",
+  unlockUnavailableToast: "暂时无法开启下载权益，请稍后再试",
+  unlockNeedFullWatchToast: "需要完整观看后才能开启下载权益",
+} as const;
 
 function createIdlePdfStatus(): PdfStatusView {
   return {
@@ -121,6 +129,9 @@ Page({
     pdfActionBusy: false,
     pdfActionLabel: "",
     pdfStatus: createIdlePdfStatus() as PdfStatusView,
+    isUnlockModalVisible: false,
+    isUnlockingPdfEntitlement: false,
+    isDownloadingPdf: false,
     sourceType: "meta",
     viewState: "idle" as "idle" | "loading" | "content" | "empty" | "error",
     viewMessage: "",
@@ -171,6 +182,7 @@ Page({
   pdfDownloadTask: null as WechatMiniprogram.DownloadTask | null,
   currentDetailId: "",
   unsubscribeAuthStatusToast: undefined as undefined | (() => void),
+  pendingPdfDownloadAfterUnlock: false,
 
   
   raf(callback: Function) {
@@ -229,6 +241,7 @@ Page({
     this.resetTransform(false);
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
+    this.pendingPdfDownloadAfterUnlock = false;
     this.articleScrollTop = 0;
 
     this.setData(
@@ -255,6 +268,9 @@ Page({
         pdfActionBusy: false,
         pdfActionLabel: "",
         pdfStatus: createIdlePdfStatus(),
+        isUnlockModalVisible: false,
+        isUnlockingPdfEntitlement: false,
+        isDownloadingPdf: false,
         sourceType: detail.sourceType,
         viewState: "content",
         viewMessage: "",
@@ -273,6 +289,7 @@ Page({
     this.resetTransform(false);
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
+    this.pendingPdfDownloadAfterUnlock = false;
     this.setData({
       title: "",
       category: "",
@@ -295,6 +312,9 @@ Page({
       pdfActionBusy: false,
       pdfActionLabel: "",
       pdfStatus: createIdlePdfStatus(),
+      isUnlockModalVisible: false,
+      isUnlockingPdfEntitlement: false,
+      isDownloadingPdf: false,
       sourceType: "meta",
       viewState: "empty",
       viewMessage: message,
@@ -309,6 +329,7 @@ Page({
     this.resetTransform(false);
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
+    this.pendingPdfDownloadAfterUnlock = false;
     this.setData({
       title: "",
       category: "",
@@ -331,6 +352,9 @@ Page({
       pdfActionBusy: false,
       pdfActionLabel: "",
       pdfStatus: createIdlePdfStatus(),
+      isUnlockModalVisible: false,
+      isUnlockingPdfEntitlement: false,
+      isDownloadingPdf: false,
       sourceType: "meta",
       viewState: "error",
       viewMessage: message,
@@ -455,6 +479,7 @@ Page({
     clearTimeout(this.measureTimer);
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
+    this.pendingPdfDownloadAfterUnlock = false;
     this.unsubscribeAuthStatusToast?.();
     this.unsubscribeAuthStatusToast = undefined;
     hideAuthStatusToast("detail_unload");
@@ -538,13 +563,139 @@ Page({
     });
   },
 
+  hasActivePdfEntitlement(): boolean {
+    const entitlement = getPdfEntitlement();
+    return isPdfEntitlementActive(entitlement);
+  },
+
+  onDownloadPdfTap() {
+    if (
+      this.data.isDownloadingPdf ||
+      this.data.isUnlockingPdfEntitlement ||
+      this.data.pdfActionBusy
+    ) {
+      return;
+    }
+
+    if (!this.data.pdfAvailable) {
+      wx.showToast({
+        title: "当前内容暂未提供 PDF",
+        icon: "none",
+      });
+      return;
+    }
+
+    const rawPdfUrl = String(this.data.pdfUrl || "").trim();
+    if (!rawPdfUrl) {
+      wx.showToast({
+        title: "暂时无法获取 PDF，请稍后再试",
+        icon: "none",
+      });
+      return;
+    }
+
+    if (this.hasActivePdfEntitlement()) {
+      this.pendingPdfDownloadAfterUnlock = false;
+      void this.openPdf();
+      return;
+    }
+
+    this.pendingPdfDownloadAfterUnlock = true;
+    this.setData({
+      isUnlockModalVisible: true,
+    });
+  },
+
+  onPdfUnlockMaskTap() {
+    if (this.data.isUnlockingPdfEntitlement) {
+      return;
+    }
+
+    this.pendingPdfDownloadAfterUnlock = false;
+    this.setData({
+      isUnlockModalVisible: false,
+    });
+  },
+
+  onUnlockPdfLaterTap() {
+    if (this.data.isUnlockingPdfEntitlement) {
+      return;
+    }
+
+    this.pendingPdfDownloadAfterUnlock = false;
+    this.setData({
+      isUnlockModalVisible: false,
+    });
+  },
+
+  async onUnlockPdfConfirmTap() {
+    if (
+      this.data.isUnlockingPdfEntitlement ||
+      this.data.isDownloadingPdf ||
+      this.data.pdfActionBusy
+    ) {
+      return;
+    }
+
+    this.setData({
+      isUnlockingPdfEntitlement: true,
+    });
+
+    try {
+      const unlockResult = await unlockPdfEntitlement();
+      if (unlockResult.unlocked) {
+        const shouldContinueDownload = this.pendingPdfDownloadAfterUnlock;
+        this.pendingPdfDownloadAfterUnlock = false;
+        this.setData({
+          isUnlockModalVisible: false,
+        });
+        wx.showToast({
+          title: shouldContinueDownload
+            ? PDF_UNLOCK_COPY.unlockAndContinueToast
+            : PDF_UNLOCK_COPY.unlockSuccessToast,
+          icon: "none",
+        });
+
+        if (shouldContinueDownload) {
+          void this.openPdf();
+        }
+        return;
+      }
+
+      if (unlockResult.reason === "cancelled") {
+        wx.showToast({
+          title: PDF_UNLOCK_COPY.unlockNeedFullWatchToast,
+          icon: "none",
+        });
+        return;
+      }
+
+      wx.showToast({
+        title: PDF_UNLOCK_COPY.unlockUnavailableToast,
+        icon: "none",
+      });
+    } catch (error) {
+      detailPageLogger.warn("unlock_pdf_entitlement_failed", {
+        error,
+      });
+      wx.showToast({
+        title: PDF_UNLOCK_COPY.unlockUnavailableToast,
+        icon: "none",
+      });
+    } finally {
+      this.setData({
+        isUnlockingPdfEntitlement: false,
+      });
+    }
+  },
+
   onPdfStatusMaskTap() {
     this.dismissPdfStatus();
   },
 
   onRetryOpenPdf() {
     this.dismissPdfStatus();
-    void this.openPdf();
+    this.onDownloadPdfTap();
   },
 
   clearPdfStatusTimer() {
@@ -773,17 +924,17 @@ Page({
 
   resolvePdfOpenContext(): PdfOpenContext {
     if (!this.data.pdfAvailable) {
-      throw new PdfOperationError("validate", "当前条目暂未提供高清 PDF。");
+      throw new PdfOperationError("validate", "当前内容暂未提供 PDF");
     }
 
     const rawPdfUrl = String(this.data.pdfUrl || "").trim();
     if (!rawPdfUrl) {
-      throw new PdfOperationError("validate", "当前条目缺少 PDF 下载地址。");
+      throw new PdfOperationError("validate", "暂时无法获取 PDF，请稍后再试");
     }
 
     const fullPdfUrl = this.buildFullPdfUrl(rawPdfUrl);
     if (!fullPdfUrl) {
-      throw new PdfOperationError("validate", "PDF 地址无效，请稍后重试。");
+      throw new PdfOperationError("validate", "暂时无法获取 PDF，请稍后再试");
     }
 
     return {
@@ -1061,24 +1212,27 @@ Page({
     if (normalizedMessage.includes("timeout")) {
       return {
         stageLabel: "下载超时",
-        title: "网络连接较慢",
-        message: "请检查网络后重试。",
+        title: "PDF 下载失败",
+        message: "PDF 下载失败，请稍后再试",
       };
     }
 
     return {
       stageLabel: "下载失败",
-      title: "下载高清 PDF 失败",
-      message: "请稍后重试，或切换网络后再试。",
+      title: "PDF 下载失败",
+      message: "PDF 下载失败，请稍后再试",
     };
   },
 
   
   async openPdf() {
-    if (this.data.pdfActionBusy) {
+    if (this.data.pdfActionBusy || this.data.isDownloadingPdf) {
       return;
     }
 
+    this.setData({
+      isDownloadingPdf: true,
+    });
     this.clearPdfStatusTimer();
 
     let context: PdfOpenContext | null = null;
@@ -1168,6 +1322,9 @@ Page({
       });
     } finally {
       this.abortPdfDownloadTask();
+      this.setData({
+        isDownloadingPdf: false,
+      });
     }
   },
 

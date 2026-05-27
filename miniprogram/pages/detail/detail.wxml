@@ -25,10 +25,10 @@
       </button>
       <button
         wx:if="{{pdfAvailable}}"
-        bindtap="openPdf"
+        bindtap="onDownloadPdfTap"
         class="pdf-btn {{pdfActionBusy ? 'pdf-btn-busy' : ''}}"
-        loading="{{pdfActionBusy}}"
-        disabled="{{pdfActionBusy}}"
+        loading="{{pdfActionBusy || isDownloadingPdf}}"
+        disabled="{{pdfActionBusy || isDownloadingPdf || isUnlockingPdfEntitlement}}"
       >
         {{pdfActionBusy ? pdfActionLabel : '查看高清 PDF'}}
       </button>
@@ -179,6 +179,36 @@
           {{pdfActionBusy ? '请稍候，不要离开当前页面' : '点击空白处关闭'}}
         </view>
       </view>
+    </view>
+  </view>
+
+  <view
+    wx:if="{{isUnlockModalVisible}}"
+    class="pdf-unlock-layer"
+    catchtap="onPdfUnlockMaskTap"
+    catchtouchmove="noop"
+  >
+    <view class="pdf-unlock-card" catchtap="noop">
+      <view class="pdf-unlock-title">开启高清 PDF 下载权益</view>
+      <view class="pdf-unlock-desc">内容可免费查看，PDF 下载需开启权益。</view>
+      <view class="pdf-unlock-desc">看一次视频，2 小时内可下载 PDF。</view>
+      <view class="pdf-unlock-hint">适合离线查看、打印整理。</view>
+
+      <button
+        class="pdf-unlock-btn pdf-unlock-btn-primary"
+        loading="{{isUnlockingPdfEntitlement}}"
+        disabled="{{isUnlockingPdfEntitlement}}"
+        bindtap="onUnlockPdfConfirmTap"
+      >
+        {{isUnlockingPdfEntitlement ? '解锁中...' : '看视频解锁'}}
+      </button>
+      <button
+        class="pdf-unlock-btn pdf-unlock-btn-ghost"
+        disabled="{{isUnlockingPdfEntitlement}}"
+        bindtap="onUnlockPdfLaterTap"
+      >
+        暂不需要
+      </button>
     </view>
   </view>
 

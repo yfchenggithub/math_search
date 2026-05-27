@@ -604,6 +604,79 @@
   line-height: 1.5;
 }
 
+.pdf-unlock-layer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 24rpx 34rpx;
+  padding-bottom: calc(constant(safe-area-inset-bottom) + 34rpx);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 34rpx);
+  background: rgba(15, 23, 42, 0.24);
+  animation: pdf-layer-fade-in 180ms ease-out;
+}
+
+.pdf-unlock-card {
+  width: 100%;
+  border-radius: 32rpx;
+  padding: 34rpx 28rpx 24rpx;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1rpx solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 24rpx 58rpx rgba(15, 23, 42, 0.16);
+}
+
+.pdf-unlock-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #0f172a;
+}
+
+.pdf-unlock-desc {
+  margin-top: 14rpx;
+  font-size: 25rpx;
+  line-height: 1.7;
+  color: #334155;
+}
+
+.pdf-unlock-hint {
+  margin-top: 14rpx;
+  font-size: 23rpx;
+  line-height: 1.6;
+  color: #64748b;
+}
+
+.pdf-unlock-btn {
+  margin: 18rpx 0 0;
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 999rpx;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.pdf-unlock-btn::after {
+  border: 0;
+}
+
+.pdf-unlock-btn-primary {
+  margin-top: 26rpx;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.pdf-unlock-btn-ghost {
+  background: rgba(241, 245, 249, 0.9);
+  color: #334155;
+  border: 1rpx solid rgba(148, 163, 184, 0.24);
+}
+
 @keyframes pdf-spin {
   from {
     transform: rotate(0deg);
