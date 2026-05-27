@@ -14,9 +14,42 @@ import {
   searchWithFacade,
 } from "../../utils/search-engine";
 
-const TAB_ALL = "All";
+const TAB_ALL = "all";
 const SET_DATA_WARN_BYTES = 180 * 1024;
 const searchPageLogger = createLogger("search-page");
+
+const HOME_COPY = {
+  title: "数秒查",
+  subtitle: "常用公式、结论与模型，快速查询",
+  searchTitle: "搜索结论、公式、关键词",
+  searchPlaceholder: "例如：柯西、均值、sin、ln x、圆锥曲线",
+  emptyTitle: "输入关键词，快速找到相关结论",
+  emptySubtitle: "可搜索：柯西、均值、导数、圆锥曲线",
+  noResultTitle: "暂未找到相关内容",
+  noResultSubtitle: "可以换个关键词试试，例如：均值、导数、圆锥曲线",
+} as const;
+
+type QuickFilter = {
+  key: string;
+  label: string;
+};
+
+const QUICK_FILTERS: QuickFilter[] = [
+  { key: TAB_ALL, label: "全部" },
+  { key: "hot", label: "高频" },
+  { key: "common", label: "常用" },
+  { key: "inequality", label: "不等式" },
+  { key: "function", label: "函数" },
+  { key: "conic", label: "圆锥" },
+  { key: "derivative", label: "导数" },
+];
+
+const FILTER_KEYWORDS: Record<string, string[]> = {
+  inequality: ["不等式", "inequality"],
+  function: ["函数", "function", "trigonometry", "三角函数"],
+  conic: ["圆锥", "conic", "椭圆", "抛物线", "双曲线"],
+  derivative: ["导数", "derivative", "微分"],
+};
 
 type HighlightSegment = {
   text: string;
@@ -59,12 +92,14 @@ interface SearchCardItem extends ResultItem {
   searchScore: number;
   formulaHtml: string;
   formulaText: string;
+  freq: string;
 }
 
 let timer: number | null = null;
 
 Page({
   data: {
+    homeCopy: HOME_COPY,
     query: "",
     focus: false,
     loading: false,
@@ -75,7 +110,6 @@ Page({
     results: [] as SearchCardItem[],
     suggestions: [] as SearchSuggestion[],
     debugInfo: null as SearchDebugInfo | null,
-    debugExpanded: true,
 
     total: 0,
     hotCount: 0,
@@ -83,7 +117,7 @@ Page({
     rate1: 0,
     rate2: 0,
 
-    tabs: [TAB_ALL] as string[],
+    quickFilters: QUICK_FILTERS as QuickFilter[],
     activeTab: TAB_ALL,
     showClear: false,
   },
@@ -106,7 +140,7 @@ Page({
       learned: total,
       rate1: this.calculateRate(hotCount, total),
       rate2: this.calculateRate(highExamFrequencyCount, total),
-      tabs: [TAB_ALL].concat(meta.categories),
+      quickFilters: this.buildQuickFilters(meta.categories),
     });
   },
 
@@ -194,12 +228,6 @@ Page({
     });
   },
 
-  onToggleDebug() {
-    this.setData({
-      debugExpanded: !this.data.debugExpanded,
-    });
-  },
-
   onTabTap(e: SearchTabTapEvent) {
     const tab = String(e.currentTarget.dataset.tab || TAB_ALL);
     const filteredResults = this.filterResults(
@@ -280,7 +308,7 @@ Page({
       this.setData({
         suggestions: [],
         suggestLoading: false,
-        suggestErrorMessage: getErrorMessage(error, "Suggest failed"),
+        suggestErrorMessage: getErrorMessage(error, "联想词加载失败，请稍后重试"),
       });
     }
   },
@@ -332,10 +360,11 @@ Page({
         return;
       }
 
-      this.applyErrorState(
-        rawQuery,
-        getErrorMessage(error, "Search failed, please retry"),
-      );
+      searchPageLogger.warn("search_request_failed", {
+        query: rawQuery,
+        error,
+      });
+      this.applyErrorState(rawQuery, "搜索暂时不可用，请稍后重试");
     } finally {
       if (!this.isLatestSearchTask(searchTaskId)) {
         return;
@@ -356,8 +385,10 @@ Page({
   ) {
     this.allResultsCache = allResults;
 
-    const tabs = this.extendTabsWithResultCategories(allResults);
-    const nextActiveTab = tabs.includes(this.data.activeTab)
+    const quickFilters = this.extendQuickFiltersWithResultCategories(allResults);
+    const nextActiveTab = quickFilters.some(
+      (filter) => filter.key === this.data.activeTab,
+    )
       ? this.data.activeTab
       : TAB_ALL;
     const filteredResults = this.filterResults(allResults, nextActiveTab);
@@ -370,7 +401,7 @@ Page({
       showClear: rawQuery.length > 0,
       results: filteredResults,
       debugInfo,
-      tabs,
+      quickFilters,
       activeTab: nextActiveTab,
     });
   },
@@ -472,26 +503,72 @@ Page({
     return this.getModuleLabel(item.module);
   },
 
-  extendTabsWithResultCategories(results: SearchCardItem[]): string[] {
-    const nextTabs = this.data.tabs.slice();
-    const seen: Record<string, true> = {};
+  buildQuickFilters(categories: string[]): QuickFilter[] {
+    const filters = QUICK_FILTERS.map((item) => ({ ...item }));
+    const seenKeys: Record<string, true> = {};
 
-    nextTabs.forEach((tab) => {
-      seen[tab] = true;
+    filters.forEach((item) => {
+      seenKeys[item.key] = true;
     });
 
-    results.forEach((item) => {
-      const category = String(item.category || "").trim();
-
-      if (!category || seen[category]) {
+    categories.forEach((category) => {
+      const normalizedCategory = String(category || "").trim();
+      if (!normalizedCategory) {
         return;
       }
 
-      seen[category] = true;
-      nextTabs.push(category);
+      if (this.isCoveredByPresetCategory(normalizedCategory)) {
+        return;
+      }
+
+      const key = `category:${normalizedCategory}`;
+      if (seenKeys[key]) {
+        return;
+      }
+
+      seenKeys[key] = true;
+      filters.push({
+        key,
+        label: normalizedCategory,
+      });
     });
 
-    return nextTabs;
+    return filters;
+  },
+
+  extendQuickFiltersWithResultCategories(results: SearchCardItem[]): QuickFilter[] {
+    const categories: string[] = [];
+
+    this.data.quickFilters.forEach((filter) => {
+      if (String(filter.key || "").startsWith("category:")) {
+        categories.push(filter.label);
+      }
+    });
+
+    results.forEach((item) => {
+      categories.push(String(item.category || "").trim());
+    });
+
+    return this.buildQuickFilters(categories);
+  },
+
+  isCoveredByPresetCategory(category: string): boolean {
+    const normalized = category.toLowerCase();
+
+    return this.hasAnyKeyword(normalized, FILTER_KEYWORDS.inequality)
+      || this.hasAnyKeyword(normalized, FILTER_KEYWORDS.function)
+      || this.hasAnyKeyword(normalized, FILTER_KEYWORDS.conic)
+      || this.hasAnyKeyword(normalized, FILTER_KEYWORDS.derivative);
+  },
+
+  hasAnyKeyword(text: string, keywords: string[]): boolean {
+    for (let index = 0; index < keywords.length; index += 1) {
+      if (text.includes(keywords[index])) {
+        return true;
+      }
+    }
+
+    return false;
   },
 
   createSearchTaskId(): number {
@@ -600,14 +677,110 @@ Page({
       return results;
     }
 
-    const hasMatchedCategory = results.some(
-      (item) => item.category === activeTab,
-    );
-    if (!hasMatchedCategory) {
-      return results;
+    if (activeTab === "hot") {
+      return results.filter((item) => this.isHotItem(item));
     }
 
-    return results.filter((item) => item.category === activeTab);
+    if (activeTab === "common") {
+      return results.filter((item) => this.isCommonItem(item));
+    }
+
+    if (activeTab === "inequality") {
+      return results.filter((item) => this.matchesKeywordFilter(item, FILTER_KEYWORDS.inequality));
+    }
+
+    if (activeTab === "function") {
+      return results.filter((item) => this.matchesKeywordFilter(item, FILTER_KEYWORDS.function));
+    }
+
+    if (activeTab === "conic") {
+      return results.filter((item) => this.matchesKeywordFilter(item, FILTER_KEYWORDS.conic));
+    }
+
+    if (activeTab === "derivative") {
+      return results.filter((item) => this.matchesKeywordFilter(item, FILTER_KEYWORDS.derivative));
+    }
+
+    if (activeTab.startsWith("category:")) {
+      const category = activeTab.slice("category:".length).trim().toLowerCase();
+      if (!category) {
+        return [];
+      }
+
+      return results.filter((item) => this.matchesCategory(item, category));
+    }
+
+    return results.filter((item) => this.matchesCategory(item, activeTab.toLowerCase()));
+  },
+
+  matchesCategory(item: SearchCardItem, category: string): boolean {
+    const itemCategory = String(item.category || "").trim().toLowerCase();
+    if (itemCategory === category) {
+      return true;
+    }
+
+    return this.buildItemSearchText(item).includes(category);
+  },
+
+  matchesKeywordFilter(item: SearchCardItem, keywords: string[]): boolean {
+    const text = this.buildItemSearchText(item);
+    return this.hasAnyKeyword(text, keywords);
+  },
+
+  isHotItem(item: SearchCardItem): boolean {
+    if ((item.recentScore || 0) >= 80) {
+      return true;
+    }
+
+    const frequency = this.parsePercent(item.freq);
+    if (frequency !== null && frequency >= 60) {
+      return true;
+    }
+
+    return this.matchesKeywordFilter(item, ["高频", "热门", "hot"]);
+  },
+
+  isCommonItem(item: SearchCardItem): boolean {
+    const frequency = this.parsePercent(item.freq);
+    if (frequency !== null && frequency >= 40) {
+      return true;
+    }
+
+    return this.matchesKeywordFilter(item, ["常用", "基础", "common"]);
+  },
+
+  parsePercent(value: string | undefined): number | null {
+    if (!value) {
+      return null;
+    }
+
+    const normalized = String(value).trim();
+    if (!normalized.endsWith("%")) {
+      return null;
+    }
+
+    const parsed = Number(normalized.slice(0, -1));
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+
+    return parsed;
+  },
+
+  buildItemSearchText(item: SearchCardItem): string {
+    const tags = Array.isArray(item.tags) ? item.tags.join(" ") : "";
+    const text = [
+      item.title,
+      item.category,
+      item.module,
+      tags,
+      item.summary,
+      item.usage,
+    ]
+      .map((part) => String(part || "").toLowerCase())
+      .join(" ");
+
+    return text;
   },
 
   highlightSegments(text: string, keyword: string): HighlightSegment[] {
