@@ -252,7 +252,7 @@ Page({
       suggestErrorMessage: "",
     });
 
-    void this.executeSearch(text, true);
+    void this.executeSearch(text);
   },
 
   onConfirm() {
@@ -263,11 +263,12 @@ Page({
 
     this.createSuggestTaskId();
     this.setData({
+      focus: false,
       suggestions: [],
       suggestLoading: false,
       suggestErrorMessage: "",
     });
-    void this.executeSearch(this.data.query, true);
+    void this.executeSearch(this.data.query);
   },
 
   onClear() {
@@ -394,7 +395,7 @@ Page({
     }
   },
 
-  async executeSearch(query: string, hideSuggestions = false) {
+  async executeSearch(query: string) {
     const rawQuery = String(query || "");
     const trimmedQuery = rawQuery.trim();
     const searchTaskId = this.createSearchTaskId();
@@ -406,7 +407,6 @@ Page({
 
     this.setDataWithTrace("search_loading_start", {
       query: rawQuery,
-      focus: hideSuggestions ? false : this.data.focus,
       showClear: rawQuery.length > 0,
       loading: true,
       errorMessage: "",
@@ -476,7 +476,6 @@ Page({
 
     this.setDataWithTrace("search_state_success", {
       query: rawQuery,
-      focus: false,
       loading: false,
       errorMessage: "",
       showClear: rawQuery.length > 0,
@@ -492,7 +491,6 @@ Page({
 
     this.setDataWithTrace("search_state_error", {
       query: rawQuery,
-      focus: false,
       loading: false,
       errorMessage,
       showClear: rawQuery.length > 0,
