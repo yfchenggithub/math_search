@@ -16,6 +16,7 @@ import type {
   SearchViewItem,
 } from "../../utils/search-engine";
 import {
+  getSearchCatalogItems,
   getSearchMeta,
   initSearchEngine,
   suggestWithFacade,
@@ -25,6 +26,9 @@ import {
 const TAB_ALL = "all";
 const SET_DATA_WARN_BYTES = 180 * 1024;
 const PDF_ENTITLEMENT_REFRESH_INTERVAL_MS = 30 * 1000;
+const HOME_RECOMMEND_LIMIT = 4;
+const NO_RESULT_RECOMMEND_LIMIT = 2;
+const HOME_RECOMMEND_TAG_LIMIT = 3;
 const searchPageLogger = createLogger("search-page");
 
 const PDF_COPY = {
@@ -79,9 +83,56 @@ const FILTER_KEYWORDS: Record<string, string[]> = {
   derivative: ["导数", "derivative", "微分"],
 };
 
+const HOME_RECOMMEND_COPY = {
+  hotTitle: "热门结论",
+  hotSubtitle: "大家常用的结论与模型",
+  recentTitle: "最近更新",
+  recentSubtitle: "新加入的公式、结论与模型",
+  commonTitle: "常用模型",
+  commonSubtitle: "按使用场景快速查看",
+  unavailableToast: "暂时无法打开该内容",
+  defaultSummary: "按分类查看相关结论与模型",
+  pdfTag: "可下载 PDF",
+} as const;
+
 type HighlightSegment = {
   text: string;
   highlight: boolean;
+};
+
+type HomeRecommendItem = {
+  id: string;
+  title: string;
+  summary: string;
+  module?: string;
+  tags: string[];
+  hasPdf: boolean;
+  updatedAt?: string | number;
+  rank?: number;
+};
+
+type HomeRecommendSection = {
+  key: string;
+  title: string;
+  subtitle: string;
+  items: HomeRecommendItem[];
+};
+
+type HomeRecommendSeed = HomeRecommendItem & {
+  sourceOrder: number;
+  rawTags: string[];
+  hotScore: number;
+  searchScore: number;
+  rankValue: number;
+  updatedAtTs: number;
+  createdAtTs: number;
+  hotFlag: boolean;
+  commonFlag: boolean;
+};
+
+type HomeRecommendState = {
+  sections: HomeRecommendSection[];
+  noResultItems: HomeRecommendItem[];
 };
 
 type SearchInputEvent = {
@@ -155,6 +206,8 @@ Page({
     activeTab: TAB_ALL,
     showClear: false,
     listScrollTop: 0,
+    homeRecommendSections: [] as HomeRecommendSection[],
+    noResultRecommendItems: [] as HomeRecommendItem[],
     pdfEntitlement: {
       unlocked: false,
       expireAt: null,
@@ -177,6 +230,7 @@ Page({
     initSearchEngine();
 
     const meta = getSearchMeta();
+    const recommendState = this.buildHomeRecommendationState();
     const total = meta.totalDocs;
     const hotCount = meta.hotDocCount;
     const highExamFrequencyCount = meta.highExamFrequencyCount;
@@ -188,6 +242,8 @@ Page({
       rate1: this.calculateRate(hotCount, total),
       rate2: this.calculateRate(highExamFrequencyCount, total),
       quickFilters: this.buildQuickFilters(meta.categories),
+      homeRecommendSections: recommendState.sections,
+      noResultRecommendItems: recommendState.noResultItems,
     });
 
     this.refreshPdfEntitlementState();
@@ -313,6 +369,10 @@ Page({
   onDetailTap(e: SearchDetailTapEvent) {
     const id = String(e.currentTarget.dataset.id || "");
     if (!id) {
+      wx.showToast({
+        title: HOME_RECOMMEND_COPY.unavailableToast,
+        icon: "none",
+      });
       return;
     }
 
@@ -515,6 +575,429 @@ Page({
       debugInfo: null,
       activeTab: TAB_ALL,
     });
+  },
+
+  buildHomeRecommendationState(): HomeRecommendState {
+    const catalogItems = getSearchCatalogItems(80);
+    const seeds = this.buildHomeRecommendationSeeds(catalogItems);
+
+    if (seeds.length <= 0) {
+      return {
+        sections: [],
+        noResultItems: [],
+      };
+    }
+
+    const sections: HomeRecommendSection[] = [];
+    const usedIds: Record<string, true> = {};
+
+    const hotSeeds = this.pickHomeRecommendSeeds(
+      seeds.slice().sort((left, right) => this.compareHotRecommendSeeds(left, right)),
+      HOME_RECOMMEND_LIMIT,
+    );
+
+    if (hotSeeds.length > 0) {
+      sections.push({
+        key: "hot",
+        title: HOME_RECOMMEND_COPY.hotTitle,
+        subtitle: HOME_RECOMMEND_COPY.hotSubtitle,
+        items: hotSeeds.map((seed) => this.toHomeRecommendItem(seed)),
+      });
+
+      hotSeeds.forEach((seed) => {
+        usedIds[seed.id] = true;
+      });
+    }
+
+    if (seeds.length >= 2) {
+      const recentSeeds = this.pickHomeRecommendSeeds(
+        seeds.slice().sort((left, right) => this.compareRecentRecommendSeeds(left, right)),
+        HOME_RECOMMEND_LIMIT,
+        usedIds,
+      );
+
+      if (recentSeeds.length > 0) {
+        sections.push({
+          key: "recent",
+          title: HOME_RECOMMEND_COPY.recentTitle,
+          subtitle: HOME_RECOMMEND_COPY.recentSubtitle,
+          items: recentSeeds.map((seed) => this.toHomeRecommendItem(seed)),
+        });
+
+        recentSeeds.forEach((seed) => {
+          usedIds[seed.id] = true;
+        });
+      }
+    }
+
+    if (seeds.length >= 3) {
+      const commonSeeds = this.pickHomeRecommendSeeds(
+        seeds.slice().sort((left, right) => this.compareCommonRecommendSeeds(left, right)),
+        HOME_RECOMMEND_LIMIT,
+        usedIds,
+      );
+
+      if (commonSeeds.length > 0) {
+        sections.push({
+          key: "common",
+          title: HOME_RECOMMEND_COPY.commonTitle,
+          subtitle: HOME_RECOMMEND_COPY.commonSubtitle,
+          items: commonSeeds.map((seed) => this.toHomeRecommendItem(seed)),
+        });
+      }
+    }
+
+    const noResultItems = hotSeeds
+      .slice(0, NO_RESULT_RECOMMEND_LIMIT)
+      .map((seed) => this.toHomeRecommendItem(seed));
+
+    return {
+      sections,
+      noResultItems,
+    };
+  },
+
+  buildHomeRecommendationSeeds(items: SearchViewItem[]): HomeRecommendSeed[] {
+    const seeds: HomeRecommendSeed[] = [];
+
+    items.forEach((item, index) => {
+      const id = String(item.id || "").trim();
+      if (!id) {
+        return;
+      }
+
+      const title = String(item.title || id).trim() || id;
+      const summary = this.resolveSummaryText(item) || HOME_RECOMMEND_COPY.defaultSummary;
+      const module = this.resolveCategory(item);
+      const rawTags = Array.isArray(item.tags)
+        ? item.tags
+          .map((tag) => String(tag || "").trim())
+          .filter((tag) => Boolean(tag))
+        : [];
+
+      const hasPdf = this.resolveRecommendHasPdf(item, rawTags);
+      const updatedAtTs = this.resolveRecommendTimestamp(item, "updated");
+      const createdAtTs = this.resolveRecommendTimestamp(item, "created");
+      const rankValue = this.normalizeOptionalNumber(item.rank) || 0;
+      const hotScore = this.normalizeOptionalNumber(item.hotScore) || 0;
+      const searchScore = this.normalizeOptionalNumber(item.searchScore) || 0;
+      const hotFlag = this.resolveRecommendHotFlag(item, rawTags, hotScore);
+      const commonFlag = this.resolveRecommendCommonFlag(module, rawTags);
+
+      seeds.push({
+        id,
+        title,
+        summary,
+        module,
+        tags: this.buildRecommendTags(module, rawTags, hasPdf),
+        hasPdf,
+        updatedAt: updatedAtTs > 0 ? updatedAtTs : undefined,
+        rank: rankValue > 0 ? rankValue : undefined,
+        sourceOrder: index,
+        rawTags,
+        hotScore,
+        searchScore,
+        rankValue,
+        updatedAtTs,
+        createdAtTs,
+        hotFlag,
+        commonFlag,
+      });
+    });
+
+    return seeds;
+  },
+
+  pickHomeRecommendSeeds(
+    sortedSeeds: HomeRecommendSeed[],
+    limit: number,
+    usedIds: Record<string, true> = {},
+  ): HomeRecommendSeed[] {
+    const result: HomeRecommendSeed[] = [];
+
+    for (let index = 0; index < sortedSeeds.length; index += 1) {
+      const seed = sortedSeeds[index];
+      if (!seed.id || usedIds[seed.id]) {
+        continue;
+      }
+
+      result.push(seed);
+      if (result.length >= limit) {
+        break;
+      }
+    }
+
+    return result;
+  },
+
+  toHomeRecommendItem(seed: HomeRecommendSeed): HomeRecommendItem {
+    return {
+      id: seed.id,
+      title: seed.title,
+      summary: seed.summary || HOME_RECOMMEND_COPY.defaultSummary,
+      module: seed.module,
+      tags: seed.tags,
+      hasPdf: seed.hasPdf,
+      updatedAt: seed.updatedAt,
+      rank: seed.rank,
+    };
+  },
+
+  compareHotRecommendSeeds(left: HomeRecommendSeed, right: HomeRecommendSeed): number {
+    const leftScore = this.buildHotRecommendScore(left);
+    const rightScore = this.buildHotRecommendScore(right);
+
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+
+    return this.compareRecommendSeedFallback(left, right);
+  },
+
+  compareRecentRecommendSeeds(left: HomeRecommendSeed, right: HomeRecommendSeed): number {
+    if (right.updatedAtTs !== left.updatedAtTs) {
+      return right.updatedAtTs - left.updatedAtTs;
+    }
+
+    if (right.createdAtTs !== left.createdAtTs) {
+      return right.createdAtTs - left.createdAtTs;
+    }
+
+    return right.sourceOrder - left.sourceOrder;
+  },
+
+  compareCommonRecommendSeeds(left: HomeRecommendSeed, right: HomeRecommendSeed): number {
+    const leftScore = this.buildCommonRecommendScore(left);
+    const rightScore = this.buildCommonRecommendScore(right);
+
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+
+    return this.compareRecommendSeedFallback(left, right);
+  },
+
+  compareRecommendSeedFallback(left: HomeRecommendSeed, right: HomeRecommendSeed): number {
+    if (right.rankValue !== left.rankValue) {
+      return right.rankValue - left.rankValue;
+    }
+
+    if (right.searchScore !== left.searchScore) {
+      return right.searchScore - left.searchScore;
+    }
+
+    return left.sourceOrder - right.sourceOrder;
+  },
+
+  buildHotRecommendScore(seed: HomeRecommendSeed): number {
+    let score = 0;
+
+    if (seed.hotFlag) {
+      score += 1200;
+    }
+
+    if (seed.commonFlag) {
+      score += 120;
+    }
+
+    score += seed.hotScore * 6;
+    score += seed.rankValue * 2;
+    score += seed.searchScore;
+
+    return score;
+  },
+
+  buildCommonRecommendScore(seed: HomeRecommendSeed): number {
+    let score = 0;
+
+    if (seed.commonFlag) {
+      score += 1000;
+    }
+
+    if (this.isCommonModule(seed.module)) {
+      score += 260;
+    }
+
+    score += seed.rankValue * 2;
+    score += seed.hotScore * 3;
+    score += seed.searchScore;
+
+    return score;
+  },
+
+  buildRecommendTags(module: string, rawTags: string[], hasPdf: boolean): string[] {
+    const tags: string[] = [];
+    const seen: Record<string, true> = {};
+
+    const appendTag = (rawTag: string) => {
+      const tag = String(rawTag || "").trim();
+      if (!tag || seen[tag] || tags.length >= HOME_RECOMMEND_TAG_LIMIT) {
+        return;
+      }
+
+      seen[tag] = true;
+      tags.push(tag);
+    };
+
+    appendTag(module);
+
+    rawTags.forEach((tag) => {
+      appendTag(tag);
+    });
+
+    if (hasPdf) {
+      appendTag(HOME_RECOMMEND_COPY.pdfTag);
+    }
+
+    return tags;
+  },
+
+  resolveRecommendHasPdf(item: SearchViewItem, rawTags: string[]): boolean {
+    const dynamicItem = item as SearchViewItem & Record<string, unknown>;
+
+    const boolFields = ["hasPdf", "pdfAvailable", "pdf_available"];
+    for (let index = 0; index < boolFields.length; index += 1) {
+      const value = dynamicItem[boolFields[index]];
+      if (typeof value === "boolean") {
+        return value;
+      }
+    }
+
+    const urlFields = ["pdfUrl", "pdf_url", "pdfPath", "pdf_path"];
+    for (let index = 0; index < urlFields.length; index += 1) {
+      const value = String(dynamicItem[urlFields[index]] || "").trim();
+      if (value) {
+        return true;
+      }
+    }
+
+    return rawTags.some((tag) => tag.toLowerCase().includes("pdf"));
+  },
+
+  resolveRecommendTimestamp(item: SearchViewItem, mode: "updated" | "created"): number {
+    const dynamicItem = item as SearchViewItem & Record<string, unknown>;
+    const fields = mode === "updated"
+      ? ["updated_at", "updatedAt", "update_time", "updateTime", "modified_at", "modifiedAt"]
+      : ["created_at", "createdAt", "created_time", "createdTime"];
+
+    for (let index = 0; index < fields.length; index += 1) {
+      const value = this.parseRecommendTimestamp(dynamicItem[fields[index]]);
+      if (value > 0) {
+        return value;
+      }
+    }
+
+    return 0;
+  },
+
+  parseRecommendTimestamp(value: unknown): number {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      if (value > 1e12) {
+        return Math.floor(value);
+      }
+
+      if (value > 1e9) {
+        return Math.floor(value * 1000);
+      }
+
+      return 0;
+    }
+
+    const text = String(value || "").trim();
+    if (!text) {
+      return 0;
+    }
+
+    const numeric = Number(text);
+    if (Number.isFinite(numeric)) {
+      return this.parseRecommendTimestamp(numeric);
+    }
+
+    const parsed = Date.parse(text);
+    if (!Number.isFinite(parsed)) {
+      return 0;
+    }
+
+    return parsed;
+  },
+
+  resolveRecommendHotFlag(
+    item: SearchViewItem,
+    rawTags: string[],
+    hotScore: number,
+  ): boolean {
+    const dynamicItem = item as SearchViewItem & Record<string, unknown>;
+    const hotFields = ["hot", "is_hot", "isHot"];
+
+    for (let index = 0; index < hotFields.length; index += 1) {
+      const value = dynamicItem[hotFields[index]];
+      if (typeof value === "boolean") {
+        return value;
+      }
+
+      if (typeof value === "number") {
+        return value > 0;
+      }
+    }
+
+    if (hotScore >= 80) {
+      return true;
+    }
+
+    return rawTags.some((tag) => {
+      const normalized = tag.toLowerCase();
+      return normalized.includes("高频")
+        || normalized.includes("热门")
+        || normalized.includes("hot");
+    });
+  },
+
+  resolveRecommendCommonFlag(module: string, rawTags: string[]): boolean {
+    if (this.isCommonModule(module)) {
+      return true;
+    }
+
+    return rawTags.some((tag) => {
+      const normalized = tag.toLowerCase();
+      return normalized.includes("常用")
+        || normalized.includes("基础")
+        || normalized.includes("common");
+    });
+  },
+
+  isCommonModule(module?: string): boolean {
+    const normalized = String(module || "").trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    const moduleKeywords = [
+      "不等式",
+      "函数",
+      "圆锥",
+      "导数",
+      "三角函数",
+      "inequality",
+      "function",
+      "conic",
+      "derivative",
+      "trigonometry",
+    ];
+
+    return moduleKeywords.some((keyword) => normalized.includes(keyword));
+  },
+
+  normalizeOptionalNumber(value: unknown): number | null {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+
+    return parsed;
   },
 
   buildSearchCards(

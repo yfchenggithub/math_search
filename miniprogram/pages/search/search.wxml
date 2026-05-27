@@ -82,14 +82,71 @@
       {{errorMessage}}
     </view>
 
-    <view wx:if="{{!query && !loading && !errorMessage && results.length === 0}}" class="empty-state">
-      <view class="empty-title">{{homeCopy.emptyTitle}}</view>
-      <view class="empty-subtitle">{{homeCopy.emptySubtitle}}</view>
-    </view>
+    <block wx:if="{{!query && !loading && !errorMessage && results.length === 0}}">
+      <block wx:if="{{homeRecommendSections.length > 0}}">
+        <block wx:for="{{homeRecommendSections}}" wx:key="key" wx:for-item="section">
+          <view class="recommend-section">
+            <view class="recommend-header">
+              <view class="recommend-title">{{section.title}}</view>
+              <view class="recommend-subtitle">{{section.subtitle}}</view>
+            </view>
+
+            <block wx:for="{{section.items}}" wx:key="id" wx:for-item="recommend">
+              <view
+                class="recommend-card"
+                bindtap="onDetailTap"
+                data-id="{{recommend.id}}"
+              >
+                <view class="recommend-card-title">{{recommend.title}}</view>
+                <view class="recommend-card-summary">{{recommend.summary}}</view>
+
+                <view wx:if="{{recommend.tags.length > 0}}" class="recommend-tags">
+                  <text
+                    class="recommend-tag"
+                    wx:for="{{recommend.tags}}"
+                    wx:key="index"
+                    wx:for-item="tag"
+                  >
+                    {{tag}}
+                  </text>
+                </view>
+
+                <view class="recommend-footer">
+                  <view class="recommend-link">查看详情</view>
+                </view>
+              </view>
+            </block>
+          </view>
+        </block>
+      </block>
+
+      <view wx:else class="empty-state">
+        <view class="empty-title">{{homeCopy.emptyTitle}}</view>
+        <view class="empty-subtitle">{{homeCopy.emptySubtitle}}</view>
+      </view>
+    </block>
 
     <view wx:if="{{query && !loading && !errorMessage && results.length === 0}}" class="empty-state">
       <view class="empty-title">{{homeCopy.noResultTitle}}</view>
       <view class="empty-subtitle">{{homeCopy.noResultSubtitle}}</view>
+    </view>
+
+    <view wx:if="{{query && !loading && !errorMessage && results.length === 0 && noResultRecommendItems.length > 0}}" class="no-result-recommend">
+      <view class="no-result-recommend-title">你可以试试这些内容</view>
+
+      <block wx:for="{{noResultRecommendItems}}" wx:key="id" wx:for-item="recommend">
+        <view
+          class="recommend-card recommend-card-compact"
+          bindtap="onDetailTap"
+          data-id="{{recommend.id}}"
+        >
+          <view class="recommend-card-title">{{recommend.title}}</view>
+          <view class="recommend-card-summary">{{recommend.summary}}</view>
+          <view class="recommend-footer">
+            <view class="recommend-link">查看详情</view>
+          </view>
+        </view>
+      </block>
     </view>
 
     <view
