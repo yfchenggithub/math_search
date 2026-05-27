@@ -16,7 +16,7 @@ import type {
   SearchViewItem,
 } from "../../utils/search-engine";
 import {
-  getSearchCatalogItems,
+  homeRecommendWithFacade,
   getSearchMeta,
   initSearchEngine,
   suggestWithFacade,
@@ -230,7 +230,6 @@ Page({
     initSearchEngine();
 
     const meta = getSearchMeta();
-    const recommendState = this.buildHomeRecommendationState();
     const total = meta.totalDocs;
     const hotCount = meta.hotDocCount;
     const highExamFrequencyCount = meta.highExamFrequencyCount;
@@ -242,9 +241,9 @@ Page({
       rate1: this.calculateRate(hotCount, total),
       rate2: this.calculateRate(highExamFrequencyCount, total),
       quickFilters: this.buildQuickFilters(meta.categories),
-      homeRecommendSections: recommendState.sections,
-      noResultRecommendItems: recommendState.noResultItems,
     });
+
+    void this.loadHomeRecommendations();
 
     this.refreshPdfEntitlementState();
     this.startPdfEntitlementTimerIfNeeded();
@@ -577,9 +576,26 @@ Page({
     });
   },
 
-  buildHomeRecommendationState(): HomeRecommendState {
-    const catalogItems = getSearchCatalogItems(80);
-    const seeds = this.buildHomeRecommendationSeeds(catalogItems);
+  async loadHomeRecommendations() {
+    try {
+      const response = await homeRecommendWithFacade(80);
+      const recommendState = this.buildHomeRecommendationState(response.items);
+
+      this.setData({
+        homeRecommendSections: recommendState.sections,
+        noResultRecommendItems: recommendState.noResultItems,
+      });
+    } catch (error) {
+      searchPageLogger.warn("home_recommend_load_failed", { error });
+      this.setData({
+        homeRecommendSections: [],
+        noResultRecommendItems: [],
+      });
+    }
+  },
+
+  buildHomeRecommendationState(items: SearchViewItem[]): HomeRecommendState {
+    const seeds = this.buildHomeRecommendationSeeds(items);
 
     if (seeds.length <= 0) {
       return {

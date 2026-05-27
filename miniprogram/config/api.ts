@@ -63,6 +63,7 @@ export const SEARCH_API_CONFIG = {
   USE_REMOTE_API: true,
   SEARCH_PATH: "/api/v1/search",
   SUGGEST_PATH: "/api/v1/suggest",
+  HOME_RECOMMEND_PATH: "/api/v1/home/recommendations",
   PAGE_SIZE: 20,
 } as const;
 

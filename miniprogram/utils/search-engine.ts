@@ -186,6 +186,13 @@ export interface SuggestFacadeResponse {
   source: SearchSource;
 }
 
+export interface HomeRecommendFacadeResponse {
+  total: number;
+  items: SearchViewItem[];
+  source: "remote";
+  generatedAt: string;
+}
+
 interface RemoteSearchFacetBucketRaw {
   value?: string | number;
   count?: number;
@@ -242,6 +249,14 @@ interface RemoteSuggestDataRaw {
   total?: number;
   empty_hint?: string;
   items?: RemoteSuggestItemRaw[];
+}
+
+interface RemoteHomeRecommendDataRaw {
+  total?: number;
+  generated_at?: string;
+  generatedAt?: string;
+  items?: RemoteSearchItemRaw[];
+  list?: RemoteSearchItemRaw[];
 }
 
 interface SearchAccumulator {
@@ -399,72 +414,6 @@ export function getSearchDocument(id: string): SearchDoc | null {
   }
 
   return bundle.docs[id];
-}
-
-/**
- * 获取本地搜索索引里的候选条目（用于首页推荐等“无 query”场景）。
- * 不依赖网络，不触发搜索匹配流程，只做轻量排序与字段适配。
- */
-export function getSearchCatalogItems(limit = 0): SearchViewItem[] {
-  const bundle = getBundle();
-  if (!bundle) {
-    return [];
-  }
-
-  const normalizedLimit = Number.isFinite(limit)
-    ? Math.max(0, Math.floor(limit))
-    : 0;
-
-  const catalogResults: SearchResult[] = Object.keys(bundle.docs).map((id) => {
-    const doc = bundle.docs[id];
-    const rank = normalizeNumber(doc.rank) ?? 0;
-    const hotScore = normalizeNumber(doc.hotScore) ?? 0;
-    const examFrequency = normalizeNumber(doc.examFrequency) ?? 0;
-    const examScore = normalizeNumber(doc.examScore) ?? 0;
-    const searchBoost = normalizeNumber(doc.searchBoost) ?? 0;
-    const score = Math.round(
-      (rank * 12)
-      + (hotScore * 10)
-      + (examFrequency * 100)
-      + (examScore * 20)
-      + (searchBoost * 100),
-    );
-
-    return {
-      id,
-      score,
-      doc,
-      reasons: [],
-      matchedFields: [],
-    };
-  });
-
-  catalogResults.sort((left, right) => {
-    if (right.score !== left.score) {
-      return right.score - left.score;
-    }
-
-    const rightRank = right.doc.rank || 0;
-    const leftRank = left.doc.rank || 0;
-    if (rightRank !== leftRank) {
-      return rightRank - leftRank;
-    }
-
-    const rightHotScore = right.doc.hotScore || 0;
-    const leftHotScore = left.doc.hotScore || 0;
-    if (rightHotScore !== leftHotScore) {
-      return rightHotScore - leftHotScore;
-    }
-
-    return left.id.localeCompare(right.id);
-  });
-
-  const items = catalogResults.map((result) => adaptLocalSearchResult(result));
-  if (normalizedLimit > 0) {
-    return items.slice(0, normalizedLimit);
-  }
-
-  return items;
 }
 
 /**
@@ -640,6 +589,16 @@ export async function searchWithFacade(query: string): Promise<SearchFacadeRespo
   }
 }
 
+export async function homeRecommendWithFacade(limit = 40): Promise<HomeRecommendFacadeResponse> {
+  const normalizedLimit = normalizeInteger(limit, 1) ?? 40;
+
+  if (!SEARCH_API_CONFIG.USE_REMOTE_API) {
+    throw new Error("首页推荐需要后端接口支持");
+  }
+
+  return homeRecommendRemoteFacade(normalizedLimit);
+}
+
 function createEmptySuggestFacadeResponse(query: string): SuggestFacadeResponse {
   return {
     query,
@@ -689,6 +648,33 @@ async function suggestRemoteFacade(query: string): Promise<SuggestFacadeResponse
     emptyHint: normalizeText(remoteData.empty_hint),
     suggestions,
     source: "remote",
+  };
+}
+
+async function homeRecommendRemoteFacade(
+  limit: number,
+): Promise<HomeRecommendFacadeResponse> {
+  const remoteData = await request<RemoteHomeRecommendDataRaw>({
+    url: SEARCH_API_CONFIG.HOME_RECOMMEND_PATH,
+    method: "GET",
+    query: {
+      limit,
+    },
+  });
+
+  const primaryItems = Array.isArray(remoteData.items) ? remoteData.items : [];
+  const fallbackItems = Array.isArray(remoteData.list) ? remoteData.list : [];
+  const remoteItems = primaryItems.length > 0 ? primaryItems : fallbackItems;
+  const items = remoteItems
+    .map((item, index) => adaptRemoteSearchItem(item, index))
+    .filter((item) => Boolean(item.id))
+    .slice(0, limit);
+
+  return {
+    total: normalizeInteger(remoteData.total, 0) ?? items.length,
+    items,
+    source: "remote",
+    generatedAt: normalizeText(remoteData.generated_at || remoteData.generatedAt),
   };
 }
 

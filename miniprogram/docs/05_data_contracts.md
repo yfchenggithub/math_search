@@ -283,6 +283,30 @@ interface SuggestItem {
 }
 ```
 
+### 首页推荐：GET /api/v1/home/recommendations
+
+```typescript
+// 请求
+interface HomeRecommendParams {
+  limit?: number; // 默认 40，建议 <= 80
+}
+
+// 响应
+interface HomeRecommendResponse {
+  total: number;
+  generated_at?: string; // ISO 8601
+  items: SearchItem[];
+}
+
+// 兼容字段（可选）
+// 若后端历史上用 list，也可返回：
+// interface HomeRecommendResponse {
+//   total: number;
+//   generated_at?: string;
+//   list: SearchItem[];
+// }
+```
+
 ### 详情：GET /api/v1/conclusions/:id
 
 ```typescript
