@@ -76,6 +76,12 @@ const READING_SECTION_RULES: Record<string, ReadingSectionRule> = {
     itemPrefixes: [],
     itemLinePattern: /^((?:易错点(?:[一二三四五六七八九十百千万两\d]+)?|正确理解|错因分析)(?:\s*(?:（[^）]*）|\([^)]*\)))?)(?:\s*([：:])\s*(.*))?$/,
   },
+  summary: {
+    subheadingColor: "#6b4b3d",
+    subheadingPattern: /^(?:一句话核心|使用条件|关键提醒)$/,
+    itemPrefixes: [],
+    itemLinePattern: /^((?:条件\s*[一二三四五六七八九十百千万两\d]+|易错点|检查项)(?:\s*(?:（[^）]*）|\([^)]*\)))?)(?:\s*([：:])\s*(.*))?$/,
+  },
 };
 
 /**
