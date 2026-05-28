@@ -929,9 +929,16 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
   },
 
   handleSettingsTap() {
-    wx.showToast({
-      title: "设置页待接入",
-      icon: "none",
+    profileLogger.info("click_settings");
+
+    wx.navigateTo({
+      url: "/pages/settings/settings",
+      fail: () => {
+        wx.showToast({
+          title: "设置页打开失败",
+          icon: "none",
+        });
+      },
     });
   },
 

@@ -6,6 +6,7 @@
     "pages/runtime-log-detail/runtime-log-detail",
     "pages/detail/detail",
     "pages/mine/mine",
+    "pages/settings/settings",
     "pages/favorites/favorites"
   ],
   "tabBar": {
