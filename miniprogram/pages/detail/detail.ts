@@ -19,6 +19,7 @@ import {
 import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
 import type { AuthStatusToastType } from "../../services/auth/auth-types";
 import { recordRecentBrowse } from "../../services/history";
+import { getSettings } from "../../services/settings";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import type { AuthStatusToastState } from "../../utils/auth/auth-status-feedback";
 import {
@@ -207,6 +208,7 @@ Page({
   currentDetailId: "",
   unsubscribeAuthStatusToast: undefined as undefined | (() => void),
   pendingPdfDownloadAfterUnlock: false,
+  isResolvingPdfDownloadEntry: false,
   shareMenuReady: false,
   routeSource: "detail",
   routeEntry: "unknown",
@@ -782,51 +784,98 @@ Page({
     };
   },
 
-  onDownloadPdfTap() {
+  resolveWifiOnlyDownloadSetting(): boolean {
+    try {
+      return Boolean(getSettings().wifiOnlyDownload);
+    } catch (error) {
+      detailPageLogger.warn("read_wifi_only_download_setting_failed", {
+        error,
+      });
+      return true;
+    }
+  },
+
+  getCurrentNetworkType(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      wx.getNetworkType({
+        success: (result) => {
+          resolve(String(result.networkType || "").trim().toLowerCase());
+        },
+        fail: (error) => {
+          reject(error);
+        },
+      });
+    });
+  },
+
+  showNonWifiDownloadConfirm(): Promise<boolean> {
+    return new Promise((resolve) => {
+      wx.showModal({
+        title: "当前不是 Wi-Fi",
+        content: "高清文件可能消耗流量。你可以连接 Wi-Fi 后再下载，也可以继续本次下载。",
+        cancelText: "取消",
+        confirmText: "继续下载",
+        success: (result) => {
+          resolve(Boolean(result.confirm));
+        },
+        fail: () => {
+          resolve(true);
+        },
+      });
+    });
+  },
+
+  async confirmNetworkForHdPdfDownload(): Promise<boolean> {
+    const wifiOnlyDownloadEnabled = this.resolveWifiOnlyDownloadSetting();
+    detailPageLogger.info("wifi_only_download_enabled", {
+      enabled: wifiOnlyDownloadEnabled,
+    });
+
+    if (!wifiOnlyDownloadEnabled) {
+      return true;
+    }
+
+    try {
+      const networkType = await this.getCurrentNetworkType();
+      detailPageLogger.info("network_type_checked", {
+        network_type: networkType || "unknown",
+      });
+
+      if (networkType === "wifi") {
+        return true;
+      }
+
+      detailPageLogger.info("non_wifi_download_confirm_shown", {
+        network_type: networkType || "unknown",
+      });
+
+      const shouldContinueDownload = await this.showNonWifiDownloadConfirm();
+      detailPageLogger.info(
+        shouldContinueDownload
+          ? "non_wifi_download_continue"
+          : "non_wifi_download_cancelled",
+        {
+          network_type: networkType || "unknown",
+        },
+      );
+
+      return shouldContinueDownload;
+    } catch (error) {
+      detailPageLogger.warn("get_network_type_failed", {
+        error,
+      });
+      wx.showToast({
+        title: "网络状态获取失败，将继续下载",
+        icon: "none",
+      });
+      return true;
+    }
+  },
+
+  continuePdfDownloadWithExistingFlow() {
     if (
-      this.data.isDownloadingPdf ||
-      this.data.isUnlockingPdfEntitlement ||
-      this.data.pdfActionBusy
+      !ENABLE_PDF_ENTITLEMENT_FLOW
     ) {
-      return;
-    }
-
-    trackPdfDownloadClick(this.getPdfAnalyticsContext());
-
-    if (!this.data.pdfAvailable) {
-      trackEvent("detail_pdf_no_file", {
-        item_id: String(this.data.id || this.currentDetailId || ""),
-        module: String(this.data.category || ""),
-        source: "detail",
-        page: "detail",
-        entry: "pdf_button",
-        reason: "pdf_unavailable",
-      });
-      wx.showToast({
-        title: "当前内容暂未提供 PDF",
-        icon: "none",
-      });
-      return;
-    }
-
-    const rawPdfUrl = String(this.data.pdfUrl || "").trim();
-    if (!rawPdfUrl) {
-      trackEvent("detail_pdf_no_file", {
-        item_id: String(this.data.id || this.currentDetailId || ""),
-        module: String(this.data.category || ""),
-        source: "detail",
-        page: "detail",
-        entry: "pdf_button",
-        reason: "pdf_url_empty",
-      });
-      wx.showToast({
-        title: "暂时无法获取 PDF，请稍后再试",
-        icon: "none",
-      });
-      return;
-    }
-
-    if (!ENABLE_PDF_ENTITLEMENT_FLOW) {
       this.pendingPdfDownloadAfterUnlock = false;
       void this.openPdf();
       return;
@@ -843,6 +892,65 @@ Page({
     this.setData({
       isUnlockModalVisible: true,
     });
+  },
+
+  async onDownloadPdfTap() {
+    if (
+      this.isResolvingPdfDownloadEntry ||
+      this.data.isDownloadingPdf ||
+      this.data.isUnlockingPdfEntitlement ||
+      this.data.pdfActionBusy
+    ) {
+      return;
+    }
+
+    this.isResolvingPdfDownloadEntry = true;
+
+    try {
+      trackPdfDownloadClick(this.getPdfAnalyticsContext());
+
+      if (!this.data.pdfAvailable) {
+        trackEvent("detail_pdf_no_file", {
+          item_id: String(this.data.id || this.currentDetailId || ""),
+          module: String(this.data.category || ""),
+          source: "detail",
+          page: "detail",
+          entry: "pdf_button",
+          reason: "pdf_unavailable",
+        });
+        wx.showToast({
+          title: "当前内容暂未提供 PDF",
+          icon: "none",
+        });
+        return;
+      }
+
+      const rawPdfUrl = String(this.data.pdfUrl || "").trim();
+      if (!rawPdfUrl) {
+        trackEvent("detail_pdf_no_file", {
+          item_id: String(this.data.id || this.currentDetailId || ""),
+          module: String(this.data.category || ""),
+          source: "detail",
+          page: "detail",
+          entry: "pdf_button",
+          reason: "pdf_url_empty",
+        });
+        wx.showToast({
+          title: "暂时无法获取 PDF，请稍后再试",
+          icon: "none",
+        });
+        return;
+      }
+
+      const shouldContinueDownload = await this.confirmNetworkForHdPdfDownload();
+      if (!shouldContinueDownload) {
+        return;
+      }
+
+      this.continuePdfDownloadWithExistingFlow();
+    } finally {
+      this.isResolvingPdfDownloadEntry = false;
+    }
   },
 
   onPdfUnlockMaskTap() {
