@@ -7,24 +7,6 @@
   ></navigation-bar>
 
   <view class="settings-page__container">
-    <view class="settings-section">
-      <view class="settings-section__header">
-        <text class="settings-section__title">显示与阅读</text>
-      </view>
-
-      <view class="settings-list">
-        <view class="settings-list-item" bindtap="handleFontSizeTap">
-          <view class="settings-list-item__left">
-            <text class="settings-list-item__label">字号大小</text>
-          </view>
-          <view class="settings-list-item__right">
-            <text class="settings-list-item__value">{{fontSizeLabel}}</text>
-            <text class="settings-list-item__arrow">></text>
-          </view>
-        </view>
-      </view>
-    </view>
-
     <view class="settings-section" wx:if="{{false}}">
       <view class="settings-section__header">
         <text class="settings-section__title">搜索与记录</text>
