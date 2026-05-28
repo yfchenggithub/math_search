@@ -13,12 +13,12 @@
       </view>
 
       <view class="settings-list">
-        <view class="settings-list-item">
+        <view class="settings-list-item" bindtap="handleFontSizeTap">
           <view class="settings-list-item__left">
             <text class="settings-list-item__label">字号大小</text>
           </view>
           <view class="settings-list-item__right">
-            <text class="settings-list-item__value">标准</text>
+            <text class="settings-list-item__value">{{fontSizeLabel}}</text>
             <text class="settings-list-item__arrow">></text>
           </view>
         </view>
@@ -86,9 +86,9 @@
           </view>
           <view class="settings-list-item__right">
             <switch
-              checked="{{wifiOnlyHighResDownload}}"
+              checked="{{wifiOnlyDownload}}"
               color="#34c759"
-              bindchange="handleWifiOnlyHighResDownloadChange"
+              bindchange="handleWifiOnlyDownloadChange"
             />
           </view>
         </view>
