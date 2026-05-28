@@ -83,12 +83,12 @@
           </view>
         </view>
 
-        <view class="settings-list-item">
+        <view class="settings-list-item" bindtap="handleClearLocalCacheTap">
           <view class="settings-list-item__left">
             <text class="settings-list-item__label">清理本地缓存</text>
           </view>
           <view class="settings-list-item__right">
-            <text class="settings-list-item__value">23.6 MB</text>
+            <text class="settings-list-item__value">{{localCacheSizeText}}</text>
             <text class="settings-list-item__arrow">></text>
           </view>
         </view>

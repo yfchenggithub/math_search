@@ -10,6 +10,10 @@ import {
   clearRecentBrowse,
   clearSearchHistory,
 } from "../../services/history";
+import {
+  clearAppCache,
+  getCacheSize,
+} from "../../services/cache";
 import { createLogger } from "../../utils/logger/logger";
 
 type SettingsPageData = {
@@ -17,6 +21,7 @@ type SettingsPageData = {
   fontSizeLabel: string;
   saveSearchHistory: boolean;
   wifiOnlyDownload: boolean;
+  localCacheSizeText: string;
 };
 
 const settingsPageLogger = createLogger("settings-page");
@@ -27,9 +32,11 @@ Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
     fontSizeLabel: getFontSizeText(DEFAULT_SETTINGS.fontSize),
     saveSearchHistory: DEFAULT_SETTINGS.saveSearchHistory,
     wifiOnlyDownload: DEFAULT_SETTINGS.wifiOnlyDownload,
+    localCacheSizeText: "计算中",
   },
 
   currentSettings: { ...DEFAULT_SETTINGS } as AppSettings,
+  cacheSizeRequestId: 0,
 
   onLoad() {
     this.hydrateSettings();
@@ -37,6 +44,7 @@ Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
 
   onShow() {
     this.hydrateSettings();
+    void this.refreshLocalCacheSize();
   },
 
   hydrateSettings() {
@@ -213,5 +221,99 @@ Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
         });
       },
     });
+  },
+
+  async refreshLocalCacheSize() {
+    const requestId = Date.now();
+    this.cacheSizeRequestId = requestId;
+
+    this.setData({
+      localCacheSizeText: "计算中",
+    });
+
+    try {
+      const cacheSize = await getCacheSize();
+      if (this.cacheSizeRequestId !== requestId) {
+        return;
+      }
+
+      this.setData({
+        localCacheSizeText: cacheSize.displayText,
+      });
+    } catch (error) {
+      settingsPageLogger.warn("refresh_local_cache_size_failed", {
+        error,
+      });
+
+      if (this.cacheSizeRequestId !== requestId) {
+        return;
+      }
+
+      this.setData({
+        localCacheSizeText: "--",
+      });
+    }
+  },
+
+  handleClearLocalCacheTap() {
+    wx.showModal({
+      title: "清理本地缓存",
+      content: "将清理可重新下载或重新生成的本地缓存，不会影响收藏、登录状态和浏览记录。",
+      confirmText: "清理",
+      cancelText: "取消",
+      success: (result) => {
+        if (!result.confirm) {
+          return;
+        }
+
+        void this.confirmClearLocalCache();
+      },
+      fail: (error) => {
+        settingsPageLogger.warn("clear_local_cache_confirm_failed", {
+          error,
+        });
+      },
+    });
+  },
+
+  async confirmClearLocalCache() {
+    let clearSucceeded = false;
+
+    wx.showLoading({
+      title: "正在清理",
+      mask: true,
+    });
+
+    try {
+      const result = await clearAppCache();
+      clearSucceeded = result.success;
+
+      if (!clearSucceeded) {
+        settingsPageLogger.warn("clear_local_cache_failed", {
+          result,
+        });
+      }
+    } catch (error) {
+      settingsPageLogger.warn("clear_local_cache_exception", {
+        error,
+      });
+      clearSucceeded = false;
+    } finally {
+      wx.hideLoading();
+    }
+
+    if (clearSucceeded) {
+      wx.showToast({
+        title: "已清理缓存",
+        icon: "none",
+      });
+    } else {
+      wx.showToast({
+        title: "清理失败，请稍后重试",
+        icon: "none",
+      });
+    }
+
+    void this.refreshLocalCacheSize();
   },
 });
