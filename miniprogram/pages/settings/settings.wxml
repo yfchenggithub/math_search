@@ -25,7 +25,7 @@
       </view>
     </view>
 
-    <view class="settings-section">
+    <view class="settings-section" wx:if="{{false}}">
       <view class="settings-section__header">
         <text class="settings-section__title">搜索与记录</text>
       </view>
@@ -44,7 +44,7 @@
           </view>
         </view>
 
-        <view class="settings-list-item">
+        <view class="settings-list-item" bindtap="handleClearSearchHistoryTap">
           <view class="settings-list-item__left">
             <text class="settings-list-item__label">清空搜索记录</text>
           </view>
@@ -53,7 +53,7 @@
           </view>
         </view>
 
-        <view class="settings-list-item">
+        <view class="settings-list-item" bindtap="handleClearRecentBrowseTap">
           <view class="settings-list-item__left">
             <text class="settings-list-item__label">清空最近浏览</text>
           </view>

@@ -6,6 +6,10 @@ import {
   type AppSettings,
   type SettingsFontSize,
 } from "../../services/settings";
+import {
+  clearRecentBrowse,
+  clearSearchHistory,
+} from "../../services/history";
 import { createLogger } from "../../utils/logger/logger";
 
 type SettingsPageData = {
@@ -135,6 +139,76 @@ Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
         }
 
         settingsPageLogger.warn("font_size_action_sheet_failed", {
+          error,
+        });
+      },
+    });
+  },
+
+  handleClearSearchHistoryTap() {
+    wx.showModal({
+      title: "清空搜索记录",
+      content: "清空后不可恢复，不会影响收藏内容。",
+      confirmText: "清空",
+      cancelText: "取消",
+      success: (result) => {
+        if (!result.confirm) {
+          return;
+        }
+
+        try {
+          clearSearchHistory();
+          wx.showToast({
+            title: "已清空搜索记录",
+            icon: "none",
+          });
+        } catch (error) {
+          settingsPageLogger.warn("clear_search_history_failed", {
+            error,
+          });
+          wx.showToast({
+            title: "清空失败，请稍后重试",
+            icon: "none",
+          });
+        }
+      },
+      fail: (error) => {
+        settingsPageLogger.warn("clear_search_history_confirm_failed", {
+          error,
+        });
+      },
+    });
+  },
+
+  handleClearRecentBrowseTap() {
+    wx.showModal({
+      title: "清空最近浏览",
+      content: "清空后不可恢复，不会影响收藏内容。",
+      confirmText: "清空",
+      cancelText: "取消",
+      success: (result) => {
+        if (!result.confirm) {
+          return;
+        }
+
+        try {
+          clearRecentBrowse();
+          wx.showToast({
+            title: "已清空最近浏览",
+            icon: "none",
+          });
+        } catch (error) {
+          settingsPageLogger.warn("clear_recent_browse_failed", {
+            error,
+          });
+          wx.showToast({
+            title: "清空失败，请稍后重试",
+            icon: "none",
+          });
+        }
+      },
+      fail: (error) => {
+        settingsPageLogger.warn("clear_recent_browse_confirm_failed", {
           error,
         });
       },

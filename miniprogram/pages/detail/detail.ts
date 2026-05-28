@@ -18,6 +18,7 @@ import {
 } from "../../utils/api-url";
 import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
 import type { AuthStatusToastType } from "../../services/auth/auth-types";
+import { recordRecentBrowse } from "../../services/history";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import type { AuthStatusToastState } from "../../utils/auth/auth-status-feedback";
 import {
@@ -270,6 +271,7 @@ Page({
     this.abortPdfDownloadTask();
     this.pendingPdfDownloadAfterUnlock = false;
     this.articleScrollTop = 0;
+    this.persistRecentBrowse(detail);
 
     this.setData(
       {
@@ -328,6 +330,26 @@ Page({
         }
       },
     );
+  },
+
+  persistRecentBrowse(detail: DetailDocumentView) {
+    const id = String(detail.id || "").trim();
+    if (!id) {
+      return;
+    }
+
+    try {
+      recordRecentBrowse({
+        id,
+        title: String(detail.title || "").trim(),
+        module: String(detail.category || "").trim(),
+      });
+    } catch (error) {
+      detailPageLogger.warn("recent_browse_record_failed", {
+        itemId: id,
+        error,
+      });
+    }
   },
 
   applyEmptyState(message: string) {

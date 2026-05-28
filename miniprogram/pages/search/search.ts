@@ -1,5 +1,7 @@
 import type { ResultItem } from "../../types/search";
 import { FEATURE_FLAGS } from "../../config/feature-flags";
+import { addSearchHistory } from "../../services/history";
+import { getSettings } from "../../services/settings";
 import {
   trackEvent,
   trackPageView,
@@ -599,6 +601,7 @@ Page({
     }
 
     if (trackSubmit) {
+      this.recordSearchHistoryIfEnabled(rawQuery);
       trackSearch("home_search_submit", {
         source: "home",
         page: "home",
@@ -680,6 +683,32 @@ Page({
           loading: false,
         });
       }
+    }
+  },
+
+  recordSearchHistoryIfEnabled(query: string) {
+    let shouldSave = true;
+
+    try {
+      shouldSave = getSettings().saveSearchHistory;
+    } catch (error) {
+      searchPageLogger.warn("search_history_settings_read_failed", {
+        error,
+      });
+      shouldSave = true;
+    }
+
+    if (!shouldSave) {
+      return;
+    }
+
+    try {
+      addSearchHistory(query);
+    } catch (error) {
+      searchPageLogger.warn("search_history_write_failed", {
+        queryLength: String(query || "").trim().length,
+        error,
+      });
     }
   },
 
