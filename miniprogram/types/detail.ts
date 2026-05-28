@@ -39,6 +39,26 @@ export interface CanonicalMathBlock {
   [key: string]: unknown;
 }
 
+export interface CanonicalMathImageAsset {
+  png?: string;
+  webp?: string;
+  width_px?: number;
+  height_px?: number;
+  display_width_px?: number;
+  display_height_px?: number;
+  scale?: number;
+  [key: string]: unknown;
+}
+
+export interface CanonicalMathImageBlock {
+  id?: string;
+  type?: "math_image";
+  latex?: string;
+  alt?: string;
+  asset?: CanonicalMathImageAsset;
+  [key: string]: unknown;
+}
+
 export interface CanonicalTheoremGroupBlock {
   id?: string;
   type?: "theorem_group";
@@ -49,6 +69,7 @@ export interface CanonicalTheoremGroupBlock {
 export type CanonicalDetailBlock =
   | CanonicalParagraphBlock
   | CanonicalMathBlock
+  | CanonicalMathImageBlock
   | CanonicalTheoremGroupBlock
   | Record<string, unknown>;
 

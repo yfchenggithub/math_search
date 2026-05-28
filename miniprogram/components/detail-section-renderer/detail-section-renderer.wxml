@@ -41,6 +41,36 @@
           </scroll-view>
         </view>
 
+        <view wx:if="{{block.kind === 'math_image'}}" class="math-image-block">
+          <scroll-view
+            scroll-x
+            enhanced="{{true}}"
+            show-scrollbar="{{false}}"
+            class="math-image-scroll"
+          >
+            <image
+              wx:if="{{block.imageUrl && !block.imageLoadFailed}}"
+              class="math-image"
+              src="{{block.imageUrl}}"
+              mode="widthFix"
+              lazy-load="{{true}}"
+              style="width: {{block.displayWidth || 280}}px;"
+              data-block-index="{{index}}"
+              data-node-path="{{block.__path}}"
+              data-url="{{block.imageUrl}}"
+              binderror="onMathImageError"
+            />
+          </scroll-view>
+
+          <view
+            wx:if="{{!block.imageUrl || block.imageLoadFailed}}"
+            class="math-image-fallback"
+          >
+            <text class="math-image-fallback-title">公式图片暂时无法显示</text>
+            <text wx:if="{{block.alt}}" class="math-image-fallback-alt">{{block.alt}}</text>
+          </view>
+        </view>
+
         <view wx:if="{{block.kind === 'theorem'}}" class="theorem-card">
           <view wx:if="{{block.titleHtml}}" class="theorem-title">
             <view class="rich-copy">

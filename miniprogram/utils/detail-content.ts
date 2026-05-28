@@ -32,6 +32,8 @@ import {
 } from "./math-render";
 import { DETAIL_API_CONFIG } from "../config/api";
 import type {
+  CanonicalMathImageAsset,
+  CanonicalMathImageBlock,
   CanonicalConclusionDetail,
   CanonicalDetailBlock,
   CanonicalDetailPlain,
@@ -94,11 +96,35 @@ type RawStructuredSegment = {
   latex?: string;
 };
 
+export interface DetailMathImageAsset {
+  png?: string;
+  webp?: string;
+  width_px?: number;
+  height_px?: number;
+  display_width_px?: number;
+  display_height_px?: number;
+  scale?: number;
+}
+
+export interface MathImageNode {
+  type: "math_image";
+  latex?: string;
+  alt?: string;
+  asset?: DetailMathImageAsset;
+  imageUrl?: string;
+  displayWidth?: number;
+  imageLoadFailed?: boolean;
+  __path?: string;
+}
+
 type RawStructuredItem = {
+  type?: string;
   title?: string;
   desc?: string;
   text?: string;
+  alt?: string;
   latex?: string;
+  asset?: DetailMathImageAsset;
   segments?: RawStructuredSegment[];
 };
 
@@ -198,7 +224,7 @@ export interface DetailInlineSegmentView {
 
 export interface DetailBlockView {
   id: string;
-  kind: "text" | "bullet" | "formula" | "theorem" | "mixed";
+  kind: "text" | "bullet" | "formula" | "theorem" | "mixed" | "math_image";
   formulaAlign?: "center" | "left";
   title?: string;
   titleHtml?: string;
@@ -211,6 +237,14 @@ export interface DetailBlockView {
   segments?: DetailInlineSegmentView[];
   formulaText?: string;
   formulaHtml?: string;
+  type?: "math_image";
+  latex?: string;
+  alt?: string;
+  asset?: DetailMathImageAsset;
+  imageUrl?: string;
+  displayWidth?: number;
+  imageLoadFailed?: boolean;
+  __path?: string;
 }
 
 export interface DetailSectionView {
@@ -379,7 +413,9 @@ function buildCanonicalDetailDocument(
   fallbackId: string,
 ): DetailDocumentView {
   const resolvedId = normalizeText(detail.id) || fallbackId;
-  const sections = buildCanonicalSections(detail);
+  const sections = normalizeMathImageBlocksInSections(
+    maybeInjectDevMathImageNode(buildCanonicalSections(detail)),
+  );
   const summary = getCanonicalSummary(detail, sections);
   const metadata = buildCanonicalDetailMetadata(detail);
   const coreFormula =
@@ -495,6 +531,14 @@ function buildCanonicalBlock(
     return buildCanonicalMathBlock(
       sectionKey,
       block as CanonicalDetailBlock & { latex?: string; align?: string },
+      blockIndex,
+    );
+  }
+
+  if (blockType === "math_image") {
+    return buildCanonicalMathImageBlock(
+      sectionKey,
+      block as CanonicalMathImageBlock,
       blockIndex,
     );
   }
@@ -641,6 +685,26 @@ function buildCanonicalMathBlock(
     formulaText: mathResult.source,
     formulaHtml: mathResult.html,
   };
+}
+
+function buildCanonicalMathImageBlock(
+  sectionKey: string,
+  block: CanonicalMathImageBlock,
+  blockIndex: number,
+): DetailBlockView {
+  const blockId = resolveCanonicalBlockId(sectionKey, block, blockIndex, "math-image");
+  const asset = normalizeMathImageAsset(block.asset);
+  const node: MathImageNode = {
+    type: "math_image",
+    latex: normalizeUnknownText(block.latex),
+    alt:
+      normalizeUnknownText(block.alt)
+      || normalizeUnknownText((block as { text?: unknown }).text)
+      || normalizeUnknownText((block as { title?: unknown }).title),
+    asset,
+  };
+
+  return createMathImageBlock(blockId, node);
 }
 
 function buildCanonicalTheoremBlocks(
@@ -1001,6 +1065,10 @@ function extractBlockPlainText(block: DetailBlockView): string {
     ].filter((part) => part.length > 0);
 
     return parts.join("\n");
+  }
+
+  if (block.kind === "math_image") {
+    return normalizeText(block.alt) || normalizeText(block.latex);
   }
 
   return "";
@@ -1394,6 +1462,189 @@ function normalizeUnknownText(value: unknown): string {
   return typeof value === "string" ? normalizeText(value) : "";
 }
 
+// Dev-only math_image smoke test:
+// - Keep disabled by default.
+// - Temporarily set to true only when validating math_image rendering in develop env.
+const ENABLE_DEV_MATH_IMAGE_NODE = false;
+const DEV_DEMO_MATH_IMAGE_NODE: MathImageNode = {
+  type: "math_image",
+  latex:
+    "\\begin{aligned}\\frac{2}{\\dfrac{1}{a}+\\dfrac{1}{b}} &\\leq \\sqrt{ab} \\\\ &\\leq \\frac{a+b}{2} \\\\ &\\leq \\sqrt{\\frac{a^{2}+b^{2}}{2}}.\\end{aligned}",
+  asset: {
+    png: "https://ok-shuxue.cloud/static/formulas/ineq_mean_chain_demo@3x.png",
+    webp: "https://ok-shuxue.cloud/static/formulas/ineq_mean_chain_demo@3x.webp",
+    width_px: 960,
+    height_px: 360,
+    display_width_px: 320,
+    display_height_px: 120,
+    scale: 3,
+  },
+  alt: "均值不等式链",
+};
+
+function createMathImageBlock(blockId: string, node: MathImageNode): DetailBlockView {
+  const normalizedAsset = normalizeMathImageAsset(node.asset);
+  const normalizedNode = normalizeMathImageNode(
+    {
+      ...node,
+      asset: normalizedAsset,
+    },
+    "",
+  );
+
+  return {
+    id: blockId,
+    kind: "math_image",
+    ...normalizedNode,
+  };
+}
+
+function normalizeMathImageNode(node: MathImageNode, nodePath: string): MathImageNode {
+  const normalized: MathImageNode = {
+    type: "math_image",
+    latex: normalizeText(node.latex),
+    alt: normalizeText(node.alt),
+    asset: normalizeMathImageAsset(node.asset),
+    imageUrl: getMathImageUrl(node),
+    displayWidth: getMathImageDisplayWidth(node),
+    imageLoadFailed: false,
+  };
+
+  if (nodePath) {
+    normalized.__path = nodePath;
+  }
+
+  return normalized;
+}
+
+function normalizeMathImageBlocksInSections(sections: DetailSectionView[]): DetailSectionView[] {
+  if (!Array.isArray(sections)) {
+    return [];
+  }
+
+  return sections.map((section) => ({
+    ...section,
+    blocks: section.blocks.map((block, blockIndex) => {
+      if (block.kind !== "math_image") {
+        return block;
+      }
+
+      const normalizedNode = normalizeMathImageNode(
+        {
+          type: "math_image",
+          latex: block.latex,
+          alt: block.alt,
+          asset: block.asset,
+        },
+        `section.blocks[${blockIndex}]`,
+      );
+
+      return {
+        ...block,
+        ...normalizedNode,
+      };
+    }),
+  }));
+}
+
+function maybeInjectDevMathImageNode(sections: DetailSectionView[]): DetailSectionView[] {
+  if (!shouldInjectDevMathImageNode() || sections.length === 0) {
+    return sections;
+  }
+
+  const firstSection = sections[0];
+  const demoBlockId = `${firstSection.key}-dev-math-image`;
+  const hasDemoNode = firstSection.blocks.some((block) => block.id === demoBlockId);
+  if (hasDemoNode) {
+    return sections;
+  }
+
+  return [
+    {
+      ...firstSection,
+      blocks: [
+        ...firstSection.blocks,
+        createMathImageBlock(demoBlockId, DEV_DEMO_MATH_IMAGE_NODE),
+      ],
+    },
+    ...sections.slice(1),
+  ];
+}
+
+function shouldInjectDevMathImageNode(): boolean {
+  if (!ENABLE_DEV_MATH_IMAGE_NODE) {
+    return false;
+  }
+
+  if (typeof wx === "undefined" || typeof wx.getAccountInfoSync !== "function") {
+    return false;
+  }
+
+  try {
+    const envVersion = wx.getAccountInfoSync()?.miniProgram?.envVersion;
+    return envVersion === "develop";
+  } catch (_error) {
+    return false;
+  }
+}
+
+function normalizeMathImageAsset(asset: unknown): DetailMathImageAsset | undefined {
+  if (!asset || typeof asset !== "object" || Array.isArray(asset)) {
+    return undefined;
+  }
+
+  const raw = asset as CanonicalMathImageAsset;
+  const normalized: DetailMathImageAsset = {
+    png: normalizeUnknownText(raw.png),
+    webp: normalizeUnknownText(raw.webp),
+    width_px: normalizeUnknownPositiveNumber(raw.width_px),
+    height_px: normalizeUnknownPositiveNumber(raw.height_px),
+    display_width_px: normalizeUnknownPositiveNumber(raw.display_width_px),
+    display_height_px: normalizeUnknownPositiveNumber(raw.display_height_px),
+    scale: normalizeUnknownPositiveNumber(raw.scale),
+  };
+
+  return normalized;
+}
+
+function normalizeUnknownPositiveNumber(value: unknown): number | undefined {
+  const numberValue =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(normalizeText(value))
+        : Number.NaN;
+
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    return undefined;
+  }
+
+  return numberValue;
+}
+
+function getMathImageUrl(node: MathImageNode): string {
+  return normalizeText(node.asset?.png) || normalizeText(node.asset?.webp) || "";
+}
+
+function getMathImageDisplayWidth(node: MathImageNode): number {
+  const asset = node.asset;
+  const directWidth = asset?.display_width_px;
+
+  if (typeof directWidth === "number" && directWidth > 0) {
+    return Math.max(80, Math.round(directWidth));
+  }
+
+  if (
+    typeof asset?.width_px === "number"
+    && typeof asset?.scale === "number"
+    && asset.scale > 0
+  ) {
+    return Math.max(80, Math.round(asset.width_px / asset.scale));
+  }
+
+  return 280;
+}
+
 /**
  * 按 id 读取原始详情条目，并在首次访问时建立缓存。
  *
@@ -1424,7 +1675,9 @@ function getRawDetailEntry(id: string): RawDetailEntry | null {
  */
 function buildDetailViewModel(rawEntry: RawDetailEntry, id: string) {
   const summary = getPreferredSummary(rawEntry);
-  const sections = buildSections(rawEntry, summary);
+  const sections = normalizeMathImageBlocksInSections(
+    maybeInjectDevMathImageNode(buildSections(rawEntry, summary)),
+  );
   const pdfUrl = getPreferredPdfUrl(id, rawEntry);
   const pdfFilename = getPreferredPdfFilename(rawEntry, pdfUrl);
   const metadata = buildLegacyDetailMetadata(rawEntry);
@@ -2008,6 +2261,10 @@ function buildStructuredBlocks(
     return createStructuredTextBlock(section, blockId, normalizedItem);
   }
 
+  if (normalizeText(rawItem.type) === "math_image") {
+    return createStructuredMathImageBlock(section, blockId, rawItem);
+  }
+
   if (section.layout === "theorem-list" || rawItem.title || rawItem.desc) {
     return createStructuredTheoremBlock(section, blockId, rawItem);
   }
@@ -2488,6 +2745,22 @@ function createStructuredLatexBlock(
     formulaText: mathResult.source,
     formulaHtml: mathResult.html,
   };
+}
+
+function createStructuredMathImageBlock(
+  _section: DetailSectionView,
+  blockId: string,
+  rawItem: RawStructuredItem,
+): DetailBlockView {
+  const asset = normalizeMathImageAsset(rawItem.asset);
+  const node: MathImageNode = {
+    type: "math_image",
+    latex: normalizeText(rawItem.latex),
+    alt: normalizeText(rawItem.alt || rawItem.text || rawItem.desc),
+    asset,
+  };
+
+  return createMathImageBlock(blockId, node);
 }
 
 /**

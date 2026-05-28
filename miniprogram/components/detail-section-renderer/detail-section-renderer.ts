@@ -45,4 +45,33 @@ Component({
       });
     },
   },
+
+  methods: {
+    onMathImageError(e: WechatMiniprogram.BaseEvent) {
+      const nodePath = String(e.currentTarget.dataset.nodePath || "").trim();
+      const imageUrl = String(e.currentTarget.dataset.url || "").trim();
+      const blockIndex = Number(e.currentTarget.dataset.blockIndex);
+
+      console.warn("[detail] math image load unavailable", {
+        nodePath: nodePath || undefined,
+        blockIndex: Number.isFinite(blockIndex) ? blockIndex : undefined,
+        url: imageUrl,
+      });
+
+      if (nodePath) {
+        this.setData({
+          [`${nodePath}.imageLoadFailed`]: true,
+        });
+        return;
+      }
+
+      if (!Number.isFinite(blockIndex) || blockIndex < 0) {
+        return;
+      }
+
+      this.setData({
+        [`section.blocks[${blockIndex}].imageLoadFailed`]: true,
+      });
+    },
+  },
 });
