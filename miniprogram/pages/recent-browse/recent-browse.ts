@@ -35,14 +35,14 @@ interface RecentBrowsePageData {
 const RECENT_BROWSE_COPY = {
   title: "最近浏览",
   subtitle: "按浏览时间倒序展示你最近查看的内容",
-  emptyTitle: "还没有最近浏览记录",
-  emptySubtitle: "去首页搜索并打开详情后，记录会展示在这里",
+  emptyTitle: "暂无浏览记录",
+  emptySubtitle: "你查看过的内容会出现在这里",
   fallbackSummary: "点击查看完整内容",
-  clearConfirmTitle: "清空最近浏览",
-  clearConfirmContent: "清空后不可恢复，确认继续吗？",
+  clearConfirmTitle: "清空最近浏览？",
+  clearConfirmContent: "清空后将无法恢复。",
   clearConfirmButton: "清空",
   clearCancelButton: "取消",
-  clearSuccessToast: "已清空最近浏览",
+  clearSuccessToast: "已清空浏览记录",
   clearFailedToast: "清空失败，请稍后重试",
   openDetailFailedToast: "详情页打开失败",
 };
@@ -293,17 +293,6 @@ Page<RecentBrowsePageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
-  handleGoHomeTap() {
-    wx.switchTab({
-      url: "/pages/search/search",
-      fail: () => {
-        wx.reLaunch({
-          url: "/pages/search/search",
-        });
-      },
-    });
-  },
-
   handleClearTap() {
     if (!this.data.hasData) {
       return;
@@ -313,6 +302,7 @@ Page<RecentBrowsePageData, WechatMiniprogram.IAnyObject>({
       title: RECENT_BROWSE_COPY.clearConfirmTitle,
       content: RECENT_BROWSE_COPY.clearConfirmContent,
       confirmText: RECENT_BROWSE_COPY.clearConfirmButton,
+      confirmColor: "#d14343",
       cancelText: RECENT_BROWSE_COPY.clearCancelButton,
       success: (result) => {
         if (!result.confirm) {

@@ -5,19 +5,21 @@
     fixed="{{true}}"
     placeholder="{{true}}"
     bind:back="handleBackTap"
-  >
-    <button
-      wx:if="{{hasData}}"
-      slot="right"
-      class="nav-share-btn"
-      bindtap="handleClearTap"
-    >
-      清空
-    </button>
-  </navigation-bar>
+  ></navigation-bar>
 
   <view class="header">
-    <view class="title">{{copy.title}}</view>
+    <view class="header-row">
+      <view class="title">{{copy.title}}</view>
+      <view
+        wx:if="{{hasData}}"
+        class="header-action"
+        hover-class="header-action--active"
+        hover-stay-time="80"
+        bindtap="handleClearTap"
+      >
+        <text class="header-action__text">清空记录</text>
+      </view>
+    </view>
     <view class="sub">{{copy.subtitle}}</view>
   </view>
 
@@ -59,9 +61,6 @@
     <view wx:else class="empty-state">
       <view class="empty-title">{{copy.emptyTitle}}</view>
       <view class="empty-subtitle">{{copy.emptySubtitle}}</view>
-      <button class="detail-btn empty-home-btn" bindtap="handleGoHomeTap">
-        返回首页
-      </button>
     </view>
   </scroll-view>
 </view>

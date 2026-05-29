@@ -1,23 +1,41 @@
 @import "../search/search.scss";
 
+.header-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.header-row .title {
+  flex: 1;
+  min-width: 0;
+}
+
+.header-action {
+  min-height: 88rpx;
+  padding-left: 18rpx;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  box-sizing: border-box;
+}
+
+.header-action--active {
+  opacity: 0.6;
+}
+
+.header-action__text {
+  font-size: 26rpx;
+  line-height: 36rpx;
+  color: #8a8f99;
+  font-weight: 500;
+}
+
 .list {
   padding-top: 0;
 }
 
 .recommend-section {
   margin-bottom: 0;
-}
-
-.empty-home-btn {
-  margin-top: 22rpx;
-  min-width: 240rpx;
-  height: 68rpx;
-  line-height: 68rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.empty-home-btn::after {
-  border: 0;
 }
