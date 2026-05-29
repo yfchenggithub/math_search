@@ -11,10 +11,14 @@ export type ClearAppCacheResult = {
 };
 
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
-const KNOWN_CACHE_STORAGE_KEYS = [PDF_CACHE_STORAGE_KEY] as const;
+const MATH_IMAGE_CACHE_STORAGE_KEY = "conclusion_math_image_cache_map_v1";
+const KNOWN_CACHE_STORAGE_KEYS = [
+  PDF_CACHE_STORAGE_KEY,
+  MATH_IMAGE_CACHE_STORAGE_KEY,
+] as const;
 const cacheServiceLogger = createLogger("cache-service");
 
-type PdfCacheMap = Record<string, string>;
+type SavedFileCacheMap = Record<string, string>;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
@@ -103,12 +107,12 @@ function getStorageValueSize(value: unknown): number {
   }
 }
 
-function normalizePdfCacheMap(raw: unknown): PdfCacheMap {
+function normalizeSavedFileCacheMap(raw: unknown): SavedFileCacheMap {
   if (!isPlainObject(raw)) {
     return {};
   }
 
-  const normalized: PdfCacheMap = {};
+  const normalized: SavedFileCacheMap = {};
   Object.keys(raw).forEach((cacheKey) => {
     const filePath = toTrimmedString(raw[cacheKey]);
     if (!filePath) {
@@ -132,22 +136,39 @@ function readPdfCacheMapRaw(): unknown {
   }
 }
 
-function readPdfCacheMap(): PdfCacheMap {
-  return normalizePdfCacheMap(readPdfCacheMapRaw());
+function readMathImageCacheMapRaw(): unknown {
+  try {
+    return wx.getStorageSync(MATH_IMAGE_CACHE_STORAGE_KEY);
+  } catch (error) {
+    cacheServiceLogger.warn("read_math_image_cache_map_failed", {
+      error,
+    });
+    return undefined;
+  }
 }
 
-function getUniqueCachedFilePaths(cacheMap: PdfCacheMap): string[] {
+function readPdfCacheMap(): SavedFileCacheMap {
+  return normalizeSavedFileCacheMap(readPdfCacheMapRaw());
+}
+
+function readMathImageCacheMap(): SavedFileCacheMap {
+  return normalizeSavedFileCacheMap(readMathImageCacheMapRaw());
+}
+
+function getUniqueCachedFilePaths(cacheMaps: SavedFileCacheMap[]): string[] {
   const dedupeSet: Record<string, true> = {};
   const filePaths: string[] = [];
 
-  Object.keys(cacheMap).forEach((cacheKey) => {
-    const filePath = toTrimmedString(cacheMap[cacheKey]);
-    if (!filePath || dedupeSet[filePath]) {
-      return;
-    }
+  cacheMaps.forEach((cacheMap) => {
+    Object.keys(cacheMap).forEach((cacheKey) => {
+      const filePath = toTrimmedString(cacheMap[cacheKey]);
+      if (!filePath || dedupeSet[filePath]) {
+        return;
+      }
 
-    dedupeSet[filePath] = true;
-    filePaths.push(filePath);
+      dedupeSet[filePath] = true;
+      filePaths.push(filePath);
+    });
   });
 
   return filePaths;
@@ -267,10 +288,13 @@ function clearKnownCacheStorageKeys(): boolean {
 export async function getCacheSize(): Promise<CacheSizeResult> {
   try {
     const pdfCacheMapRaw = readPdfCacheMapRaw();
-    const pdfCacheMap = normalizePdfCacheMap(pdfCacheMapRaw);
-    const filePaths = getUniqueCachedFilePaths(pdfCacheMap);
+    const mathImageCacheMapRaw = readMathImageCacheMapRaw();
+    const pdfCacheMap = normalizeSavedFileCacheMap(pdfCacheMapRaw);
+    const mathImageCacheMap = normalizeSavedFileCacheMap(mathImageCacheMapRaw);
+    const filePaths = getUniqueCachedFilePaths([pdfCacheMap, mathImageCacheMap]);
     const fileBytes = await getPdfCacheFileSize(filePaths);
-    const storageBytes = getStorageValueSize(pdfCacheMapRaw);
+    const storageBytes =
+      getStorageValueSize(pdfCacheMapRaw) + getStorageValueSize(mathImageCacheMapRaw);
     const totalBytes = fileBytes + storageBytes;
 
     return {
@@ -292,7 +316,8 @@ export async function clearAppCache(): Promise<ClearAppCacheResult> {
   try {
     const cacheSize = await getCacheSize();
     const pdfCacheMap = readPdfCacheMap();
-    const filePaths = getUniqueCachedFilePaths(pdfCacheMap);
+    const mathImageCacheMap = readMathImageCacheMap();
+    const filePaths = getUniqueCachedFilePaths([pdfCacheMap, mathImageCacheMap]);
 
     const removeResults = await Promise.all(filePaths.map((filePath) => removeSavedFileSafe(filePath)));
     const removeFilesSucceeded = removeResults.every((item) => item);
