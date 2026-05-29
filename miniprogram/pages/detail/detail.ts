@@ -104,6 +104,7 @@ class PdfOperationError extends Error {
 
 const DEFAULT_PDF_FILENAME = "hd-pdf.pdf";
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
+const MATH_IMAGE_CACHE_STORAGE_KEY = "conclusion_math_image_cache_map_v1";
 const PDF_STATUS_AUTO_HIDE_MS = 900;
 const ENABLE_PDF_ENTITLEMENT_FLOW = FEATURE_FLAGS.ENABLE_PDF_ENTITLEMENT_FLOW;
 const detailPageLogger = createLogger("detail-page");
@@ -215,6 +216,7 @@ Page({
   routeSource: "detail",
   routeEntry: "unknown",
   detailViewTracked: false,
+  mathImageCacheDownloadTasks: {} as Record<string, Promise<void>>,
 
   
   raf(callback: Function) {
@@ -258,7 +260,7 @@ Page({
         return;
       }
 
-      this.applyDetailDocument(detail);
+      await this.applyDetailDocument(detail);
     } catch (error) {
       this.applyErrorState(getErrorMessage(error, "详情加载失败"));
     }
@@ -270,43 +272,44 @@ Page({
   },
 
   
-  applyDetailDocument(detail: DetailDocumentView) {
+  async applyDetailDocument(detail: DetailDocumentView) {
     this.resetTransform(false);
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
     this.pendingPdfDownloadAfterUnlock = false;
     this.articleScrollTop = 0;
-    this.persistRecentBrowse(detail);
+    const hydratedDetail = await this.hydrateMathImageCache(detail);
+    this.persistRecentBrowse(hydratedDetail);
 
     this.setData(
       {
-        id: detail.id,
-        title: detail.title,
-        category: detail.category,
-        summary: detail.summary,
-        summaryHtml: detail.summaryHtml,
-        aliases: detail.aliases,
-        aliasesDisplay: detail.aliases.join(" / "),
-        tags: detail.tags,
-        hasDifficulty: detail.hasDifficulty,
-        difficultyLabel: detail.difficultyLabel,
-        isFavorited: detail.isFavorited,
+        id: hydratedDetail.id,
+        title: hydratedDetail.title,
+        category: hydratedDetail.category,
+        summary: hydratedDetail.summary,
+        summaryHtml: hydratedDetail.summaryHtml,
+        aliases: hydratedDetail.aliases,
+        aliasesDisplay: hydratedDetail.aliases.join(" / "),
+        tags: hydratedDetail.tags,
+        hasDifficulty: hydratedDetail.hasDifficulty,
+        difficultyLabel: hydratedDetail.difficultyLabel,
+        isFavorited: hydratedDetail.isFavorited,
         favoriteActionBusy: false,
-        showFavoriteStatus: detail.showFavoriteStatus,
-        favoriteStatusText: detail.favoriteStatusText,
-        coreFormulaHtml: detail.coreFormulaHtml,
-        coreFormulaImage: detail.coreFormulaImage || null,
-        sections: detail.sections,
-        pdfUrl: detail.pdfUrl,
-        pdfFilename: detail.pdfFilename,
-        pdfAvailable: detail.pdfAvailable,
+        showFavoriteStatus: hydratedDetail.showFavoriteStatus,
+        favoriteStatusText: hydratedDetail.favoriteStatusText,
+        coreFormulaHtml: hydratedDetail.coreFormulaHtml,
+        coreFormulaImage: hydratedDetail.coreFormulaImage || null,
+        sections: hydratedDetail.sections,
+        pdfUrl: hydratedDetail.pdfUrl,
+        pdfFilename: hydratedDetail.pdfFilename,
+        pdfAvailable: hydratedDetail.pdfAvailable,
         pdfActionBusy: false,
         pdfActionLabel: "",
         pdfStatus: createIdlePdfStatus(),
         isUnlockModalVisible: false,
         isUnlockingPdfEntitlement: false,
         isDownloadingPdf: false,
-        sourceType: detail.sourceType,
+        sourceType: hydratedDetail.sourceType,
         viewState: "content",
         viewMessage: "",
         articleScrollTop: 0,
@@ -320,16 +323,16 @@ Page({
           this.detailViewTracked = true;
           trackDetailView(
             {
-              item_id: detail.id,
-              title: detail.title,
-              module: detail.category,
-              has_pdf: Boolean(detail.pdfAvailable),
+              item_id: hydratedDetail.id,
+              title: hydratedDetail.title,
+              module: hydratedDetail.category,
+              has_pdf: Boolean(hydratedDetail.pdfAvailable),
               source: this.routeSource,
               page: "detail",
               entry: this.routeEntry,
             },
             {
-              dedupeKey: `detail_view:${detail.id}`,
+              dedupeKey: `detail_view:${hydratedDetail.id}`,
               dedupeMs: 10 * 60 * 1000,
             },
           );
@@ -356,6 +359,318 @@ Page({
         error,
       });
     }
+  },
+
+  hashText(value: string): string {
+    let hash = 2166136261;
+
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    return (hash >>> 0).toString(16);
+  },
+
+  buildMathImageCacheKey(latex: string, sourceUrl: string): string {
+    const normalizedLatex = String(latex || "").trim();
+    const normalizedUrl = String(sourceUrl || "").trim();
+    if (!normalizedLatex && !normalizedUrl) {
+      return "";
+    }
+
+    const formulaIdentity = normalizedLatex || normalizedUrl;
+    return `math_image::${this.hashText(formulaIdentity)}::${this.hashText(normalizedUrl || formulaIdentity)}`;
+  },
+
+  getMathImageCacheMap(): Record<string, string> {
+    try {
+      const rawCache = wx.getStorageSync(MATH_IMAGE_CACHE_STORAGE_KEY);
+      if (!rawCache || typeof rawCache !== "object" || Array.isArray(rawCache)) {
+        return {};
+      }
+
+      const normalized: Record<string, string> = {};
+      const entries = rawCache as Record<string, unknown>;
+      Object.keys(entries).forEach((key) => {
+        const value = entries[key];
+        if (typeof value === "string" && value.trim()) {
+          normalized[key] = value;
+        }
+      });
+
+      return normalized;
+    } catch (error) {
+      detailPageLogger.warn("read_math_image_cache_map_failed", {
+        error,
+      });
+      return {};
+    }
+  },
+
+  getCachedMathImageFilePath(cacheKey: string): string {
+    if (!cacheKey) {
+      return "";
+    }
+
+    const cacheMap = this.getMathImageCacheMap();
+    return typeof cacheMap[cacheKey] === "string" ? cacheMap[cacheKey] : "";
+  },
+
+  setCachedMathImageFilePath(cacheKey: string, savedFilePath: string) {
+    if (!cacheKey || !savedFilePath) {
+      return;
+    }
+
+    try {
+      const cacheMap = this.getMathImageCacheMap();
+      cacheMap[cacheKey] = savedFilePath;
+      wx.setStorageSync(MATH_IMAGE_CACHE_STORAGE_KEY, cacheMap);
+    } catch (error) {
+      detailPageLogger.warn("write_math_image_cache_map_failed", {
+        cacheKey,
+        error,
+      });
+    }
+  },
+
+  removeCachedMathImageFilePath(cacheKey: string) {
+    if (!cacheKey) {
+      return;
+    }
+
+    try {
+      const cacheMap = this.getMathImageCacheMap();
+      if (!Object.prototype.hasOwnProperty.call(cacheMap, cacheKey)) {
+        return;
+      }
+
+      delete cacheMap[cacheKey];
+      wx.setStorageSync(MATH_IMAGE_CACHE_STORAGE_KEY, cacheMap);
+    } catch (error) {
+      detailPageLogger.warn("remove_math_image_cache_entry_failed", {
+        cacheKey,
+        error,
+      });
+    }
+  },
+
+  async resolveValidCachedMathImagePath(cacheKey: string): Promise<string> {
+    const cachedFilePath = this.getCachedMathImageFilePath(cacheKey);
+    if (!cachedFilePath) {
+      return "";
+    }
+
+    const isAvailable = await this.isSavedFilePathAvailable(cachedFilePath);
+    if (isAvailable) {
+      return cachedFilePath;
+    }
+
+    this.removeCachedMathImageFilePath(cacheKey);
+    return "";
+  },
+
+  saveMathImageFromTempFile(tempFilePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      wx.saveFile({
+        tempFilePath,
+        success: (res) => {
+          if (!res.savedFilePath) {
+            reject(new Error("math image save failed: empty savedFilePath"));
+            return;
+          }
+
+          resolve(res.savedFilePath);
+        },
+        fail: (error) => {
+          reject(error);
+        },
+      });
+    });
+  },
+
+  downloadAndSaveMathImage(sourceUrl: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      wx.downloadFile({
+        url: sourceUrl,
+        success: (res) => {
+          if (res.statusCode !== 200 || !res.tempFilePath) {
+            reject(new Error(`math image download failed (HTTP ${res.statusCode})`));
+            return;
+          }
+
+          this.saveMathImageFromTempFile(res.tempFilePath)
+            .then(resolve)
+            .catch(reject);
+        },
+        fail: (error) => {
+          reject(error);
+        },
+      });
+    });
+  },
+
+  queueMathImageCacheDownload(cacheKey: string, sourceUrl: string) {
+    if (!cacheKey || !sourceUrl) {
+      return;
+    }
+
+    if (this.mathImageCacheDownloadTasks[cacheKey]) {
+      return;
+    }
+
+    const downloadTask = this.downloadAndSaveMathImage(sourceUrl)
+      .then((savedFilePath: string) => {
+        this.setCachedMathImageFilePath(cacheKey, savedFilePath);
+      })
+      .catch((error: unknown) => {
+        detailPageLogger.warn("math_image_cache_download_failed", {
+          cacheKey,
+          sourceUrl,
+          error,
+        });
+      })
+      .finally(() => {
+        delete this.mathImageCacheDownloadTasks[cacheKey];
+      });
+
+    this.mathImageCacheDownloadTasks[cacheKey] = downloadTask;
+  },
+
+  async resolveMathImageNodeWithCache(node: MathImageNode | null): Promise<MathImageNode | null> {
+    if (!node) {
+      return null;
+    }
+
+    const sourceUrl = String(node.imageUrl || "").trim();
+    const normalizedLatex = String(node.latex || "").trim();
+    const cacheKey = this.buildMathImageCacheKey(normalizedLatex, sourceUrl);
+    const normalizedNode: MathImageNode = {
+      ...node,
+    };
+
+    if (!sourceUrl || !cacheKey) {
+      return normalizedNode;
+    }
+
+    const cachedFilePath = await this.resolveValidCachedMathImagePath(cacheKey);
+    if (cachedFilePath) {
+      console.info("[detail] math_image cache hit", {
+        cacheKey,
+        latex: normalizedLatex || undefined,
+        sourceUrl,
+      });
+
+      return {
+        ...normalizedNode,
+        imageUrl: cachedFilePath,
+        imageLoadFailed: false,
+      };
+    }
+
+    console.info("[detail] math_image cache miss", {
+      cacheKey,
+      latex: normalizedLatex || undefined,
+      sourceUrl,
+    });
+
+    this.queueMathImageCacheDownload(cacheKey, sourceUrl);
+    return normalizedNode;
+  },
+
+  async hydrateMathImageSections(sections: DetailSectionView[]): Promise<DetailSectionView[]> {
+    if (!Array.isArray(sections) || sections.length === 0) {
+      return [];
+    }
+
+    return Promise.all(
+      sections.map(async (section) => {
+        const blocks = Array.isArray(section.blocks)
+          ? await Promise.all(
+            section.blocks.map(async (block) => {
+              if (block.kind === "math_image") {
+                const resolvedNode = await this.resolveMathImageNodeWithCache({
+                  type: "math_image",
+                  latex: block.latex,
+                  alt: block.alt,
+                  asset: block.asset,
+                  imageUrl: block.imageUrl,
+                  displayWidth: block.displayWidth,
+                  imageLoadFailed: block.imageLoadFailed,
+                  __path: block.__path,
+                });
+
+                return {
+                  ...block,
+                  ...(resolvedNode || {}),
+                };
+              }
+
+              if (block.kind !== "theorem") {
+                return block;
+              }
+
+              let descParts = block.descParts;
+              if (Array.isArray(descParts)) {
+                descParts = await Promise.all(
+                  descParts.map(async (part) => {
+                    if (part.kind !== "math_image" || !part.image) {
+                      return part;
+                    }
+
+                    const resolvedImage = await this.resolveMathImageNodeWithCache(part.image);
+                    if (!resolvedImage) {
+                      return part;
+                    }
+
+                    return {
+                      ...part,
+                      image: resolvedImage,
+                    };
+                  }),
+                );
+              }
+
+              let formulaImages = block.formulaImages;
+              if (Array.isArray(formulaImages)) {
+                const resolvedFormulaImages = await Promise.all(
+                  formulaImages.map(async (formulaImage) => this.resolveMathImageNodeWithCache(formulaImage)),
+                );
+
+                formulaImages = resolvedFormulaImages.filter(
+                  (formulaImage): formulaImage is MathImageNode => Boolean(formulaImage),
+                );
+              }
+
+              return {
+                ...block,
+                descParts,
+                formulaImages,
+              };
+            }),
+          )
+          : [];
+
+        return {
+          ...section,
+          blocks,
+        };
+      }),
+    );
+  },
+
+  async hydrateMathImageCache(detail: DetailDocumentView): Promise<DetailDocumentView> {
+    const coreFormulaImage = detail.coreFormulaImage
+      ? await this.resolveMathImageNodeWithCache(detail.coreFormulaImage)
+      : null;
+
+    const sections = await this.hydrateMathImageSections(detail.sections || []);
+
+    return {
+      ...detail,
+      coreFormulaImage: coreFormulaImage || undefined,
+      sections,
+    };
   },
 
   applyEmptyState(message: string) {
