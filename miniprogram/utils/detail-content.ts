@@ -249,6 +249,7 @@ export interface DetailBlockView {
   segments?: DetailInlineSegmentView[];
   formulaText?: string;
   formulaHtml?: string;
+  formulaImages?: MathImageNode[];
   type?: "math_image";
   latex?: string;
   alt?: string;
@@ -612,7 +613,7 @@ function buildCanonicalParagraphBlock(
   sectionKey: string,
   block: CanonicalDetailBlock & { tokens?: CanonicalDetailToken[]; text?: string },
   blockIndex: number,
-): DetailBlockView | null {
+): DetailBlockView | DetailBlockView[] | null {
   const blockId = resolveCanonicalBlockId(sectionKey, block, blockIndex, "paragraph");
   const tokens = normalizeCanonicalTokens(block.tokens);
 
@@ -623,6 +624,55 @@ function buildCanonicalParagraphBlock(
     }
 
     return createCanonicalTextBlock(sectionKey, blockId, fallbackText);
+  }
+
+  const fragments = splitCanonicalTokenFragments(tokens);
+  if (fragments.length === 1 && fragments[0].kind === "tokens") {
+    return buildCanonicalParagraphTokenBlock(sectionKey, blockId, fragments[0].tokens);
+  }
+
+  const result: DetailBlockView[] = [];
+  let tokenFragmentIndex = 0;
+  let imageFragmentIndex = 0;
+
+  for (let index = 0; index < fragments.length; index += 1) {
+    const fragment = fragments[index];
+
+    if (fragment.kind === "math_image") {
+      imageFragmentIndex += 1;
+      result.push(createMathImageBlock(`${blockId}-math-image-${imageFragmentIndex}`, fragment.node));
+      continue;
+    }
+
+    tokenFragmentIndex += 1;
+    const tokenBlock = buildCanonicalParagraphTokenBlock(
+      sectionKey,
+      `${blockId}-tokens-${tokenFragmentIndex}`,
+      fragment.tokens,
+    );
+    if (tokenBlock) {
+      result.push(tokenBlock);
+    }
+  }
+
+  if (result.length === 0) {
+    return null;
+  }
+
+  if (result.length === 1) {
+    return result[0];
+  }
+
+  return result;
+}
+
+function buildCanonicalParagraphTokenBlock(
+  sectionKey: string,
+  blockId: string,
+  tokens: CanonicalDetailToken[],
+): DetailBlockView | null {
+  if (tokens.length === 0) {
+    return null;
   }
 
   if (tokens.length === 1 && tokens[0].type === "math_inline" && !isCanonicalBulletSection(sectionKey)) {
@@ -662,6 +712,73 @@ function buildCanonicalParagraphBlock(
     html,
     segments,
   };
+}
+
+type CanonicalTokenFragment =
+  | { kind: "tokens"; tokens: CanonicalDetailToken[] }
+  | { kind: "math_image"; node: MathImageNode };
+
+function splitCanonicalTokenFragments(tokens: CanonicalDetailToken[]): CanonicalTokenFragment[] {
+  const result: CanonicalTokenFragment[] = [];
+  let tokenBuffer: CanonicalDetailToken[] = [];
+
+  const flushTokenBuffer = () => {
+    if (tokenBuffer.length === 0) {
+      return;
+    }
+
+    result.push({
+      kind: "tokens",
+      tokens: tokenBuffer,
+    });
+    tokenBuffer = [];
+  };
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const mathImageNode = tryBuildCanonicalTokenMathImageNode(token);
+
+    if (mathImageNode) {
+      flushTokenBuffer();
+      result.push({
+        kind: "math_image",
+        node: mathImageNode,
+      });
+      continue;
+    }
+
+    tokenBuffer.push(token);
+  }
+
+  flushTokenBuffer();
+  return result;
+}
+
+function tryBuildCanonicalTokenMathImageNode(token: CanonicalDetailToken): MathImageNode | null {
+  if (normalizeUnknownText(token.type) !== "math_image") {
+    return null;
+  }
+
+  const tokenRecord = token as CanonicalDetailToken & {
+    asset?: unknown;
+    alt?: unknown;
+    text?: unknown;
+    latex?: unknown;
+  };
+  const node: MathImageNode = {
+    type: "math_image",
+    latex: normalizeUnknownText(tokenRecord.latex),
+    alt:
+      normalizeUnknownText(tokenRecord.alt)
+      || normalizeUnknownText(tokenRecord.text),
+    asset: normalizeMathImageAsset(tokenRecord.asset),
+  };
+
+  if (!node.latex && !node.alt && !node.asset) {
+    return null;
+  }
+
+  return node;
 }
 
 function buildCanonicalMathBlock(
@@ -734,53 +851,68 @@ function buildCanonicalTheoremBlocks(
   const result: DetailBlockView[] = [];
 
   for (let index = 0; index < items.length; index += 1) {
-    const theoremBlock = buildCanonicalTheoremBlock(items[index], `${baseId}-${index + 1}`);
-    if (theoremBlock) {
-      result.push(theoremBlock);
+    const theoremBlocks = buildCanonicalTheoremBlocksFromItem(items[index], `${baseId}-${index + 1}`);
+    if (theoremBlocks.length > 0) {
+      result.push(...theoremBlocks);
     }
   }
 
   return result;
 }
 
-function buildCanonicalTheoremBlock(
+function buildCanonicalTheoremBlocksFromItem(
   item: CanonicalTheoremItem,
   blockId: string,
-): DetailBlockView | null {
+): DetailBlockView[] {
   const title = normalizeUnknownText(item.title);
-  const descTokens = normalizeCanonicalTokens(item.desc_tokens);
-  const descText = descTokens.length > 0
-    ? composeCanonicalTokenPlainText(descTokens)
+  const descTokenFragments = splitCanonicalTokenFragments(normalizeCanonicalTokens(item.desc_tokens));
+  const inlineDescTokens = descTokenFragments
+    .filter(
+      (fragment): fragment is Extract<CanonicalTokenFragment, { kind: "tokens" }> =>
+        fragment.kind === "tokens",
+    )
+    .flatMap((fragment) => fragment.tokens);
+  const descMathImages = descTokenFragments
+    .filter(
+      (fragment): fragment is Extract<CanonicalTokenFragment, { kind: "math_image" }> =>
+        fragment.kind === "math_image",
+    )
+    .map((fragment) => fragment.node);
+  const descText = inlineDescTokens.length > 0
+    ? composeCanonicalTokenPlainText(inlineDescTokens)
     : normalizeUnknownText(item.desc);
-  const descSegments = descTokens.length > 0
-    ? buildCanonicalInlineSegments(descTokens, `${blockId}-desc`)
+  const descSegments = inlineDescTokens.length > 0
+    ? buildCanonicalInlineSegments(inlineDescTokens, `${blockId}-desc`)
     : [];
   const descHtml = descSegments.length > 0
     ? composeInlineSegmentHtml(descSegments)
     : renderMixedTextHtml(descText);
   const latex = normalizeUnknownText(item.latex);
   const mathResult = latex ? renderMath(latex, true) : null;
-  const descSplit = splitCanonicalTheoremDescByFormula(descTokens, latex, `${blockId}-desc`);
+  const descSplit = splitCanonicalTheoremDescByFormula(inlineDescTokens, latex, `${blockId}-desc`);
   const descLeadHtml = descSplit?.leadHtml || "";
   const descTailHtml = descSplit?.tailHtml || "";
   const mergedDescHtml = descSplit ? descLeadHtml : descHtml;
 
-  if (!title && !descText && !mathResult) {
-    return null;
+  if (!title && !descText && !mathResult && descMathImages.length === 0) {
+    return [];
   }
 
-  return {
-    id: blockId,
-    kind: "theorem",
-    title,
-    titleHtml: title ? renderPlainTextHtml(title) : "",
-    desc: descText,
-    descHtml: mergedDescHtml,
-    descLeadHtml,
-    descTailHtml,
-    formulaText: mathResult?.source || "",
-    formulaHtml: mathResult?.html || "",
-  };
+  return [
+    {
+      id: blockId,
+      kind: "theorem",
+      title,
+      titleHtml: title ? renderPlainTextHtml(title) : "",
+      desc: descText,
+      descHtml: mergedDescHtml,
+      descLeadHtml,
+      descTailHtml,
+      formulaText: mathResult?.source || "",
+      formulaHtml: mathResult?.html || "",
+      formulaImages: descMathImages,
+    },
+  ];
 }
 
 function splitCanonicalTheoremDescByFormula(
@@ -1540,23 +1672,42 @@ function normalizeMathImageBlocksInSections(sections: DetailSectionView[]): Deta
   return sections.map((section) => ({
     ...section,
     blocks: section.blocks.map((block, blockIndex) => {
-      if (block.kind !== "math_image") {
+      if (block.kind === "math_image") {
+        const normalizedNode = normalizeMathImageNode(
+          {
+            type: "math_image",
+            latex: block.latex,
+            alt: block.alt,
+            asset: block.asset,
+          },
+          `section.blocks[${blockIndex}]`,
+        );
+
+        return {
+          ...block,
+          ...normalizedNode,
+        };
+      }
+
+      if (block.kind !== "theorem" || !Array.isArray(block.formulaImages)) {
         return block;
       }
 
-      const normalizedNode = normalizeMathImageNode(
-        {
-          type: "math_image",
-          latex: block.latex,
-          alt: block.alt,
-          asset: block.asset,
-        },
-        `section.blocks[${blockIndex}]`,
+      const formulaImages = block.formulaImages.map((node, imageIndex) =>
+        normalizeMathImageNode(
+          {
+            type: "math_image",
+            latex: node.latex,
+            alt: node.alt,
+            asset: node.asset,
+          },
+          `section.blocks[${blockIndex}].formulaImages[${imageIndex}]`,
+        )
       );
 
       return {
         ...block,
-        ...normalizedNode,
+        formulaImages,
       };
     }),
   }));

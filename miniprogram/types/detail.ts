@@ -8,9 +8,12 @@ export type CanonicalSectionBlockType =
   | string;
 
 export interface CanonicalDetailToken {
-  type?: "text" | "math_inline" | string;
+  type?: "text" | "math_inline" | "math_image" | string;
   text?: string;
   latex?: string;
+  alt?: string;
+  need_image?: boolean | number | string;
+  asset?: CanonicalMathImageAsset;
   [key: string]: unknown;
 }
 

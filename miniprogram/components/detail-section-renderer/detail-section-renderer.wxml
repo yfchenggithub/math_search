@@ -88,7 +88,45 @@
           <view wx:elif="{{block.desc && !block.descTailHtml && !block.descLeadHtml}}" class="theorem-desc">
             {{block.desc}}
           </view>
-          <view wx:if="{{block.formulaHtml}}" class="formula-card inner formula-card--align-{{block.formulaAlign || 'center'}}">
+          <view wx:if="{{block.formulaImages && block.formulaImages.length}}" class="theorem-math-image-list">
+            <view
+              wx:for="{{block.formulaImages}}"
+              wx:key="__path"
+              wx:for-item="formulaImage"
+              class="math-image-block theorem-math-image-block"
+            >
+              <scroll-view
+                scroll-x
+                enhanced="{{true}}"
+                show-scrollbar="{{false}}"
+                class="math-image-scroll"
+              >
+                <image
+                  wx:if="{{formulaImage.imageUrl && !formulaImage.imageLoadFailed}}"
+                  class="math-image"
+                  src="{{formulaImage.imageUrl}}"
+                  mode="widthFix"
+                  lazy-load="{{true}}"
+                  style="width: {{formulaImage.displayWidth || 280}}px;"
+                  data-node-path="{{formulaImage.__path}}"
+                  data-url="{{formulaImage.imageUrl}}"
+                  binderror="onMathImageError"
+                />
+              </scroll-view>
+
+              <view
+                wx:if="{{!formulaImage.imageUrl || formulaImage.imageLoadFailed}}"
+                class="math-image-fallback"
+              >
+                <text class="math-image-fallback-title">公式图片暂时无法显示</text>
+                <text wx:if="{{formulaImage.alt}}" class="math-image-fallback-alt">
+                  {{formulaImage.alt}}
+                </text>
+              </view>
+            </view>
+          </view>
+
+          <view wx:elif="{{block.formulaHtml}}" class="formula-card inner formula-card--align-{{block.formulaAlign || 'center'}}">
             <scroll-view scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
               <view class="formula-track">
                 <rich-text class="formula-rich" nodes="{{block.formulaHtml}}"></rich-text>
