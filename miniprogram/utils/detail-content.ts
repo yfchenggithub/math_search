@@ -758,9 +758,7 @@ function buildCanonicalTheoremBlock(
   const descHtml = descSegments.length > 0
     ? composeInlineSegmentHtml(descSegments)
     : renderMixedTextHtml(descText);
-  const latex =
-    normalizeUnknownText(item.formula_latex)
-    || normalizeUnknownText(item.latex);
+  const latex = normalizeUnknownText(item.latex);
   const mathResult = latex ? renderMath(latex, true) : null;
   const descSplit = splitCanonicalTheoremDescByFormula(descTokens, latex, `${blockId}-desc`);
   const descLeadHtml = descSplit?.leadHtml || "";

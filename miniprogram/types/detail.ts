@@ -18,7 +18,6 @@ export interface CanonicalTheoremItem {
   title?: string;
   desc?: string;
   desc_tokens?: CanonicalDetailToken[];
-  formula_latex?: string;
   latex?: string;
   [key: string]: unknown;
 }
