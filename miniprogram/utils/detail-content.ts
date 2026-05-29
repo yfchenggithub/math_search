@@ -30,6 +30,7 @@ import {
   renderMixedTextHtml,
   renderPlainTextHtml,
 } from "./math-render";
+import { buildAbsoluteApiUrl } from "./api-url";
 import { DETAIL_API_CONFIG } from "../config/api";
 import type {
   CanonicalMathImageAsset,
@@ -1623,7 +1624,8 @@ function normalizeUnknownPositiveNumber(value: unknown): number | undefined {
 }
 
 function getMathImageUrl(node: MathImageNode): string {
-  return normalizeText(node.asset?.png) || normalizeText(node.asset?.webp) || "";
+  const selectedPath = normalizeText(node.asset?.png) || normalizeText(node.asset?.webp) || "";
+  return buildAbsoluteApiUrl(selectedPath);
 }
 
 function getMathImageDisplayWidth(node: MathImageNode): number {
