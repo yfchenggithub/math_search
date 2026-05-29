@@ -50,6 +50,14 @@ export interface CanonicalMathImageAsset {
   [key: string]: unknown;
 }
 
+export interface CanonicalPrimaryFormula {
+  latex?: string;
+  need_image?: boolean;
+  asset?: CanonicalMathImageAsset;
+  alt?: string;
+  [key: string]: unknown;
+}
+
 export interface CanonicalMathImageBlock {
   id?: string;
   type?: "math_image";
@@ -108,7 +116,7 @@ export interface CanonicalDetailPlain {
 
 export interface CanonicalDetailContent {
   render_schema_version?: number;
-  primary_formula?: string;
+  primary_formula?: string | CanonicalPrimaryFormula;
   variables?: CanonicalDetailVariable[];
   conditions?: CanonicalConditionLikeItem[];
   conclusions?: CanonicalConditionLikeItem[];

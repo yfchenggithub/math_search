@@ -1,6 +1,7 @@
 ﻿
 import type {
   DetailDocumentView,
+  MathImageNode,
   DetailSectionView,
 } from "../../utils/detail-content";
 import { FEATURE_FLAGS } from "../../config/feature-flags";
@@ -146,6 +147,7 @@ Page({
     showFavoriteStatus: false,
     favoriteStatusText: "",
     coreFormulaHtml: "",
+    coreFormulaImage: null as MathImageNode | null,
     sections: [] as DetailSectionView[],
     pdfUrl: "",
     pdfFilename: "",
@@ -246,6 +248,7 @@ Page({
       const hasContent = Boolean(
         detail.title ||
         detail.summary ||
+        detail.coreFormulaImage ||
         detail.coreFormulaHtml ||
         (Array.isArray(detail.sections) && detail.sections.length > 0),
       );
@@ -292,6 +295,7 @@ Page({
         showFavoriteStatus: detail.showFavoriteStatus,
         favoriteStatusText: detail.favoriteStatusText,
         coreFormulaHtml: detail.coreFormulaHtml,
+        coreFormulaImage: detail.coreFormulaImage || null,
         sections: detail.sections,
         pdfUrl: detail.pdfUrl,
         pdfFilename: detail.pdfFilename,
@@ -374,6 +378,7 @@ Page({
       showFavoriteStatus: false,
       favoriteStatusText: "",
       coreFormulaHtml: "",
+      coreFormulaImage: null,
       sections: [],
       pdfUrl: "",
       pdfFilename: "",
@@ -414,6 +419,7 @@ Page({
       showFavoriteStatus: false,
       favoriteStatusText: "",
       coreFormulaHtml: "",
+      coreFormulaImage: null,
       sections: [],
       pdfUrl: "",
       pdfFilename: "",
@@ -442,6 +448,18 @@ Page({
 
     void this.loadDetail({
       id: this.currentDetailId,
+    });
+  },
+
+  onCoreFormulaImageError(e: WechatMiniprogram.BaseEvent) {
+    const imageUrl = String(e.currentTarget.dataset.url || "").trim();
+
+    console.warn("[detail] core formula image load unavailable", {
+      url: imageUrl,
+    });
+
+    this.setData({
+      "coreFormulaImage.imageLoadFailed": true,
     });
   },
 

@@ -92,8 +92,38 @@
               </view>
             </view>
 
-            <view wx:if="{{coreFormulaHtml}}" class="hero-formula">
-              <scroll-view scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
+            <view wx:if="{{coreFormulaImage || coreFormulaHtml}}" class="hero-formula">
+              <view wx:if="{{coreFormulaImage}}" class="math-image-block hero-math-image-block">
+                <scroll-view
+                  scroll-x
+                  enhanced="{{true}}"
+                  show-scrollbar="{{false}}"
+                  class="math-image-scroll"
+                >
+                  <image
+                    wx:if="{{coreFormulaImage.imageUrl && !coreFormulaImage.imageLoadFailed}}"
+                    class="math-image"
+                    src="{{coreFormulaImage.imageUrl}}"
+                    mode="widthFix"
+                    lazy-load="{{true}}"
+                    style="width: {{coreFormulaImage.displayWidth || 280}}px;"
+                    data-url="{{coreFormulaImage.imageUrl}}"
+                    binderror="onCoreFormulaImageError"
+                  />
+                </scroll-view>
+
+                <view
+                  wx:if="{{!coreFormulaImage.imageUrl || coreFormulaImage.imageLoadFailed}}"
+                  class="math-image-fallback"
+                >
+                  <text class="math-image-fallback-title">公式图片暂时无法显示</text>
+                  <text wx:if="{{coreFormulaImage.alt}}" class="math-image-fallback-alt">
+                    {{coreFormulaImage.alt}}
+                  </text>
+                </view>
+              </view>
+
+              <scroll-view wx:else scroll-x="{{!zoomActive}}" class="formula-scroll" enhanced="{{true}}">
                 <view class="formula-track">
                   <rich-text class="formula-rich" nodes="{{coreFormulaHtml}}"></rich-text>
                 </view>

@@ -35,6 +35,7 @@ import { DETAIL_API_CONFIG } from "../config/api";
 import type {
   CanonicalMathImageAsset,
   CanonicalMathImageBlock,
+  CanonicalPrimaryFormula,
   CanonicalConclusionDetail,
   CanonicalDetailBlock,
   CanonicalDetailPlain,
@@ -137,6 +138,14 @@ type RawStructuredSection = {
   items?: Array<string | RawStructuredItem>;
 };
 
+type RawPrimaryFormula = {
+  latex?: string;
+  need_image?: boolean | number | string;
+  asset?: DetailMathImageAsset;
+  alt?: string;
+  [key: string]: unknown;
+};
+
 type RawDetailVariable =
   | string
   | {
@@ -200,6 +209,7 @@ type RawDetailEntry = {
   summary?: string;
   coreSummary?: string;
   coreFormula?: string;
+  primary_formula?: string | RawPrimaryFormula;
   pdfUrl?: string;
   pdfFilename?: string;
   pdfAvailable?: boolean;
@@ -289,6 +299,7 @@ export interface DetailDocumentView {
   favoriteStatusText: string;
   coreFormula: string;
   coreFormulaHtml: string;
+  coreFormulaImage?: MathImageNode;
   pdfUrl: string;
   pdfFilename: string;
   pdfAvailable: boolean;
@@ -344,7 +355,9 @@ export function getDetailDocument(id: string): DetailDocumentView | null {
   }
 
   const viewModel = buildDetailViewModel(rawEntry, id);
-  const coreFormula = getPreferredFormula(rawEntry, viewModel.sections);
+  const primaryFormula = resolvePrimaryFormula(rawEntry.primary_formula);
+  const coreFormula = primaryFormula.latex || getPreferredFormula(rawEntry, viewModel.sections);
+  const coreFormulaImage = primaryFormula.image;
   const coreFormulaHtml = coreFormula ? renderMath(coreFormula, true).html : "";
 
   return {
@@ -362,6 +375,7 @@ export function getDetailDocument(id: string): DetailDocumentView | null {
     favoriteStatusText: viewModel.favoriteStatusText,
     coreFormula,
     coreFormulaHtml,
+    coreFormulaImage,
     pdfUrl: viewModel.pdfUrl,
     pdfFilename: viewModel.pdfFilename,
     pdfAvailable: viewModel.pdfAvailable,
@@ -419,9 +433,9 @@ function buildCanonicalDetailDocument(
   );
   const summary = getCanonicalSummary(detail, sections);
   const metadata = buildCanonicalDetailMetadata(detail);
-  const coreFormula =
-    normalizeText(detail.content?.primary_formula)
-    || getFirstFormulaFromSections(sections);
+  const primaryFormula = resolvePrimaryFormula(detail.content?.primary_formula);
+  const coreFormula = primaryFormula.latex || getFirstFormulaFromSections(sections);
+  const coreFormulaImage = primaryFormula.image;
   const coreFormulaHtml = coreFormula ? renderMath(coreFormula, true).html : "";
   const pdfUrl = normalizeCanonicalPdfUrl(detail);
   const pdfFilename = normalizeCanonicalPdfFilename(detail, pdfUrl);
@@ -444,6 +458,7 @@ function buildCanonicalDetailDocument(
     favoriteStatusText: metadata.favoriteStatusText,
     coreFormula,
     coreFormulaHtml,
+    coreFormulaImage,
     pdfUrl,
     pdfFilename,
     pdfAvailable,
@@ -3413,6 +3428,7 @@ function hasRichDetailFields(rawEntry: RawDetailEntry): boolean {
   return Boolean(
     rawEntry.core_summary
       || rawEntry.core_formula
+      || rawEntry.primary_formula
       || rawEntry.explanation
       || rawEntry.proof
       || rawEntry.examples
@@ -3457,8 +3473,80 @@ function getPreferredFormula(rawEntry: RawDetailEntry, sections: DetailSectionVi
   return (
     normalizeText(rawEntry.core_formula)
     || normalizeText(rawEntry.coreFormula)
+    || extractPrimaryFormulaLatex(rawEntry.primary_formula)
     || getFirstFormulaFromSections(sections)
   );
+}
+
+type PrimaryFormulaResolved = {
+  latex: string;
+  image?: MathImageNode;
+};
+
+function resolvePrimaryFormula(
+  primaryFormula: RawPrimaryFormula | CanonicalPrimaryFormula | string | unknown,
+): PrimaryFormulaResolved {
+  if (typeof primaryFormula === "string") {
+    return {
+      latex: normalizeText(primaryFormula),
+    };
+  }
+
+  if (!primaryFormula || typeof primaryFormula !== "object" || Array.isArray(primaryFormula)) {
+    return {
+      latex: "",
+    };
+  }
+
+  const rawFormula = primaryFormula as {
+    latex?: unknown;
+    need_image?: unknown;
+    asset?: unknown;
+    alt?: unknown;
+  };
+  const latex = normalizeUnknownText(rawFormula.latex);
+
+  if (!isNeedImageEnabled(rawFormula.need_image)) {
+    return {
+      latex,
+    };
+  }
+
+  return {
+    latex,
+    image: normalizeMathImageNode(
+      {
+        type: "math_image",
+        latex,
+        alt: normalizeUnknownText(rawFormula.alt),
+        asset: normalizeMathImageAsset(rawFormula.asset),
+      },
+      "coreFormulaImage",
+    ),
+  };
+}
+
+function extractPrimaryFormulaLatex(
+  primaryFormula: RawPrimaryFormula | CanonicalPrimaryFormula | string | unknown,
+): string {
+  return resolvePrimaryFormula(primaryFormula).latex;
+}
+
+function isNeedImageEnabled(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value === 1;
+  }
+
+  if (typeof value === "string") {
+    const normalized = normalizeText(value).toLowerCase();
+    return normalized === "1" || normalized === "true";
+  }
+
+  return false;
 }
 
 function getStatementSource(rawEntry: RawDetailEntry | null): string {
