@@ -52,6 +52,7 @@ export interface CanonicalMathImageAsset {
 
 export interface CanonicalPrimaryFormula {
   latex?: string;
+  type?: "math_image" | string;
   need_image?: boolean;
   asset?: CanonicalMathImageAsset;
   alt?: string;

@@ -140,6 +140,7 @@ type RawStructuredSection = {
 
 type RawPrimaryFormula = {
   latex?: string;
+  type?: string;
   need_image?: boolean | number | string;
   asset?: DetailMathImageAsset;
   alt?: string;
@@ -3500,13 +3501,14 @@ function resolvePrimaryFormula(
 
   const rawFormula = primaryFormula as {
     latex?: unknown;
+    type?: unknown;
     need_image?: unknown;
     asset?: unknown;
     alt?: unknown;
   };
   const latex = normalizeUnknownText(rawFormula.latex);
 
-  if (!isNeedImageEnabled(rawFormula.need_image)) {
+  if (!isPrimaryFormulaMathImageType(rawFormula.type)) {
     return {
       latex,
     };
@@ -3532,21 +3534,8 @@ function extractPrimaryFormulaLatex(
   return resolvePrimaryFormula(primaryFormula).latex;
 }
 
-function isNeedImageEnabled(value: unknown): boolean {
-  if (typeof value === "boolean") {
-    return value;
-  }
-
-  if (typeof value === "number") {
-    return value === 1;
-  }
-
-  if (typeof value === "string") {
-    const normalized = normalizeText(value).toLowerCase();
-    return normalized === "1" || normalized === "true";
-  }
-
-  return false;
+function isPrimaryFormulaMathImageType(value: unknown): boolean {
+  return normalizeUnknownText(value) === "math_image";
 }
 
 function getStatementSource(rawEntry: RawDetailEntry | null): string {
