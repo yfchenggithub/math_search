@@ -1,0 +1,67 @@
+<view class="page">
+  <navigation-bar
+    title="{{copy.title}}"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+    bind:back="handleBackTap"
+  >
+    <button
+      wx:if="{{hasData}}"
+      slot="right"
+      class="nav-share-btn"
+      bindtap="handleClearTap"
+    >
+      清空
+    </button>
+  </navigation-bar>
+
+  <view class="header">
+    <view class="title">{{copy.title}}</view>
+    <view class="sub">{{copy.subtitle}}</view>
+  </view>
+
+  <scroll-view scroll-y class="list">
+    <view wx:if="{{isLoading}}" class="state-box state-loading">
+      加载中...
+    </view>
+
+    <block wx:elif="{{hasData}}">
+      <view class="recommend-section">
+        <block wx:for="{{recentBrowseList}}" wx:key="id">
+          <view
+            class="recommend-card"
+            bindtap="handleDetailTap"
+            data-id="{{item.id}}"
+          >
+            <view class="recommend-card-title">{{item.title}}</view>
+            <view class="recommend-card-summary">{{item.summary}}</view>
+
+            <view wx:if="{{item.tags.length > 0}}" class="recommend-tags">
+              <text
+                class="recommend-tag"
+                wx:for="{{item.tags}}"
+                wx:key="index"
+                wx:for-item="tag"
+              >
+                {{tag}}
+              </text>
+            </view>
+
+            <view class="recommend-footer">
+              <view class="recommend-link">查看详情</view>
+            </view>
+          </view>
+        </block>
+      </view>
+    </block>
+
+    <view wx:else class="empty-state">
+      <view class="empty-title">{{copy.emptyTitle}}</view>
+      <view class="empty-subtitle">{{copy.emptySubtitle}}</view>
+      <button class="detail-btn empty-home-btn" bindtap="handleGoHomeTap">
+        返回首页
+      </button>
+    </view>
+  </scroll-view>
+</view>

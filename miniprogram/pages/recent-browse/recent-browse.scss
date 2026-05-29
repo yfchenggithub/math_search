@@ -1,0 +1,23 @@
+@import "../search/search.scss";
+
+.list {
+  padding-top: 0;
+}
+
+.recommend-section {
+  margin-bottom: 0;
+}
+
+.empty-home-btn {
+  margin-top: 22rpx;
+  min-width: 240rpx;
+  height: 68rpx;
+  line-height: 68rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-home-btn::after {
+  border: 0;
+}

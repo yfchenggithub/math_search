@@ -352,6 +352,10 @@ Page({
         id,
         title: String(detail.title || "").trim(),
         module: String(detail.category || "").trim(),
+        summary: String(detail.summary || "").trim(),
+        tags: Array.isArray(detail.tags)
+          ? detail.tags.map((tag) => String(tag || "").trim()).filter((tag) => Boolean(tag))
+          : [],
       });
     } catch (error) {
       detailPageLogger.warn("recent_browse_record_failed", {

@@ -10,6 +10,8 @@ export type RecentBrowseItem = {
   id: string;
   title: string;
   module: string;
+  summary: string;
+  tags: string[];
   viewedAt: number;
 };
 
@@ -17,6 +19,8 @@ type RecentBrowseInput = {
   id: string;
   title?: string;
   module?: string;
+  summary?: string;
+  tags?: string[];
 };
 
 const SEARCH_HISTORY_STORAGE_KEY = STORAGE_KEYS.SEARCH_HISTORY;
@@ -31,6 +35,31 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function toTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeStringList(value: unknown, limit = 6): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const normalized: string[] = [];
+  const seen: Record<string, true> = {};
+
+  for (let index = 0; index < value.length; index += 1) {
+    const text = toTrimmedString(value[index]);
+    if (!text || seen[text]) {
+      continue;
+    }
+
+    seen[text] = true;
+    normalized.push(text);
+
+    if (normalized.length >= limit) {
+      break;
+    }
+  }
+
+  return normalized;
 }
 
 function toTimestamp(value: unknown, fallback: number): number {
@@ -109,13 +138,37 @@ function normalizeSearchHistory(raw: unknown): SearchHistoryItem[] {
   return normalized.slice(0, MAX_SEARCH_HISTORY_COUNT);
 }
 
+function mergeRecentBrowseItem(
+  current: RecentBrowseItem | undefined,
+  incoming: RecentBrowseItem,
+): RecentBrowseItem {
+  if (!current) {
+    return incoming;
+  }
+
+  if (incoming.viewedAt > current.viewedAt) {
+    return incoming;
+  }
+
+  if (incoming.viewedAt < current.viewedAt) {
+    return current;
+  }
+
+  return {
+    ...current,
+    title: current.title || incoming.title,
+    module: current.module || incoming.module,
+    summary: current.summary || incoming.summary,
+    tags: current.tags.length > 0 ? current.tags : incoming.tags,
+  };
+}
+
 function normalizeRecentBrowse(raw: unknown): RecentBrowseItem[] {
   if (!Array.isArray(raw)) {
     return [];
   }
 
-  const normalized: RecentBrowseItem[] = [];
-  const seenId: Record<string, true> = {};
+  const byId: Record<string, RecentBrowseItem> = {};
 
   for (let index = 0; index < raw.length; index += 1) {
     const candidate = raw[index];
@@ -124,19 +177,23 @@ function normalizeRecentBrowse(raw: unknown): RecentBrowseItem[] {
     }
 
     const id = toTrimmedString(candidate.id);
-    if (!id || seenId[id]) {
+    if (!id) {
       continue;
     }
-    seenId[id] = true;
 
-    normalized.push({
+    const incoming: RecentBrowseItem = {
       id,
       title: toTrimmedString(candidate.title),
       module: toTrimmedString(candidate.module),
+      summary: toTrimmedString(candidate.summary),
+      tags: normalizeStringList(candidate.tags),
       viewedAt: toTimestamp(candidate.viewedAt, Date.now() - index),
-    });
+    };
+
+    byId[id] = mergeRecentBrowseItem(byId[id], incoming);
   }
 
+  const normalized = Object.keys(byId).map((id) => byId[id]);
   normalized.sort((left, right) => right.viewedAt - left.viewedAt);
   return normalized.slice(0, MAX_RECENT_BROWSE_COUNT);
 }
@@ -202,6 +259,8 @@ export function recordRecentBrowse(input: RecentBrowseInput): RecentBrowseItem[]
     id,
     title: toTrimmedString(input.title),
     module: toTrimmedString(input.module),
+    summary: toTrimmedString(input.summary),
+    tags: normalizeStringList(input.tags),
     viewedAt: Date.now(),
   };
   const next: RecentBrowseItem[] = [
@@ -232,4 +291,3 @@ export function clearRecentBrowse(): void {
     throw error;
   }
 }
-

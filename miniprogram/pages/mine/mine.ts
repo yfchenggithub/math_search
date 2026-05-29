@@ -848,9 +848,14 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
   },
 
   handleHistoryTap() {
-    wx.showToast({
-      title: "最近浏览页待接入",
-      icon: "none",
+    wx.navigateTo({
+      url: "/pages/recent-browse/recent-browse",
+      fail: () => {
+        wx.showToast({
+          title: "最近浏览页打开失败",
+          icon: "none",
+        });
+      },
     });
   },
 
