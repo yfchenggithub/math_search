@@ -106,7 +106,7 @@
                     src="{{coreFormulaImage.imageUrl}}"
                     mode="widthFix"
                     lazy-load="{{true}}"
-                    style="width: {{coreFormulaImage.displayWidth || 280}}px;"
+                    style="width: {{coreFormulaImage.displayWidth}}px;"
                     data-url="{{coreFormulaImage.imageUrl}}"
                     binderror="onCoreFormulaImageError"
                   />

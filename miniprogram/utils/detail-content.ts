@@ -1685,6 +1685,9 @@ function normalizeUnknownText(value: unknown): string {
 // - Keep disabled by default.
 // - Temporarily set to true only when validating math_image rendering in develop env.
 const ENABLE_DEV_MATH_IMAGE_NODE = false;
+const MATH_IMAGE_DIRECT_MIN_WIDTH_PX = 16;
+const MATH_IMAGE_DERIVED_MIN_WIDTH_PX = 80;
+const MATH_IMAGE_DEFAULT_WIDTH_PX = 280;
 const DEV_DEMO_MATH_IMAGE_NODE: MathImageNode = {
   type: "math_image",
   latex:
@@ -1896,7 +1899,9 @@ function getMathImageDisplayWidth(node: MathImageNode): number {
   const directWidth = asset?.display_width_px;
 
   if (typeof directWidth === "number" && directWidth > 0) {
-    return Math.max(80, Math.round(directWidth));
+    // Canonical display_width_px is editorial output. Respect it to avoid
+    // over-scaling narrow formulas like "2/3" into oversized display blocks.
+    return Math.max(MATH_IMAGE_DIRECT_MIN_WIDTH_PX, Math.round(directWidth));
   }
 
   if (
@@ -1904,10 +1909,10 @@ function getMathImageDisplayWidth(node: MathImageNode): number {
     && typeof asset?.scale === "number"
     && asset.scale > 0
   ) {
-    return Math.max(80, Math.round(asset.width_px / asset.scale));
+    return Math.max(MATH_IMAGE_DERIVED_MIN_WIDTH_PX, Math.round(asset.width_px / asset.scale));
   }
 
-  return 280;
+  return MATH_IMAGE_DEFAULT_WIDTH_PX;
 }
 
 /**
