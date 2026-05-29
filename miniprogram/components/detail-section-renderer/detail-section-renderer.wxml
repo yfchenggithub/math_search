@@ -80,7 +80,47 @@
           <view wx:elif="{{block.title}}" class="theorem-title">
             {{block.title}}
           </view>
-          <view wx:if="{{block.descLeadHtml || block.descHtml}}" class="theorem-desc">
+
+          <block wx:if="{{block.descParts && block.descParts.length}}">
+            <block wx:for="{{block.descParts}}" wx:key="index" wx:for-item="part">
+              <view wx:if="{{part.kind === 'html'}}" class="theorem-desc">
+                <view class="rich-copy">
+                  <rich-text nodes="{{part.html}}"></rich-text>
+                </view>
+              </view>
+
+              <view wx:if="{{part.kind === 'math_image' && part.image}}" class="math-image-block theorem-math-image-block">
+                <scroll-view
+                  scroll-x
+                  enhanced="{{true}}"
+                  show-scrollbar="{{false}}"
+                  class="math-image-scroll"
+                >
+                  <image
+                    wx:if="{{part.image.imageUrl && !part.image.imageLoadFailed}}"
+                    class="math-image"
+                    src="{{part.image.imageUrl}}"
+                    mode="widthFix"
+                    lazy-load="{{true}}"
+                    style="width: {{part.image.displayWidth || 280}}px;"
+                    data-node-path="{{part.image.__path}}"
+                    data-url="{{part.image.imageUrl}}"
+                    binderror="onMathImageError"
+                  />
+                </scroll-view>
+
+                <view
+                  wx:if="{{!part.image.imageUrl || part.image.imageLoadFailed}}"
+                  class="math-image-fallback"
+                >
+                  <text class="math-image-fallback-title">公式图片暂时无法显示</text>
+                  <text wx:if="{{part.image.alt}}" class="math-image-fallback-alt">{{part.image.alt}}</text>
+                </view>
+              </view>
+            </block>
+          </block>
+
+          <view wx:elif="{{block.descLeadHtml || block.descHtml}}" class="theorem-desc">
             <view class="rich-copy">
               <rich-text nodes="{{block.descLeadHtml || block.descHtml}}"></rich-text>
             </view>
