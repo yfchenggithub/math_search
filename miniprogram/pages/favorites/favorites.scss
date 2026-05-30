@@ -124,11 +124,7 @@ page {
 }
 
 .favorites-list-section {
-  border-radius: var(--favorites-card-radius);
-  padding: 24rpx;
-  background: #ffffff;
-  border: 1rpx solid #eceff4;
-  box-shadow: var(--favorites-card-shadow);
+  padding: 2rpx 0 0;
 }
 
 .favorites-list-section__title {
@@ -138,11 +134,6 @@ page {
   font-weight: 500;
 }
 
-.favorites-list-section__placeholder {
-  margin-top: 14rpx;
-  font-size: 28rpx;
-  line-height: 1.5;
-  color: var(--favorites-primary-text);
-  font-weight: 500;
+.favorites-list-section__list {
+  margin-top: 12rpx;
 }
-

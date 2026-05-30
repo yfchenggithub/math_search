@@ -172,17 +172,20 @@ type SearchTabTapEvent = {
   };
 };
 
+type SearchDetailTapPayload = {
+  id?: string;
+  entry?: string;
+  section?: string;
+  title?: string;
+  module?: string;
+  hasPdf?: string | boolean;
+};
+
 type SearchDetailTapEvent = {
-  currentTarget: {
-    dataset: {
-      id?: string;
-      entry?: string;
-      section?: string;
-      title?: string;
-      module?: string;
-      hasPdf?: string | boolean;
-    };
+  currentTarget?: {
+    dataset?: SearchDetailTapPayload;
   };
+  detail?: SearchDetailTapPayload;
 };
 
 type ExecuteSearchOptions = {
@@ -471,7 +474,9 @@ Page({
   },
 
   onDetailTap(e: SearchDetailTapEvent) {
-    const id = String(e.currentTarget.dataset.id || "");
+    const detail = e.detail || {};
+    const dataset = e.currentTarget?.dataset || {};
+    const id = String(detail.id || dataset.id || "");
     if (!id) {
       wx.showToast({
         title: HOME_RECOMMEND_COPY.unavailableToast,
@@ -480,11 +485,11 @@ Page({
       return;
     }
 
-    const entry = String(e.currentTarget.dataset.entry || "search_result");
-    const section = String(e.currentTarget.dataset.section || "");
-    const title = String(e.currentTarget.dataset.title || "");
-    const module = String(e.currentTarget.dataset.module || "");
-    const hasPdfRaw = e.currentTarget.dataset.hasPdf;
+    const entry = String(detail.entry || dataset.entry || "search_result");
+    const section = String(detail.section || dataset.section || "");
+    const title = String(detail.title || dataset.title || "");
+    const module = String(detail.module || dataset.module || "");
+    const hasPdfRaw = detail.hasPdf ?? dataset.hasPdf;
     const hasPdf = hasPdfRaw === true || hasPdfRaw === "true";
 
     if (entry === "recommend_card" || entry === "no_result_recommend_card") {

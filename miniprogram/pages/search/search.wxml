@@ -100,34 +100,17 @@
             </view>
 
             <block wx:for="{{section.items}}" wx:key="id" wx:for-item="recommend">
-              <view
-                class="recommend-card"
-                bindtap="onDetailTap"
-                data-id="{{recommend.id}}"
-                data-entry="recommend_card"
-                data-section="{{section.key}}"
-                data-title="{{recommend.title}}"
-                data-module="{{recommend.module}}"
-                data-has-pdf="{{recommend.hasPdf}}"
-              >
-                <view class="recommend-card-title">{{recommend.title}}</view>
-                <view class="recommend-card-summary">{{recommend.summary}}</view>
-
-                <view wx:if="{{recommend.tags.length > 0}}" class="recommend-tags">
-                  <text
-                    class="recommend-tag"
-                    wx:for="{{recommend.tags}}"
-                    wx:key="index"
-                    wx:for-item="tag"
-                  >
-                    {{tag}}
-                  </text>
-                </view>
-
-                <view class="recommend-footer">
-                  <view class="recommend-link">查看详情</view>
-                </view>
-              </view>
+              <conclusion-card
+                item-id="{{recommend.id}}"
+                title="{{recommend.title}}"
+                summary="{{recommend.summary}}"
+                tags="{{recommend.tags}}"
+                entry="recommend_card"
+                section="{{section.key}}"
+                module="{{recommend.module}}"
+                has-pdf="{{recommend.hasPdf}}"
+                bind:cardtap="onDetailTap"
+              ></conclusion-card>
             </block>
           </view>
         </block>
@@ -148,22 +131,19 @@
       <view class="no-result-recommend-title">你可以试试这些内容</view>
 
       <block wx:for="{{noResultRecommendItems}}" wx:key="id" wx:for-item="recommend">
-        <view
-          class="recommend-card recommend-card-compact"
-          bindtap="onDetailTap"
-          data-id="{{recommend.id}}"
-          data-entry="no_result_recommend_card"
-          data-section="no_result"
-          data-title="{{recommend.title}}"
-          data-module="{{recommend.module}}"
-          data-has-pdf="{{recommend.hasPdf}}"
-        >
-          <view class="recommend-card-title">{{recommend.title}}</view>
-          <view class="recommend-card-summary">{{recommend.summary}}</view>
-          <view class="recommend-footer">
-            <view class="recommend-link">查看详情</view>
-          </view>
-        </view>
+        <conclusion-card
+          item-id="{{recommend.id}}"
+          title="{{recommend.title}}"
+          summary="{{recommend.summary}}"
+          tags="{{recommend.tags}}"
+          compact="{{true}}"
+          show-tags="{{false}}"
+          entry="no_result_recommend_card"
+          section="no_result"
+          module="{{recommend.module}}"
+          has-pdf="{{recommend.hasPdf}}"
+          bind:cardtap="onDetailTap"
+        ></conclusion-card>
       </block>
     </view>
 

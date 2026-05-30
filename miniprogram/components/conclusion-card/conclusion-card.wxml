@@ -1,0 +1,25 @@
+<view
+  class="conclusion-card {{compact ? 'conclusion-card--compact' : ''}}"
+  bindtap="onCardTap"
+>
+  <view class="conclusion-card__title">{{title}}</view>
+  <view class="conclusion-card__summary">{{summary}}</view>
+
+  <view wx:if="{{showTags && tags.length > 0}}" class="conclusion-card__tags">
+    <text
+      wx:for="{{tags}}"
+      wx:key="index"
+      wx:for-item="tag"
+      class="conclusion-card__tag"
+    >
+      {{tag}}
+    </text>
+  </view>
+
+  <view class="conclusion-card__footer">
+    <view class="conclusion-card__action" catchtap="onActionTap">
+      {{actionText}}
+    </view>
+  </view>
+</view>
+

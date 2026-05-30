@@ -31,29 +31,14 @@
     <block wx:elif="{{hasData}}">
       <view class="recommend-section">
         <block wx:for="{{recentBrowseList}}" wx:key="id">
-          <view
-            class="recommend-card"
-            bindtap="handleDetailTap"
-            data-id="{{item.id}}"
-          >
-            <view class="recommend-card-title">{{item.title}}</view>
-            <view class="recommend-card-summary">{{item.summary}}</view>
-
-            <view wx:if="{{item.tags.length > 0}}" class="recommend-tags">
-              <text
-                class="recommend-tag"
-                wx:for="{{item.tags}}"
-                wx:key="index"
-                wx:for-item="tag"
-              >
-                {{tag}}
-              </text>
-            </view>
-
-            <view class="recommend-footer">
-              <view class="recommend-link">查看详情</view>
-            </view>
-          </view>
+          <conclusion-card
+            item-id="{{item.id}}"
+            title="{{item.title}}"
+            summary="{{item.summary}}"
+            tags="{{item.tags}}"
+            entry="recent_browse_card"
+            bind:cardtap="handleDetailTap"
+          ></conclusion-card>
         </block>
       </view>
     </block>

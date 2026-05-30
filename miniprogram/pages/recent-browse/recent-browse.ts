@@ -18,10 +18,13 @@ type RecentBrowseCardItem = {
 };
 
 type DetailTapEvent = {
-  currentTarget: {
-    dataset: {
+  currentTarget?: {
+    dataset?: {
       id?: string;
     };
+  };
+  detail?: {
+    id?: string;
   };
 };
 
@@ -277,7 +280,9 @@ Page<RecentBrowsePageData, WechatMiniprogram.IAnyObject>({
   },
 
   handleDetailTap(event: DetailTapEvent) {
-    const id = toTrimmedString(event.currentTarget.dataset.id);
+    const id = toTrimmedString(
+      event.detail?.id || event.currentTarget?.dataset?.id,
+    );
     if (!id) {
       return;
     }
