@@ -6,6 +6,7 @@
     "pages/runtime-log-detail/runtime-log-detail",
     "pages/detail/detail",
     "pages/mine/mine",
+    "pages/favorites/favorites",
     "pages/settings/settings",
     "pages/recent-browse/recent-browse"
   ],

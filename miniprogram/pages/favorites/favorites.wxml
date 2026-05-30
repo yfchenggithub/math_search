@@ -1,0 +1,36 @@
+<view class="favorites-page">
+  <navigation-bar
+    title="我的收藏"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="favorites-page__container">
+    <view class="favorites-overview-card">
+      <view class="favorites-overview-card__left">
+        <text class="favorites-overview-card__label">已收藏</text>
+        <view class="favorites-overview-card__count-row">
+          <text class="favorites-overview-card__count">{{favoriteCount}}</text>
+          <text class="favorites-overview-card__unit">条</text>
+        </view>
+      </view>
+
+      <button
+        class="favorites-overview-card__export-btn"
+        bindtap="handleExportAllPdfTap"
+      >
+        <view class="favorites-overview-card__export-icon"></view>
+        <text class="favorites-overview-card__export-text">导出全部 PDF</text>
+      </button>
+    </view>
+
+    <view class="favorites-list-section">
+      <view class="favorites-list-section__title">收藏列表</view>
+      <view class="favorites-list-section__placeholder">
+        收藏列表将在下一阶段接入
+      </view>
+    </view>
+  </view>
+</view>
+

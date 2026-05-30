@@ -813,10 +813,15 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     }, "mine_page");
   },
 
-  async handleBatchExportTap() {
-    wx.showToast({
-      title: "收藏页重设计中",
-      icon: "none",
+  handleFavoritesTap() {
+    wx.navigateTo({
+      url: "/pages/favorites/favorites",
+      fail: () => {
+        wx.showToast({
+          title: "收藏页打开失败",
+          icon: "none",
+        });
+      },
     });
   },
 
