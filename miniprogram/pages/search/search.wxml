@@ -34,7 +34,6 @@
       </view>
     </view>
 
-    <view class="search-hint">{{homeCopy.searchPlaceholder}}</view>
   </view>
 
   <view wx:if="{{query && suggestions.length > 0}}" class="suggest-box">
