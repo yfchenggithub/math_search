@@ -7,29 +7,40 @@
   ></navigation-bar>
 
   <view class="favorites-page__container">
-    <view class="favorites-overview-card">
-      <view class="favorites-overview-card__left">
-        <text class="favorites-overview-card__label">已收藏</text>
-        <view class="favorites-overview-card__count-row">
-          <text class="favorites-overview-card__count">
-            {{(pageStatus === 'ready' || pageStatus === 'empty') ? favoriteCount : '--'}}
-          </text>
-          <text
-            wx:if="{{pageStatus === 'ready' || pageStatus === 'empty'}}"
-            class="favorites-overview-card__unit"
-          >
-            条
-          </text>
-        </view>
+    <view class="favorites-handout-card">
+      <view class="favorites-handout-card__header">
+        <text class="favorites-handout-card__title">收藏讲义</text>
+        <text class="favorites-handout-card__badge">整理为 1 份 PDF</text>
       </view>
 
-      <button
-        class="favorites-overview-card__export-btn"
-        bindtap="handleExportAllPdfTap"
-      >
-        <view class="favorites-overview-card__export-icon"></view>
-        <text class="favorites-overview-card__export-text">导出全部 PDF</text>
-      </button>
+      <text class="favorites-handout-card__desc">
+        将当前收藏内容整理为一份 PDF，方便打印和分享
+      </text>
+
+      <view class="favorites-handout-card__footer">
+        <view class="favorites-handout-card__count-block">
+          <text class="favorites-handout-card__count-label">已收藏</text>
+          <view class="favorites-handout-card__count-row">
+            <text class="favorites-handout-card__count">{{favoriteCount}}</text>
+            <text class="favorites-handout-card__unit">条</text>
+          </view>
+        </view>
+
+        <button
+          class="favorites-handout-card__action {{(favoriteCount <= 0 || pageStatus === 'loading' || pageStatus === 'guest' || isGeneratingHandout) ? 'favorites-handout-card__action--disabled' : ''}}"
+          bindtap="handleGenerateFavoriteHandoutTap"
+          loading="{{isGeneratingHandout}}"
+          disabled="{{isGeneratingHandout}}"
+        >
+          <view
+            wx:if="{{!isGeneratingHandout}}"
+            class="favorites-handout-card__action-icon"
+          ></view>
+          <text class="favorites-handout-card__action-text">
+            {{isGeneratingHandout ? '正在生成讲义…' : '生成收藏讲义'}}
+          </text>
+        </button>
+      </view>
     </view>
 
     <view class="favorites-list-section">
@@ -84,4 +95,3 @@
     </view>
   </view>
 </view>
-

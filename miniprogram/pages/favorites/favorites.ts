@@ -1,4 +1,6 @@
 import {
+  createFavoriteHandout,
+  downloadFavoriteHandoutPdf,
   getFavoritesList,
   type FavoriteRecord,
 } from "../../services/api/favorites-api";
@@ -30,6 +32,7 @@ type FavoritesPageData = {
   pageStatus: FavoritesPageStatus;
   favoriteCount: number;
   favoriteItems: FavoriteConclusionItem[];
+  isGeneratingHandout: boolean;
 };
 
 type FavoriteCardTapEvent = {
@@ -59,6 +62,21 @@ const FAVORITES_PREFETCH_MAX_COUNT = 20;
 const DEFAULT_TITLE = "未命名结论";
 const DEFAULT_SUMMARY = "点击查看详情";
 const SEARCH_PAGE_URL = "/pages/search/search";
+const HANDOUT_GENERATING_LOADING_TEXT = "正在整理收藏内容";
+const HANDOUT_NO_FAVORITES_MESSAGE = "收藏内容后即可生成讲义";
+const HANDOUT_STATUS_PROCESSING_MESSAGE = "讲义正在生成，请稍后重试";
+const HANDOUT_STATUS_EXPIRED_MESSAGE = "讲义已过期，请重新生成";
+const HANDOUT_STATUS_FAILED_MESSAGE = "生成失败，请检查网络后重试";
+const HANDOUT_NO_DATA_MESSAGE = "当前没有可生成讲义的收藏内容";
+const HANDOUT_SOURCE_PDF_MISSING_MESSAGE = "部分收藏内容暂无 PDF，暂时无法生成讲义";
+const HANDOUT_TOO_FREQUENT_MESSAGE = "操作过于频繁，请稍后再试";
+const HANDOUT_UNKNOWN_ERROR_MESSAGE = "生成失败，请检查网络后重试";
+const HANDOUT_ERROR_CODE_MAP: Record<string, string> = {
+  NO_FAVORITES: HANDOUT_NO_DATA_MESSAGE,
+  HANDOUT_SOURCE_PDF_MISSING: HANDOUT_SOURCE_PDF_MISSING_MESSAGE,
+  HANDOUT_REQUEST_TOO_FREQUENT: HANDOUT_TOO_FREQUENT_MESSAGE,
+  HANDOUT_EXPIRED: HANDOUT_STATUS_EXPIRED_MESSAGE,
+};
 const MODULE_LABEL_MAP: Record<string, string> = {
   function: "函数",
   trigonometry: "三角函数",
@@ -78,6 +96,45 @@ function normalizeDisplayTag(value: unknown): string {
   }
 
   return MODULE_LABEL_MAP[text.toLowerCase()] || text;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function normalizeErrorCode(value: unknown): string {
+  return String(value || "").trim().toUpperCase();
+}
+
+function getFavoriteHandoutErrorCode(error: unknown): string {
+  if (error instanceof RequestError) {
+    const requestCode = normalizeErrorCode(error.code);
+    if (requestCode) {
+      return requestCode;
+    }
+
+    if (isPlainObject(error.data)) {
+      const payloadCode = normalizeErrorCode((error.data as Record<string, unknown>).code);
+      if (payloadCode) {
+        return payloadCode;
+      }
+
+      const nestedError = (error.data as Record<string, unknown>).error;
+      if (isPlainObject(nestedError)) {
+        return normalizeErrorCode((nestedError as Record<string, unknown>).code);
+      }
+    }
+  }
+
+  return "";
+}
+
+function getFavoriteHandoutErrorMessageByCode(code: string): string {
+  if (!code) {
+    return "";
+  }
+
+  return HANDOUT_ERROR_CODE_MAP[code] || "";
 }
 
 function appendTag(
@@ -400,6 +457,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     pageStatus: "loading",
     favoriteCount: 0,
     favoriteItems: [],
+    isGeneratingHandout: false,
   },
 
   favoritesRequestId: 0,
@@ -427,11 +485,104 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
-  handleExportAllPdfTap() {
-    wx.showToast({
-      title: "功能建设中",
-      icon: "none",
+  async handleGenerateFavoriteHandoutTap() {
+    if (this.data.isGeneratingHandout) {
+      return;
+    }
+
+    if (this.data.pageStatus === "loading" || this.data.pageStatus === "guest") {
+      return;
+    }
+
+    if (this.data.favoriteCount <= 0) {
+      wx.showToast({
+        title: HANDOUT_NO_FAVORITES_MESSAGE,
+        icon: "none",
+      });
+      return;
+    }
+
+    this.setData({
+      isGeneratingHandout: true,
     });
+    wx.showLoading({
+      title: HANDOUT_GENERATING_LOADING_TEXT,
+      mask: true,
+    });
+
+    try {
+      const handout = await createFavoriteHandout();
+      const status = handout.status;
+      const responseErrorCode = normalizeErrorCode(handout.error?.code);
+      const responseErrorMessage = normalizeText(handout.error?.message);
+
+      if (responseErrorCode || responseErrorMessage) {
+        const mappedByCode = getFavoriteHandoutErrorMessageByCode(responseErrorCode);
+        wx.showToast({
+          title: mappedByCode || responseErrorMessage || HANDOUT_STATUS_FAILED_MESSAGE,
+          icon: "none",
+        });
+        return;
+      }
+
+      if (status === "processing") {
+        wx.showToast({
+          title: HANDOUT_STATUS_PROCESSING_MESSAGE,
+          icon: "none",
+        });
+        return;
+      }
+
+      if (status === "expired") {
+        wx.showToast({
+          title: HANDOUT_STATUS_EXPIRED_MESSAGE,
+          icon: "none",
+        });
+        return;
+      }
+
+      if (status === "failed") {
+        wx.showToast({
+          title: HANDOUT_STATUS_FAILED_MESSAGE,
+          icon: "none",
+        });
+        return;
+      }
+
+      const pdfUrl = normalizeText(handout.pdfUrl);
+      if (!pdfUrl) {
+        wx.showToast({
+          title: HANDOUT_STATUS_FAILED_MESSAGE,
+          icon: "none",
+        });
+        return;
+      }
+
+      await downloadFavoriteHandoutPdf(pdfUrl, handout.filename || undefined);
+    } catch (error) {
+      if (this.isAuthRequiredError(error)) {
+        return;
+      }
+
+      const errorCode = getFavoriteHandoutErrorCode(error);
+      const mappedMessage = getFavoriteHandoutErrorMessageByCode(errorCode);
+
+      wx.showToast({
+        title: mappedMessage || HANDOUT_UNKNOWN_ERROR_MESSAGE,
+        icon: "none",
+      });
+
+      favoritesPageLogger.warn("favorite_handout_generate_failed", {
+        code: errorCode,
+        message: getErrorMessage(error, HANDOUT_UNKNOWN_ERROR_MESSAGE),
+        statusCode: error instanceof RequestError ? error.statusCode : undefined,
+      });
+    } finally {
+      wx.hideLoading();
+      this.setData({
+        isGeneratingHandout: false,
+      });
+    }
   },
 
   handleRetryTap() {
