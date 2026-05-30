@@ -2,7 +2,14 @@ import {
   getFavoritesList,
   type FavoriteRecord,
 } from "../../services/api/favorites-api";
+import { getRecentBrowse, type RecentBrowseItem } from "../../services/history";
 import { authService } from "../../services/auth/auth-service";
+import {
+  getDetailDocument,
+  getDetailDocumentById,
+  type DetailDocumentView,
+} from "../../utils/detail-content";
+import { getSearchDocument, initSearchEngine } from "../../utils/search-engine";
 import { RequestError, getErrorMessage } from "../../utils/request";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
@@ -46,12 +53,29 @@ const favoritesPageLogger = createLogger("favorites-page");
 const FAVORITES_PAGE_SIZE = 50;
 const FAVORITES_MAX_PAGE = 20;
 const CARD_TAG_LIMIT = 3;
+const DETAIL_HYDRATE_MAX_COUNT = 12;
 const DEFAULT_TITLE = "未命名结论";
 const DEFAULT_SUMMARY = "点击查看详情";
 const SEARCH_PAGE_URL = "/pages/search/search";
+const MODULE_LABEL_MAP: Record<string, string> = {
+  function: "函数",
+  trigonometry: "三角函数",
+  inequality: "不等式",
+  conic: "圆锥曲线",
+  derivative: "导数",
+};
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeDisplayTag(value: unknown): string {
+  const text = normalizeText(value);
+  if (!text) {
+    return "";
+  }
+
+  return MODULE_LABEL_MAP[text.toLowerCase()] || text;
 }
 
 function appendTag(
@@ -60,7 +84,7 @@ function appendTag(
   rawTag: unknown,
   limit = CARD_TAG_LIMIT,
 ) {
-  const tag = normalizeText(rawTag);
+  const tag = normalizeDisplayTag(rawTag);
   if (!tag || tags.length >= limit || seen[tag]) {
     return;
   }
@@ -69,22 +93,207 @@ function appendTag(
   tags.push(tag);
 }
 
-function mapFavoriteRecordToCard(record: FavoriteRecord): FavoriteConclusionItem {
+function resolveModuleLabel(module: unknown, moduleLabel: unknown): string {
+  const normalizedLabel = normalizeDisplayTag(moduleLabel);
+  const normalizedModule = normalizeText(module).toLowerCase();
+
+  if (normalizedLabel && !MODULE_LABEL_MAP[normalizedLabel.toLowerCase()]) {
+    return normalizedLabel;
+  }
+
+  if (normalizedModule && MODULE_LABEL_MAP[normalizedModule]) {
+    return MODULE_LABEL_MAP[normalizedModule];
+  }
+
+  if (normalizedLabel) {
+    return normalizedLabel;
+  }
+
+  return normalizeDisplayTag(module) || "数学";
+}
+
+function buildIdCandidates(rawId: unknown): string[] {
+  const id = normalizeText(rawId);
+  if (!id) {
+    return [];
+  }
+
+  const list: string[] = [];
+  const seen: Record<string, true> = {};
+  const push = (value: string) => {
+    const normalized = normalizeText(value);
+    if (!normalized || seen[normalized]) {
+      return;
+    }
+
+    seen[normalized] = true;
+    list.push(normalized);
+  };
+
+  push(id);
+  push(id.toUpperCase());
+  push(id.toLowerCase());
+
+  const withoutQuery = id.split("?")[0];
+  push(withoutQuery);
+  push(withoutQuery.toUpperCase());
+  push(withoutQuery.toLowerCase());
+
+  const parts = withoutQuery.split(/[/:#]/).map((part) => normalizeText(part));
+  const tail = parts.length > 0 ? parts[parts.length - 1] : "";
+  push(tail);
+  push(tail.toUpperCase());
+  push(tail.toLowerCase());
+
+  return list;
+}
+
+function resolveSearchDocumentById(rawId: unknown) {
+  const idCandidates = buildIdCandidates(rawId);
+  for (let index = 0; index < idCandidates.length; index += 1) {
+    const doc = getSearchDocument(idCandidates[index]);
+    if (doc) {
+      return doc;
+    }
+  }
+
+  return null;
+}
+
+function resolveLocalDetailById(rawId: unknown): DetailDocumentView | null {
+  const idCandidates = buildIdCandidates(rawId);
+  for (let index = 0; index < idCandidates.length; index += 1) {
+    const detail = getDetailDocument(idCandidates[index]);
+    if (detail) {
+      return detail;
+    }
+  }
+
+  return null;
+}
+
+function buildRecentBrowseLookup(list: RecentBrowseItem[]): Record<string, RecentBrowseItem> {
+  const lookup: Record<string, RecentBrowseItem> = {};
+
+  list.forEach((item) => {
+    const idCandidates = buildIdCandidates(item.id);
+    idCandidates.forEach((candidateId) => {
+      if (!lookup[candidateId]) {
+        lookup[candidateId] = item;
+      }
+    });
+  });
+
+  return lookup;
+}
+
+function resolveRecentBrowseById(
+  lookup: Record<string, RecentBrowseItem>,
+  rawId: unknown,
+): RecentBrowseItem | null {
+  const idCandidates = buildIdCandidates(rawId);
+  for (let index = 0; index < idCandidates.length; index += 1) {
+    const hit = lookup[idCandidates[index]];
+    if (hit) {
+      return hit;
+    }
+  }
+
+  return null;
+}
+
+function isLowInformationSummary(summary: string, module: string, tags: string[]): boolean {
+  const normalizedSummary = normalizeText(summary);
+  if (!normalizedSummary) {
+    return true;
+  }
+
+  const summaryLower = normalizedSummary.toLowerCase();
+  const normalizedModule = normalizeText(module).toLowerCase();
+  if (normalizedModule && summaryLower === normalizedModule) {
+    return true;
+  }
+
+  if (tags.some((tag) => normalizeText(tag).toLowerCase() === summaryLower)) {
+    return true;
+  }
+
+  return normalizedSummary.length <= 6 && !/[，。；：,.!?]/.test(normalizedSummary);
+}
+
+function pickBestSummary(summaryCandidates: string[], module: string, tags: string[]): string {
+  for (let index = 0; index < summaryCandidates.length; index += 1) {
+    const summary = normalizeText(summaryCandidates[index]);
+    if (!summary) {
+      continue;
+    }
+
+    if (!isLowInformationSummary(summary, module, tags)) {
+      return summary;
+    }
+  }
+
+  for (let index = 0; index < summaryCandidates.length; index += 1) {
+    const summary = normalizeText(summaryCandidates[index]);
+    if (summary) {
+      return summary;
+    }
+  }
+
+  return "";
+}
+
+function mapFavoriteRecordToCard(
+  record: FavoriteRecord,
+  recentBrowseLookup: Record<string, RecentBrowseItem>,
+): FavoriteConclusionItem {
   const detailId = normalizeText(record.id);
-  const module = normalizeText(record.moduleLabel || record.module) || "数学";
-  const title = normalizeText(record.title) || DEFAULT_TITLE;
+  const doc = resolveSearchDocumentById(detailId);
+  const detail = resolveLocalDetailById(detailId);
+  const recentBrowse = resolveRecentBrowseById(recentBrowseLookup, detailId);
+  const module = resolveModuleLabel(record.module, record.moduleLabel);
+  const title = normalizeText(recentBrowse?.title)
+    || normalizeText(detail?.title)
+    || normalizeText(doc?.title)
+    || normalizeText(record.title)
+    || DEFAULT_TITLE;
   const tags: string[] = [];
   const seenTags: Record<string, true> = {};
 
   appendTag(tags, seenTags, module);
+  if (Array.isArray(recentBrowse?.tags)) {
+    recentBrowse.tags.forEach((tag) => {
+      appendTag(tags, seenTags, tag);
+    });
+  }
+  if (Array.isArray(detail?.tags)) {
+    detail.tags.forEach((tag) => {
+      appendTag(tags, seenTags, tag);
+    });
+  }
   if (Array.isArray(record.tags)) {
     record.tags.forEach((tag) => {
       appendTag(tags, seenTags, tag);
     });
   }
+  if (Array.isArray(doc?.tags)) {
+    doc.tags.forEach((tag) => {
+      appendTag(tags, seenTags, tag);
+    });
+  }
+  appendTag(tags, seenTags, detail?.category);
+  appendTag(tags, seenTags, doc?.category);
 
-  const summary = normalizeText(record.summary)
-    || (tags.length > 0 ? tags.join(" / ") : DEFAULT_SUMMARY);
+  const summary = pickBestSummary(
+    [
+      normalizeText(recentBrowse?.summary),
+      normalizeText(detail?.summary),
+      normalizeText(doc?.summary),
+      normalizeText(record.summary),
+    ],
+    module,
+    tags,
+  ) || (tags.length > 0 ? tags.join(" / ") : DEFAULT_SUMMARY);
 
   return {
     id: detailId,
@@ -94,6 +303,74 @@ function mapFavoriteRecordToCard(record: FavoriteRecord): FavoriteConclusionItem
     tags,
     module,
   };
+}
+
+function isThinCardContent(item: FavoriteConclusionItem): boolean {
+  return (
+    item.tags.length <= 1
+    || isLowInformationSummary(item.summary, item.module, item.tags)
+  );
+}
+
+function mergeCardWithDetail(
+  item: FavoriteConclusionItem,
+  detail: DetailDocumentView,
+): FavoriteConclusionItem {
+  const module = normalizeText(item.module) || normalizeDisplayTag(detail.category) || "数学";
+  const tags: string[] = [];
+  const seenTags: Record<string, true> = {};
+
+  appendTag(tags, seenTags, module);
+  item.tags.forEach((tag) => {
+    appendTag(tags, seenTags, tag);
+  });
+  if (Array.isArray(detail.tags)) {
+    detail.tags.forEach((tag) => {
+      appendTag(tags, seenTags, tag);
+    });
+  }
+  appendTag(tags, seenTags, detail.category);
+
+  const title = normalizeText(detail.title) || normalizeText(item.title) || DEFAULT_TITLE;
+  const summary = pickBestSummary(
+    [normalizeText(detail.summary), normalizeText(item.summary)],
+    module,
+    tags,
+  ) || (tags.length > 0 ? tags.join(" / ") : DEFAULT_SUMMARY);
+
+  return {
+    ...item,
+    title,
+    summary,
+    tags,
+    module,
+  };
+}
+
+function isSameCardContent(left: FavoriteConclusionItem, right: FavoriteConclusionItem): boolean {
+  if (left.id !== right.id) {
+    return false;
+  }
+
+  if (left.detailId !== right.detailId) {
+    return false;
+  }
+
+  if (left.title !== right.title || left.summary !== right.summary || left.module !== right.module) {
+    return false;
+  }
+
+  if (left.tags.length !== right.tags.length) {
+    return false;
+  }
+
+  for (let index = 0; index < left.tags.length; index += 1) {
+    if (left.tags[index] !== right.tags[index]) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function dedupeFavoriteRecords(records: FavoriteRecord[]): FavoriteRecord[] {
@@ -128,6 +405,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
 
   onLoad() {
     authService.init();
+    initSearchEngine();
     void this.refreshFavorites({
       reason: "initial",
       showLoading: true,
@@ -248,8 +526,9 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       }
 
       const uniqueRecords = dedupeFavoriteRecords(records);
+      const recentBrowseLookup = buildRecentBrowseLookup(getRecentBrowse());
       const favoriteItems = uniqueRecords.map((record) =>
-        mapFavoriteRecordToCard(record)
+        mapFavoriteRecordToCard(record, recentBrowseLookup)
       );
       const favoriteCount = favoriteItems.length;
       const pageStatus: FavoritesPageStatus = favoriteCount > 0 ? "ready" : "empty";
@@ -260,12 +539,33 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
         favoriteCount,
         favoriteItems,
       });
+
+      if (pageStatus === "ready") {
+        void this.hydrateThinFavoriteCards(requestId);
+      }
     } catch (error) {
       if (!this.isLatestFavoritesRequest(requestId)) {
         return;
       }
 
-      const nextStatus = this.isAuthRequiredError(error) ? "guest" : "error";
+      const authRequired = this.isAuthRequiredError(error);
+      const shouldKeepCurrentView = (
+        options.silentOnError
+        && !authRequired
+        && (this.data.pageStatus === "ready" || this.data.pageStatus === "empty")
+      );
+
+      if (shouldKeepCurrentView) {
+        favoritesPageLogger.warn("favorites_silent_refresh_failed", {
+          reason: options.reason,
+          message: getErrorMessage(error, "收藏刷新失败"),
+          statusCode: error instanceof RequestError ? error.statusCode : undefined,
+          code: error instanceof RequestError ? error.code : undefined,
+        });
+        return;
+      }
+
+      const nextStatus = authRequired ? "guest" : "error";
       this.hasLoadedOnce = true;
       this.setData({
         pageStatus: nextStatus,
@@ -337,6 +637,84 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     return allRecords;
   },
 
+  async hydrateThinFavoriteCards(requestId: number) {
+    if (!this.isLatestFavoritesRequest(requestId)) {
+      return;
+    }
+
+    const sourceItems = this.data.favoriteItems;
+    if (!Array.isArray(sourceItems) || sourceItems.length <= 0) {
+      return;
+    }
+
+    const targets = sourceItems
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => isThinCardContent(item))
+      .slice(0, DETAIL_HYDRATE_MAX_COUNT);
+
+    if (targets.length <= 0) {
+      return;
+    }
+
+    const nextItems = sourceItems.slice();
+    let hasChanged = false;
+
+    for (let index = 0; index < targets.length; index += 1) {
+      if (!this.isLatestFavoritesRequest(requestId)) {
+        return;
+      }
+
+      const target = targets[index];
+      const detail = await this.resolveDetailForHydration(target.item.detailId);
+      if (!detail) {
+        continue;
+      }
+
+      const mergedItem = mergeCardWithDetail(target.item, detail);
+      if (isSameCardContent(target.item, mergedItem)) {
+        continue;
+      }
+
+      nextItems[target.index] = mergedItem;
+      hasChanged = true;
+    }
+
+    if (!hasChanged || !this.isLatestFavoritesRequest(requestId)) {
+      return;
+    }
+
+    this.setData({
+      favoriteItems: nextItems,
+    });
+  },
+
+  async resolveDetailForHydration(detailId: string): Promise<DetailDocumentView | null> {
+    const idCandidates = buildIdCandidates(detailId);
+    if (idCandidates.length <= 0) {
+      return null;
+    }
+
+    for (let index = 0; index < idCandidates.length; index += 1) {
+      const localDetail = getDetailDocument(idCandidates[index]);
+      if (localDetail) {
+        return localDetail;
+      }
+    }
+
+    for (let index = 0; index < idCandidates.length; index += 1) {
+      try {
+        const remoteDetail = await getDetailDocumentById(idCandidates[index]);
+        if (remoteDetail) {
+          return remoteDetail;
+        }
+      } catch (_error) {
+        // Ignore single-item detail hydrate failure; keep list stable.
+      }
+    }
+
+    return null;
+  },
+
   isAuthRequiredError(error: unknown): boolean {
     if (!(error instanceof RequestError)) {
       return false;
@@ -362,4 +740,3 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     return requestId === this.favoritesRequestId;
   },
 });
-
