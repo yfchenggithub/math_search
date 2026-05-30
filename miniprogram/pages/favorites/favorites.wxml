@@ -12,9 +12,12 @@
         <text class="favorites-overview-card__label">已收藏</text>
         <view class="favorites-overview-card__count-row">
           <text class="favorites-overview-card__count">
-            {{favoriteCountLoaded ? favoriteCount : '--'}}
+            {{(pageStatus === 'ready' || pageStatus === 'empty') ? favoriteCount : '--'}}
           </text>
-          <text wx:if="{{favoriteCountLoaded}}" class="favorites-overview-card__unit">
+          <text
+            wx:if="{{pageStatus === 'ready' || pageStatus === 'empty'}}"
+            class="favorites-overview-card__unit"
+          >
             条
           </text>
         </view>
@@ -32,26 +35,11 @@
     <view class="favorites-list-section">
       <view class="favorites-list-section__title">收藏内容</view>
 
-      <view wx:if="{{isLoading}}" class="favorites-state-card">
+      <view wx:if="{{pageStatus === 'loading'}}" class="favorites-state-card">
         <text class="favorites-state-card__title">正在加载收藏内容...</text>
       </view>
 
-      <view wx:elif="{{loadErrorMessage}}" class="favorites-state-card">
-        <text class="favorites-state-card__title">加载失败</text>
-        <text class="favorites-state-card__desc">{{loadErrorMessage}}</text>
-        <button class="favorites-state-card__action" bindtap="handleRetryTap">
-          重试
-        </button>
-      </view>
-
-      <view wx:elif="{{isLoginRequired}}" class="favorites-state-card">
-        <text class="favorites-state-card__title">登录后可查看收藏内容</text>
-        <button class="favorites-state-card__action" bindtap="handleLoginTap">
-          去登录
-        </button>
-      </view>
-
-      <view wx:elif="{{favoriteItems.length > 0}}" class="favorites-list-section__list">
+      <view wx:elif="{{pageStatus === 'ready'}}" class="favorites-list-section__list">
         <conclusion-card
           wx:for="{{favoriteItems}}"
           wx:key="id"
@@ -66,9 +54,34 @@
         ></conclusion-card>
       </view>
 
-      <view wx:else class="favorites-state-card favorites-state-card--empty">
-        <text class="favorites-state-card__title">暂无收藏内容</text>
+      <view wx:elif="{{pageStatus === 'empty'}}" class="favorites-state-card">
+        <text class="favorites-state-card__title">还没有收藏内容</text>
+        <text class="favorites-state-card__desc">
+          遇到有价值的结论时，可以先收藏，方便以后快速查看。
+        </text>
+        <button class="favorites-state-card__action" bindtap="handleGoSearchTap">
+          去搜索结论
+        </button>
+      </view>
+
+      <view wx:elif="{{pageStatus === 'error'}}" class="favorites-state-card">
+        <text class="favorites-state-card__title">收藏内容加载失败</text>
+        <text class="favorites-state-card__desc">请检查网络后重试</text>
+        <button class="favorites-state-card__action" bindtap="handleRetryTap">
+          重新加载
+        </button>
+      </view>
+
+      <view wx:elif="{{pageStatus === 'guest'}}" class="favorites-state-card">
+        <text class="favorites-state-card__title">登录后查看收藏</text>
+        <text class="favorites-state-card__desc">
+          收藏的结论会保存在你的账号中
+        </text>
+        <button class="favorites-state-card__action" bindtap="handleLoginTap">
+          登录并查看
+        </button>
       </view>
     </view>
   </view>
 </view>
+

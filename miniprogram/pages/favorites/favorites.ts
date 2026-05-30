@@ -5,6 +5,9 @@ import {
 import { authService } from "../../services/auth/auth-service";
 import { RequestError, getErrorMessage } from "../../utils/request";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
+import { createLogger } from "../../utils/logger/logger";
+
+type FavoritesPageStatus = "loading" | "ready" | "empty" | "error" | "guest";
 
 type FavoriteConclusionItem = {
   id: string;
@@ -16,12 +19,9 @@ type FavoriteConclusionItem = {
 };
 
 type FavoritesPageData = {
+  pageStatus: FavoritesPageStatus;
   favoriteCount: number;
-  favoriteCountLoaded: boolean;
   favoriteItems: FavoriteConclusionItem[];
-  isLoading: boolean;
-  loadErrorMessage: string;
-  isLoginRequired: boolean;
 };
 
 type FavoriteCardTapEvent = {
@@ -30,16 +30,25 @@ type FavoriteCardTapEvent = {
   };
 };
 
+type RefreshFavoritesReason =
+  | "initial"
+  | "retry"
+  | "login_success"
+  | "show_refresh";
+
 type RefreshFavoritesOptions = {
-  showLoading?: boolean;
-  silentOnError?: boolean;
+  reason: RefreshFavoritesReason;
+  showLoading: boolean;
+  silentOnError: boolean;
 };
 
+const favoritesPageLogger = createLogger("favorites-page");
 const FAVORITES_PAGE_SIZE = 50;
 const FAVORITES_MAX_PAGE = 20;
 const CARD_TAG_LIMIT = 3;
 const DEFAULT_TITLE = "未命名结论";
 const DEFAULT_SUMMARY = "点击查看详情";
+const SEARCH_PAGE_URL = "/pages/search/search";
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -109,12 +118,9 @@ function dedupeFavoriteRecords(records: FavoriteRecord[]): FavoriteRecord[] {
 
 Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
   data: {
+    pageStatus: "loading",
     favoriteCount: 0,
-    favoriteCountLoaded: false,
     favoriteItems: [],
-    isLoading: true,
-    loadErrorMessage: "",
-    isLoginRequired: false,
   },
 
   favoritesRequestId: 0,
@@ -123,6 +129,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
   onLoad() {
     authService.init();
     void this.refreshFavorites({
+      reason: "initial",
       showLoading: true,
       silentOnError: false,
     });
@@ -134,6 +141,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     }
 
     void this.refreshFavorites({
+      reason: "show_refresh",
       showLoading: false,
       silentOnError: true,
     });
@@ -148,8 +156,20 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
 
   handleRetryTap() {
     void this.refreshFavorites({
+      reason: "retry",
       showLoading: true,
       silentOnError: false,
+    });
+  },
+
+  handleGoSearchTap() {
+    wx.switchTab({
+      url: SEARCH_PAGE_URL,
+      fail: () => {
+        wx.reLaunch({
+          url: SEARCH_PAGE_URL,
+        });
+      },
     });
   },
 
@@ -157,13 +177,14 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     await requireAuthAndRun(
       async () => {
         await this.refreshFavorites({
+          reason: "login_success",
           showLoading: true,
           silentOnError: false,
         });
       },
       {
         title: "请先登录",
-        content: "登录后可查看收藏内容",
+        content: "收藏的结论会保存在你的账号中",
         loginSource: "favorites",
       },
     );
@@ -199,22 +220,24 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
-  async refreshFavorites(options: RefreshFavoritesOptions = {}) {
+  async refreshFavorites(options: RefreshFavoritesOptions) {
     const requestId = this.createFavoritesRequestId();
-    const showLoading = options.showLoading === true;
-    const silentOnError = options.silentOnError === true;
 
-    if (showLoading) {
+    if (!authService.isAuthenticated()) {
+      this.hasLoadedOnce = true;
       this.setData({
-        isLoading: true,
-        loadErrorMessage: "",
-        isLoginRequired: false,
-        favoriteCountLoaded: false,
+        pageStatus: "guest",
+        favoriteCount: 0,
+        favoriteItems: [],
       });
-    } else {
+      return;
+    }
+
+    if (options.showLoading) {
       this.setData({
-        loadErrorMessage: "",
-        isLoginRequired: false,
+        pageStatus: "loading",
+        favoriteCount: 0,
+        favoriteItems: [],
       });
     }
 
@@ -229,50 +252,41 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
         mapFavoriteRecordToCard(record)
       );
       const favoriteCount = favoriteItems.length;
+      const pageStatus: FavoritesPageStatus = favoriteCount > 0 ? "ready" : "empty";
 
       this.hasLoadedOnce = true;
       this.setData({
-        favoriteItems,
+        pageStatus,
         favoriteCount,
-        favoriteCountLoaded: true,
-        isLoading: false,
-        loadErrorMessage: "",
-        isLoginRequired: false,
+        favoriteItems,
       });
     } catch (error) {
       if (!this.isLatestFavoritesRequest(requestId)) {
         return;
       }
 
-      if (this.isAuthRequiredError(error)) {
-        this.hasLoadedOnce = true;
-        this.setData({
-          favoriteItems: [],
-          favoriteCount: 0,
-          favoriteCountLoaded: true,
-          isLoading: false,
-          loadErrorMessage: "",
-          isLoginRequired: true,
-        });
-        return;
-      }
-
-      const errorMessage = getErrorMessage(error, "收藏加载失败，请稍后重试");
-      const hasCurrentData = this.data.favoriteItems.length > 0;
+      const nextStatus = this.isAuthRequiredError(error) ? "guest" : "error";
       this.hasLoadedOnce = true;
-
       this.setData({
-        isLoading: false,
-        loadErrorMessage: hasCurrentData ? "" : errorMessage,
-        isLoginRequired: false,
-        favoriteCountLoaded: hasCurrentData ? this.data.favoriteCountLoaded : false,
+        pageStatus: nextStatus,
+        favoriteCount: 0,
+        favoriteItems: [],
       });
 
-      if (!silentOnError) {
-        wx.showToast({
-          title: errorMessage,
-          icon: "none",
+      if (nextStatus === "error") {
+        favoritesPageLogger.warn("favorites_load_failed", {
+          reason: options.reason,
+          message: getErrorMessage(error, "收藏加载失败"),
+          statusCode: error instanceof RequestError ? error.statusCode : undefined,
+          code: error instanceof RequestError ? error.code : undefined,
         });
+
+        if (!options.silentOnError) {
+          wx.showToast({
+            title: "收藏加载失败",
+            icon: "none",
+          });
+        }
       }
     }
   },
@@ -295,7 +309,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
         expectedTotal = total;
       }
 
-      let nextCount = 0;
+      let addedCount = 0;
       pageList.forEach((record) => {
         const id = normalizeText(record.id);
         if (!id || seenIds[id]) {
@@ -304,7 +318,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
 
         seenIds[id] = true;
         allRecords.push(record);
-        nextCount += 1;
+        addedCount += 1;
       });
 
       if (pageList.length < FAVORITES_PAGE_SIZE) {
@@ -315,7 +329,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
         break;
       }
 
-      if (nextCount === 0) {
+      if (addedCount === 0) {
         break;
       }
     }
@@ -348,3 +362,4 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     return requestId === this.favoritesRequestId;
   },
 });
+
