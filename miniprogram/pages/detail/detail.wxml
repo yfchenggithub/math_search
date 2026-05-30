@@ -7,6 +7,9 @@
       <view class="toolbar-sub">
         <text>{{category}}</text>
         <text class="toolbar-id">ID {{id}}</text>
+        <text wx:if="{{viewState === 'content' && loadDurationLabel}}" class="toolbar-load-time">
+          加载 {{loadDurationLabel}}
+        </text>
         <text class="toolbar-scale">{{scaleLabel}}</text>
       </view>
     </view>

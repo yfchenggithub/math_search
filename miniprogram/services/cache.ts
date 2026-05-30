@@ -1,4 +1,5 @@
 import { createLogger } from "../utils/logger/logger";
+import { STORAGE_KEYS } from "../utils/storage/storage-keys";
 
 export type CacheSizeResult = {
   bytes: number;
@@ -12,9 +13,11 @@ export type ClearAppCacheResult = {
 
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
 const MATH_IMAGE_CACHE_STORAGE_KEY = "conclusion_math_image_cache_map_v1";
+const DETAIL_DOCUMENT_CACHE_STORAGE_KEY = STORAGE_KEYS.DETAIL_DOCUMENT_CACHE;
 const KNOWN_CACHE_STORAGE_KEYS = [
   PDF_CACHE_STORAGE_KEY,
   MATH_IMAGE_CACHE_STORAGE_KEY,
+  DETAIL_DOCUMENT_CACHE_STORAGE_KEY,
 ] as const;
 const cacheServiceLogger = createLogger("cache-service");
 

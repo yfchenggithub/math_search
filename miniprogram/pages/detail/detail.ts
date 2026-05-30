@@ -18,6 +18,7 @@ import {
   extractFilenameFromUrl,
 } from "../../utils/api-url";
 import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
+import { prefetchConclusionBundlesByIds } from "../../services/conclusion-prefetch";
 import type { AuthStatusToastType } from "../../services/auth/auth-types";
 import { recordRecentBrowse } from "../../services/history";
 import { getSettings } from "../../services/settings";
@@ -163,6 +164,8 @@ Page({
     sourceType: "meta",
     viewState: "idle" as "idle" | "loading" | "content" | "empty" | "error",
     viewMessage: "",
+    loadDurationMs: 0,
+    loadDurationLabel: "",
     articleScrollTop: 0,
     transformStyle: "transform: translate3d(0px, 0px, 0) scale(1);",
     zoomActive: false,
@@ -227,6 +230,7 @@ Page({
   async loadDetail(options: Record<string, string | undefined>) {
     const id = String(options.id || "").trim();
     this.currentDetailId = id;
+    const detailLoadStartedAt = Date.now();
 
     if (!id) {
       this.applyErrorState("缺少结论 ID");
@@ -237,6 +241,8 @@ Page({
       id,
       viewState: "loading",
       viewMessage: "正在加载详情...",
+      loadDurationMs: 0,
+      loadDurationLabel: "",
     });
 
     try {
@@ -260,7 +266,8 @@ Page({
         return;
       }
 
-      await this.applyDetailDocument(detail);
+      const loadDurationMs = Math.max(0, Date.now() - detailLoadStartedAt);
+      await this.applyDetailDocument(detail, loadDurationMs);
     } catch (error) {
       this.applyErrorState(getErrorMessage(error, "详情加载失败"));
     }
@@ -272,7 +279,16 @@ Page({
   },
 
   
-  async applyDetailDocument(detail: DetailDocumentView) {
+  formatLoadDurationLabel(durationMs: number): string {
+    const safeDuration = Math.max(0, Math.round(Number(durationMs) || 0));
+    if (safeDuration <= 0) {
+      return "<1ms";
+    }
+
+    return `${safeDuration}ms`;
+  },
+
+  async applyDetailDocument(detail: DetailDocumentView, loadDurationMs = 0) {
     this.resetTransform(false);
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
@@ -312,6 +328,8 @@ Page({
         sourceType: hydratedDetail.sourceType,
         viewState: "content",
         viewMessage: "",
+        loadDurationMs: Math.max(0, Math.round(Number(loadDurationMs) || 0)),
+        loadDurationLabel: this.formatLoadDurationLabel(loadDurationMs),
         articleScrollTop: 0,
         transformStyle: this.buildTransformStyle(),
         zoomActive: false,
@@ -337,6 +355,13 @@ Page({
             },
           );
         }
+
+        void prefetchConclusionBundlesByIds([hydratedDetail.id], {
+          reason: "detail_content",
+          maxCount: 1,
+          detailConcurrency: 1,
+          assetConcurrency: 2,
+        });
       },
     );
   },
@@ -711,6 +736,8 @@ Page({
       sourceType: "meta",
       viewState: "empty",
       viewMessage: message,
+      loadDurationMs: 0,
+      loadDurationLabel: "",
       articleScrollTop: 0,
       transformStyle: this.buildTransformStyle(),
       zoomActive: false,
@@ -752,6 +779,8 @@ Page({
       sourceType: "meta",
       viewState: "error",
       viewMessage: message,
+      loadDurationMs: 0,
+      loadDurationLabel: "",
       articleScrollTop: 0,
       transformStyle: this.buildTransformStyle(),
       zoomActive: false,

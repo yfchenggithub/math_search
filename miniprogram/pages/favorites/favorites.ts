@@ -4,6 +4,7 @@ import {
 } from "../../services/api/favorites-api";
 import { getRecentBrowse, type RecentBrowseItem } from "../../services/history";
 import { authService } from "../../services/auth/auth-service";
+import { prefetchConclusionBundlesByIds } from "../../services/conclusion-prefetch";
 import {
   getDetailDocument,
   getDetailDocumentById,
@@ -54,6 +55,7 @@ const FAVORITES_PAGE_SIZE = 50;
 const FAVORITES_MAX_PAGE = 20;
 const CARD_TAG_LIMIT = 3;
 const DETAIL_HYDRATE_MAX_COUNT = 12;
+const FAVORITES_PREFETCH_MAX_COUNT = 20;
 const DEFAULT_TITLE = "未命名结论";
 const DEFAULT_SUMMARY = "点击查看详情";
 const SEARCH_PAGE_URL = "/pages/search/search";
@@ -541,6 +543,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       });
 
       if (pageStatus === "ready") {
+        void this.prefetchFavoriteBundles(uniqueRecords);
         void this.hydrateThinFavoriteCards(requestId);
       }
     } catch (error) {
@@ -713,6 +716,32 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     }
 
     return null;
+  },
+
+  async prefetchFavoriteBundles(records: FavoriteRecord[]): Promise<void> {
+    if (!Array.isArray(records) || records.length <= 0) {
+      return;
+    }
+
+    const detailIds = records
+      .map((record) => normalizeText(record.id))
+      .filter((detailId) => Boolean(detailId))
+      .slice(0, FAVORITES_PREFETCH_MAX_COUNT);
+
+    if (detailIds.length <= 0) {
+      return;
+    }
+
+    try {
+      await prefetchConclusionBundlesByIds(detailIds, {
+        reason: "favorites_ready",
+        maxCount: FAVORITES_PREFETCH_MAX_COUNT,
+      });
+    } catch (error) {
+      favoritesPageLogger.warn("prefetch_favorite_bundles_failed", {
+        error,
+      });
+    }
   },
 
   isAuthRequiredError(error: unknown): boolean {

@@ -44,8 +44,13 @@ import type {
   CanonicalTheoremItem,
 } from "../types/detail";
 import { createLogger } from "./logger/logger";
+import { STORAGE_KEYS } from "./storage/storage-keys";
 
 const detailContentLogger = createLogger("detail-content");
+const DETAIL_DOCUMENT_CACHE_STORAGE_KEY = STORAGE_KEYS.DETAIL_DOCUMENT_CACHE;
+const DETAIL_DOCUMENT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DETAIL_DOCUMENT_CACHE_MAX_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+const DETAIL_DOCUMENT_CACHE_MAX_COUNT = 100;
 
 const READING_ITEM_TITLE_COLOR = "#0f172a";
 const READING_INDEX_MARKER_PATTERN = /[一二三四五六七八九十百千万两\d]+/;
@@ -317,10 +322,281 @@ export interface DetailDocumentView {
   legacyPlain?: DetailLegacyPlainView;
 }
 
+type PersistedDetailDocumentRecord = {
+  detail: DetailDocumentView;
+  updatedAt: number;
+  lastAccessAt: number;
+};
+
+type PersistedDetailDocumentMap = Record<string, PersistedDetailDocumentRecord>;
+
 let detailContentCache: RawDetailMap | null = null;
 let fetchConclusionDetailRuntime:
   | ((id: string) => Promise<CanonicalConclusionDetail>)
   | null = null;
+let persistedDetailDocumentCache: PersistedDetailDocumentMap | null = null;
+const detailDocumentRefreshTasks: Partial<Record<string, Promise<void>>> = {};
+
+type PersistedDetailDocumentRead = {
+  detail: DetailDocumentView;
+  isFresh: boolean;
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function toPositiveTimestamp(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+
+  return fallback;
+}
+
+function isDetailSourceType(value: unknown): value is DetailDocumentView["sourceType"] {
+  return value === "structured" || value === "legacy" || value === "meta" || value === "api";
+}
+
+function looksLikeDetailDocumentView(value: unknown): value is DetailDocumentView {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+
+  const candidate = value as Partial<DetailDocumentView>;
+  return Boolean(
+    typeof candidate.id === "string"
+      && candidate.id.trim().length > 0
+      && typeof candidate.title === "string"
+      && typeof candidate.category === "string"
+      && typeof candidate.summary === "string"
+      && typeof candidate.summaryHtml === "string"
+      && Array.isArray(candidate.aliases)
+      && Array.isArray(candidate.tags)
+      && typeof candidate.hasDifficulty === "boolean"
+      && typeof candidate.difficultyLabel === "string"
+      && typeof candidate.isFavorited === "boolean"
+      && typeof candidate.showFavoriteStatus === "boolean"
+      && typeof candidate.favoriteStatusText === "string"
+      && typeof candidate.coreFormula === "string"
+      && typeof candidate.coreFormulaHtml === "string"
+      && typeof candidate.pdfUrl === "string"
+      && typeof candidate.pdfFilename === "string"
+      && typeof candidate.pdfAvailable === "boolean"
+      && Array.isArray(candidate.sections)
+      && isDetailSourceType(candidate.sourceType)
+  );
+}
+
+function normalizePersistedDetailDocumentMap(raw: unknown): PersistedDetailDocumentMap {
+  if (!isPlainObject(raw)) {
+    return {};
+  }
+
+  const now = Date.now();
+  const normalized: PersistedDetailDocumentMap = {};
+  const entries = raw as Record<string, unknown>;
+
+  Object.keys(entries).forEach((rawId) => {
+    const normalizedId = normalizeText(rawId);
+    const candidate = entries[rawId];
+    let detail: DetailDocumentView | null = null;
+    let updatedAt = now;
+    let lastAccessAt = now;
+
+    if (looksLikeDetailDocumentView(candidate)) {
+      detail = candidate;
+    } else if (isPlainObject(candidate) && looksLikeDetailDocumentView(candidate.detail)) {
+      detail = candidate.detail;
+      updatedAt = toPositiveTimestamp(candidate.updatedAt, now);
+      lastAccessAt = toPositiveTimestamp(candidate.lastAccessAt, updatedAt);
+    }
+
+    if (!detail) {
+      return;
+    }
+
+    const detailId = normalizeText(detail.id) || normalizedId;
+    if (!detailId) {
+      return;
+    }
+
+    normalized[detailId] = {
+      detail,
+      updatedAt: toPositiveTimestamp(updatedAt, now),
+      lastAccessAt: toPositiveTimestamp(lastAccessAt, updatedAt),
+    };
+  });
+
+  return normalized;
+}
+
+function prunePersistedDetailDocumentCache(
+  cacheMap: PersistedDetailDocumentMap,
+  now: number = Date.now(),
+): PersistedDetailDocumentMap {
+  const validEntries = Object.keys(cacheMap)
+    .map((id) => {
+      const record = cacheMap[id];
+      if (!record || !looksLikeDetailDocumentView(record.detail)) {
+        return null;
+      }
+
+      const normalizedId = normalizeText(id) || normalizeText(record.detail.id);
+      if (!normalizedId) {
+        return null;
+      }
+
+      const updatedAt = toPositiveTimestamp(record.updatedAt, now);
+      const ageMs = now - updatedAt;
+      if (ageMs > DETAIL_DOCUMENT_CACHE_MAX_STALE_MS) {
+        return null;
+      }
+
+      const lastAccessAt = toPositiveTimestamp(record.lastAccessAt, updatedAt);
+      return {
+        id: normalizedId,
+        record: {
+          detail: record.detail,
+          updatedAt,
+          lastAccessAt,
+        },
+      };
+    })
+    .filter(
+      (
+        item,
+      ): item is { id: string; record: PersistedDetailDocumentRecord } => Boolean(item),
+    )
+    .sort((left, right) => {
+      if (right.record.lastAccessAt !== left.record.lastAccessAt) {
+        return right.record.lastAccessAt - left.record.lastAccessAt;
+      }
+
+      return right.record.updatedAt - left.record.updatedAt;
+    })
+    .slice(0, DETAIL_DOCUMENT_CACHE_MAX_COUNT);
+
+  const pruned: PersistedDetailDocumentMap = {};
+  validEntries.forEach((entry) => {
+    pruned[entry.id] = entry.record;
+  });
+  return pruned;
+}
+
+function readPersistedDetailDocumentCacheFromStorage(): PersistedDetailDocumentMap {
+  try {
+    return normalizePersistedDetailDocumentMap(
+      wx.getStorageSync(DETAIL_DOCUMENT_CACHE_STORAGE_KEY),
+    );
+  } catch (error) {
+    detailContentLogger.warn("read_detail_document_cache_failed", {
+      error,
+    });
+    return {};
+  }
+}
+
+function writePersistedDetailDocumentCacheToStorage(cacheMap: PersistedDetailDocumentMap): void {
+  try {
+    wx.setStorageSync(DETAIL_DOCUMENT_CACHE_STORAGE_KEY, cacheMap);
+  } catch (error) {
+    detailContentLogger.warn("write_detail_document_cache_failed", {
+      size: Object.keys(cacheMap).length,
+      error,
+    });
+  }
+}
+
+function getPersistedDetailDocumentCache(): PersistedDetailDocumentMap {
+  if (!persistedDetailDocumentCache) {
+    persistedDetailDocumentCache = prunePersistedDetailDocumentCache(
+      readPersistedDetailDocumentCacheFromStorage(),
+    );
+  }
+
+  return persistedDetailDocumentCache;
+}
+
+function readPersistedDetailDocument(id: string): PersistedDetailDocumentRead | null {
+  const normalizedId = normalizeText(id);
+  if (!normalizedId) {
+    return null;
+  }
+
+  const cacheMap = getPersistedDetailDocumentCache();
+  const record = cacheMap[normalizedId];
+  if (!record) {
+    return null;
+  }
+
+  const now = Date.now();
+  const updatedAt = toPositiveTimestamp(record.updatedAt, now);
+  const ageMs = now - updatedAt;
+  if (ageMs > DETAIL_DOCUMENT_CACHE_MAX_STALE_MS) {
+    delete cacheMap[normalizedId];
+    writePersistedDetailDocumentCacheToStorage(cacheMap);
+    return null;
+  }
+
+  record.lastAccessAt = now;
+  return {
+    detail: record.detail,
+    isFresh: ageMs <= DETAIL_DOCUMENT_CACHE_TTL_MS,
+  };
+}
+
+function upsertPersistedDetailDocument(detail: DetailDocumentView, updatedAt = Date.now()): void {
+  const detailId = normalizeText(detail.id);
+  if (!detailId) {
+    return;
+  }
+
+  const now = Date.now();
+  const cacheMap = getPersistedDetailDocumentCache();
+  cacheMap[detailId] = {
+    detail,
+    updatedAt: toPositiveTimestamp(updatedAt, now),
+    lastAccessAt: now,
+  };
+
+  persistedDetailDocumentCache = prunePersistedDetailDocumentCache(cacheMap, now);
+  writePersistedDetailDocumentCacheToStorage(persistedDetailDocumentCache);
+}
+
+async function fetchRemoteDetailDocumentById(id: string): Promise<DetailDocumentView> {
+  const fetchConclusionDetail = resolveDetailApiFetcher();
+  const remoteDetail = await fetchConclusionDetail(id);
+  const detailDocument = buildCanonicalDetailDocument(remoteDetail, id);
+  upsertPersistedDetailDocument(detailDocument);
+  return detailDocument;
+}
+
+function scheduleDetailDocumentBackgroundRefresh(id: string): void {
+  const normalizedId = normalizeText(id);
+  if (!normalizedId || detailDocumentRefreshTasks[normalizedId]) {
+    return;
+  }
+
+  detailDocumentRefreshTasks[normalizedId] = fetchRemoteDetailDocumentById(normalizedId)
+    .then(() => undefined)
+    .catch((error) => {
+      detailContentLogger.warn("detail_cache_background_refresh_failed", {
+        id: normalizedId,
+        error,
+      });
+    })
+    .finally(() => {
+      delete detailDocumentRefreshTasks[normalizedId];
+    });
+}
 
 function resolveDetailApiFetcher(): (id: string) => Promise<CanonicalConclusionDetail> {
   if (fetchConclusionDetailRuntime) {
@@ -407,13 +683,23 @@ export async function getDetailDocumentById(id: string): Promise<DetailDocumentV
   }
 
   if (!DETAIL_API_CONFIG.USE_REMOTE_API) {
-    return getDetailDocument(normalizedId);
+    const localDetail = getDetailDocument(normalizedId);
+    if (localDetail) {
+      upsertPersistedDetailDocument(localDetail);
+    }
+    return localDetail;
+  }
+
+  const persistedDetail = readPersistedDetailDocument(normalizedId);
+  if (persistedDetail) {
+    if (!persistedDetail.isFresh) {
+      scheduleDetailDocumentBackgroundRefresh(normalizedId);
+    }
+    return persistedDetail.detail;
   }
 
   try {
-    const fetchConclusionDetail = resolveDetailApiFetcher();
-    const remoteDetail = await fetchConclusionDetail(normalizedId);
-    return buildCanonicalDetailDocument(remoteDetail, normalizedId);
+    return await fetchRemoteDetailDocumentById(normalizedId);
   } catch (error) {
     if (!DETAIL_API_CONFIG.ENABLE_LOCAL_FALLBACK) {
       throw error;
@@ -421,6 +707,7 @@ export async function getDetailDocumentById(id: string): Promise<DetailDocumentV
 
     const localDetail = getDetailDocument(normalizedId);
     if (localDetail) {
+      upsertPersistedDetailDocument(localDetail);
       return localDetail;
     }
 
