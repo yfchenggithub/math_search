@@ -1,13 +1,16 @@
 import { FEATURE_FLAGS } from "../config/feature-flags";
-import { getSettings } from "./settings";
-import { createLogger } from "../utils/logger/logger";
+import { buildAbsoluteApiUrl } from "../utils/api-url";
 import {
   getDetailDocumentById,
   type DetailDocumentView,
   type MathImageNode,
 } from "../utils/detail-content";
-import { buildAbsoluteApiUrl } from "../utils/api-url";
-import { getPdfEntitlement, isPdfEntitlementActive } from "../utils/pdf-entitlement";
+import { createLogger } from "../utils/logger/logger";
+import {
+  getPdfEntitlement,
+  isPdfEntitlementActive,
+} from "../utils/pdf-entitlement";
+import { getSettings } from "./settings";
 
 const prefetchLogger = createLogger("conclusion-prefetch");
 
@@ -93,7 +96,10 @@ function readSavedFileCacheMap(storageKey: string): SavedFileCacheMap {
   }
 }
 
-function writeSavedFileCacheMap(storageKey: string, cacheMap: SavedFileCacheMap): void {
+function writeSavedFileCacheMap(
+  storageKey: string,
+  cacheMap: SavedFileCacheMap,
+): void {
   try {
     wx.setStorageSync(storageKey, cacheMap);
   } catch (error) {
@@ -120,7 +126,10 @@ function flushPrefetchCacheContext(context: PrefetchCacheContext): void {
   }
 
   if (context.dirtyMathImageCache) {
-    writeSavedFileCacheMap(MATH_IMAGE_CACHE_STORAGE_KEY, context.mathImageCacheMap);
+    writeSavedFileCacheMap(
+      MATH_IMAGE_CACHE_STORAGE_KEY,
+      context.mathImageCacheMap,
+    );
   }
 }
 
@@ -129,7 +138,11 @@ function isLikelyLocalFilePath(path: string): boolean {
     return false;
   }
 
-  return /^wxfile:\/\//i.test(path) || /^file:\/\//i.test(path) || /^[a-z]:\\/i.test(path);
+  return (
+    /^wxfile:\/\//i.test(path) ||
+    /^file:\/\//i.test(path) ||
+    /^[a-z]:\\/i.test(path)
+  );
 }
 
 function isHttpUrl(pathOrUrl: string): boolean {
@@ -144,7 +157,7 @@ function isSavedFilePathAvailable(savedFilePath: string): Promise<boolean> {
       return;
     }
 
-    wx.getFileInfo({
+    wx.getFileSystemManager().getFileInfo({
       filePath: normalizedPath,
       success: () => {
         resolve(true);
@@ -158,7 +171,7 @@ function isSavedFilePathAvailable(savedFilePath: string): Promise<boolean> {
 
 function saveFileFromTempPath(tempFilePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    wx.saveFile({
+    wx.getFileSystemManager().saveFile({
       tempFilePath,
       success: (res) => {
         const savedFilePath = normalizeText(res.savedFilePath);
@@ -186,9 +199,7 @@ function downloadAndSaveFile(url: string): Promise<string> {
           return;
         }
 
-        saveFileFromTempPath(res.tempFilePath)
-          .then(resolve)
-          .catch(reject);
+        saveFileFromTempPath(res.tempFilePath).then(resolve).catch(reject);
       },
       fail: (error) => {
         reject(error);
@@ -209,13 +220,15 @@ async function runWithConcurrency<T>(
   const safeConcurrency = Math.max(1, Math.floor(concurrency));
   let pointer = 0;
 
-  const runners = new Array(Math.min(safeConcurrency, list.length)).fill(0).map(async () => {
-    while (pointer < list.length) {
-      const current = pointer;
-      pointer += 1;
-      await worker(list[current], current);
-    }
-  });
+  const runners = new Array(Math.min(safeConcurrency, list.length))
+    .fill(0)
+    .map(async () => {
+      while (pointer < list.length) {
+        const current = pointer;
+        pointer += 1;
+        await worker(list[current], current);
+      }
+    });
 
   await Promise.all(runners);
 }
@@ -262,7 +275,8 @@ function pickMathImageSourceUrl(node: MathImageNode): string {
     return isHttpUrl(directUrl) ? directUrl : buildAbsoluteApiUrl(directUrl);
   }
 
-  const assetUrl = normalizeText(node.asset?.png) || normalizeText(node.asset?.webp);
+  const assetUrl =
+    normalizeText(node.asset?.png) || normalizeText(node.asset?.webp);
   if (!assetUrl) {
     return "";
   }
@@ -323,13 +337,21 @@ async function prefetchMathImagesForDetail(
   const candidates = collectMathImageNodes(detail)
     .map((node) => {
       const sourceUrl = pickMathImageSourceUrl(node);
-      const cacheKey = buildMathImageCacheKey(normalizeText(node.latex), sourceUrl);
+      const cacheKey = buildMathImageCacheKey(
+        normalizeText(node.latex),
+        sourceUrl,
+      );
       return {
         cacheKey,
         sourceUrl,
       };
     })
-    .filter((candidate) => candidate.cacheKey && candidate.sourceUrl && isHttpUrl(candidate.sourceUrl));
+    .filter(
+      (candidate) =>
+        candidate.cacheKey &&
+        candidate.sourceUrl &&
+        isHttpUrl(candidate.sourceUrl),
+    );
 
   if (candidates.length <= 0) {
     return;
@@ -346,7 +368,9 @@ async function prefetchMathImagesForDetail(
   });
 
   await runWithConcurrency(queue, assetConcurrency, async (candidate) => {
-    const cachedFilePath = normalizeText(context.mathImageCacheMap[candidate.cacheKey]);
+    const cachedFilePath = normalizeText(
+      context.mathImageCacheMap[candidate.cacheKey],
+    );
     if (cachedFilePath) {
       const available = await isSavedFilePathAvailable(cachedFilePath);
       if (available) {
@@ -459,7 +483,10 @@ export async function prefetchConclusionBundlesByIds(
   ids: string[],
   options: PrefetchConclusionsOptions = {},
 ): Promise<void> {
-  const maxCount = toPositiveInteger(options.maxCount, DEFAULT_PREFETCH_MAX_COUNT);
+  const maxCount = toPositiveInteger(
+    options.maxCount,
+    DEFAULT_PREFETCH_MAX_COUNT,
+  );
   const detailConcurrency = toPositiveInteger(
     options.detailConcurrency,
     DEFAULT_DETAIL_CONCURRENCY,
@@ -508,4 +535,3 @@ export async function prefetchConclusionBundlesByIds(
 
   flushPrefetchCacheContext(cacheContext);
 }
-

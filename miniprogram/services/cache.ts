@@ -195,7 +195,7 @@ function getSavedFileListSafe(): Promise<WechatMiniprogram.FileItem[]> {
 
 function getFileSizeSafe(filePath: string): Promise<number> {
   return new Promise((resolve) => {
-    wx.getFileInfo({
+    wx.getFileSystemManager().getFileInfo({
       filePath,
       success: (res) => {
         resolve(toNonNegativeInteger(res.size));
@@ -239,7 +239,9 @@ async function getPdfCacheFileSize(filePaths: string[]): Promise<number> {
 }
 
 function isFileNotFoundError(error: unknown): boolean {
-  const errMsg = String((error as { errMsg?: string } | undefined)?.errMsg || "").toLowerCase();
+  const errMsg = String(
+    (error as { errMsg?: string } | undefined)?.errMsg || "",
+  ).toLowerCase();
   if (!errMsg) {
     return false;
   }
@@ -294,10 +296,14 @@ export async function getCacheSize(): Promise<CacheSizeResult> {
     const mathImageCacheMapRaw = readMathImageCacheMapRaw();
     const pdfCacheMap = normalizeSavedFileCacheMap(pdfCacheMapRaw);
     const mathImageCacheMap = normalizeSavedFileCacheMap(mathImageCacheMapRaw);
-    const filePaths = getUniqueCachedFilePaths([pdfCacheMap, mathImageCacheMap]);
+    const filePaths = getUniqueCachedFilePaths([
+      pdfCacheMap,
+      mathImageCacheMap,
+    ]);
     const fileBytes = await getPdfCacheFileSize(filePaths);
     const storageBytes =
-      getStorageValueSize(pdfCacheMapRaw) + getStorageValueSize(mathImageCacheMapRaw);
+      getStorageValueSize(pdfCacheMapRaw) +
+      getStorageValueSize(mathImageCacheMapRaw);
     const totalBytes = fileBytes + storageBytes;
 
     return {
@@ -320,9 +326,14 @@ export async function clearAppCache(): Promise<ClearAppCacheResult> {
     const cacheSize = await getCacheSize();
     const pdfCacheMap = readPdfCacheMap();
     const mathImageCacheMap = readMathImageCacheMap();
-    const filePaths = getUniqueCachedFilePaths([pdfCacheMap, mathImageCacheMap]);
+    const filePaths = getUniqueCachedFilePaths([
+      pdfCacheMap,
+      mathImageCacheMap,
+    ]);
 
-    const removeResults = await Promise.all(filePaths.map((filePath) => removeSavedFileSafe(filePath)));
+    const removeResults = await Promise.all(
+      filePaths.map((filePath) => removeSavedFileSafe(filePath)),
+    );
     const removeFilesSucceeded = removeResults.every((item) => item);
     const removeStorageSucceeded = clearKnownCacheStorageKeys();
     const success = removeFilesSucceeded && removeStorageSucceeded;

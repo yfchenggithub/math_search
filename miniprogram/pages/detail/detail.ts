@@ -1,10 +1,9 @@
-﻿
-import type {
-  DetailDocumentView,
-  MathImageNode,
-  DetailSectionView,
-} from "../../utils/detail-content";
-import { FEATURE_FLAGS } from "../../config/feature-flags";
+﻿import { FEATURE_FLAGS } from "../../config/feature-flags";
+import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
+import type { AuthStatusToastType } from "../../services/auth/auth-types";
+import { prefetchConclusionBundlesByIds } from "../../services/conclusion-prefetch";
+import { recordRecentBrowse } from "../../services/history";
+import { getSettings } from "../../services/settings";
 import {
   trackDetailView,
   trackEvent,
@@ -17,12 +16,6 @@ import {
   buildAbsoluteApiUrl,
   extractFilenameFromUrl,
 } from "../../utils/api-url";
-import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
-import { prefetchConclusionBundlesByIds } from "../../services/conclusion-prefetch";
-import type { AuthStatusToastType } from "../../services/auth/auth-types";
-import { recordRecentBrowse } from "../../services/history";
-import { getSettings } from "../../services/settings";
-import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import type { AuthStatusToastState } from "../../utils/auth/auth-status-feedback";
 import {
   hideAuthStatusToast,
@@ -30,9 +23,18 @@ import {
   showAuthStatusToast,
   subscribeAuthStatusToast,
 } from "../../utils/auth/auth-status-feedback";
+import type {
+  DetailDocumentView,
+  DetailSectionView,
+  MathImageNode,
+} from "../../utils/detail-content";
 import { getDetailDocumentById } from "../../utils/detail-content";
+import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
-import { getPdfEntitlement, isPdfEntitlementActive } from "../../utils/pdf-entitlement";
+import {
+  getPdfEntitlement,
+  isPdfEntitlementActive,
+} from "../../utils/pdf-entitlement";
 import {
   resolvePdfUnlockProvider,
   unlockPdfEntitlement,
@@ -95,7 +97,11 @@ class PdfOperationError extends Error {
   stage: PdfOperationStage;
   originalError: unknown;
 
-  constructor(stage: PdfOperationStage, message: string, originalError: unknown = null) {
+  constructor(
+    stage: PdfOperationStage,
+    message: string,
+    originalError: unknown = null,
+  ) {
     super(message);
     this.name = "PdfOperationError";
     this.stage = stage;
@@ -130,7 +136,6 @@ function createIdlePdfStatus(): PdfStatusView {
     canRetry: false,
   };
 }
-
 
 Page({
   data: {
@@ -221,12 +226,10 @@ Page({
   detailViewTracked: false,
   mathImageCacheDownloadTasks: {} as Record<string, Promise<void>>,
 
-  
   raf(callback: Function) {
     return setTimeout(() => callback(), 16);
   },
 
-  
   async loadDetail(options: Record<string, string | undefined>) {
     const id = String(options.id || "").trim();
     this.currentDetailId = id;
@@ -273,12 +276,10 @@ Page({
     }
   },
 
-  
   async resolveDetailDocument(id: string): Promise<DetailDocumentView | null> {
     return getDetailDocumentById(id);
   },
 
-  
   formatLoadDurationLabel(durationMs: number): string {
     const safeDuration = Math.max(0, Math.round(Number(durationMs) || 0));
     if (safeDuration <= 0) {
@@ -385,7 +386,9 @@ Page({
         module: String(detail.category || "").trim(),
         summary: String(detail.summary || "").trim(),
         tags: Array.isArray(detail.tags)
-          ? detail.tags.map((tag) => String(tag || "").trim()).filter((tag) => Boolean(tag))
+          ? detail.tags
+              .map((tag) => String(tag || "").trim())
+              .filter((tag) => Boolean(tag))
           : [],
       });
     } catch (error) {
@@ -421,7 +424,11 @@ Page({
   getMathImageCacheMap(): Record<string, string> {
     try {
       const rawCache = wx.getStorageSync(MATH_IMAGE_CACHE_STORAGE_KEY);
-      if (!rawCache || typeof rawCache !== "object" || Array.isArray(rawCache)) {
+      if (
+        !rawCache ||
+        typeof rawCache !== "object" ||
+        Array.isArray(rawCache)
+      ) {
         return {};
       }
 
@@ -507,7 +514,7 @@ Page({
 
   saveMathImageFromTempFile(tempFilePath: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      wx.saveFile({
+      wx.getFileSystemManager().saveFile({
         tempFilePath,
         success: (res) => {
           if (!res.savedFilePath) {
@@ -530,7 +537,9 @@ Page({
         url: sourceUrl,
         success: (res) => {
           if (res.statusCode !== 200 || !res.tempFilePath) {
-            reject(new Error(`math image download failed (HTTP ${res.statusCode})`));
+            reject(
+              new Error(`math image download failed (HTTP ${res.statusCode})`),
+            );
             return;
           }
 
@@ -572,7 +581,9 @@ Page({
     this.mathImageCacheDownloadTasks[cacheKey] = downloadTask;
   },
 
-  async resolveMathImageNodeWithCache(node: MathImageNode | null): Promise<MathImageNode | null> {
+  async resolveMathImageNodeWithCache(
+    node: MathImageNode | null,
+  ): Promise<MathImageNode | null> {
     if (!node) {
       return null;
     }
@@ -613,7 +624,9 @@ Page({
     return normalizedNode;
   },
 
-  async hydrateMathImageSections(sections: DetailSectionView[]): Promise<DetailSectionView[]> {
+  async hydrateMathImageSections(
+    sections: DetailSectionView[],
+  ): Promise<DetailSectionView[]> {
     if (!Array.isArray(sections) || sections.length === 0) {
       return [];
     }
@@ -622,68 +635,74 @@ Page({
       sections.map(async (section) => {
         const blocks = Array.isArray(section.blocks)
           ? await Promise.all(
-            section.blocks.map(async (block) => {
-              if (block.kind === "math_image") {
-                const resolvedNode = await this.resolveMathImageNodeWithCache({
-                  type: "math_image",
-                  latex: block.latex,
-                  alt: block.alt,
-                  asset: block.asset,
-                  imageUrl: block.imageUrl,
-                  displayWidth: block.displayWidth,
-                  imageLoadFailed: block.imageLoadFailed,
-                  __path: block.__path,
-                });
+              section.blocks.map(async (block) => {
+                if (block.kind === "math_image") {
+                  const resolvedNode = await this.resolveMathImageNodeWithCache(
+                    {
+                      type: "math_image",
+                      latex: block.latex,
+                      alt: block.alt,
+                      asset: block.asset,
+                      imageUrl: block.imageUrl,
+                      displayWidth: block.displayWidth,
+                      imageLoadFailed: block.imageLoadFailed,
+                      __path: block.__path,
+                    },
+                  );
+
+                  return {
+                    ...block,
+                    ...(resolvedNode || {}),
+                  };
+                }
+
+                if (block.kind !== "theorem") {
+                  return block;
+                }
+
+                let descParts = block.descParts;
+                if (Array.isArray(descParts)) {
+                  descParts = await Promise.all(
+                    descParts.map(async (part) => {
+                      if (part.kind !== "math_image" || !part.image) {
+                        return part;
+                      }
+
+                      const resolvedImage =
+                        await this.resolveMathImageNodeWithCache(part.image);
+                      if (!resolvedImage) {
+                        return part;
+                      }
+
+                      return {
+                        ...part,
+                        image: resolvedImage,
+                      };
+                    }),
+                  );
+                }
+
+                let formulaImages = block.formulaImages;
+                if (Array.isArray(formulaImages)) {
+                  const resolvedFormulaImages = await Promise.all(
+                    formulaImages.map(async (formulaImage) =>
+                      this.resolveMathImageNodeWithCache(formulaImage),
+                    ),
+                  );
+
+                  formulaImages = resolvedFormulaImages.filter(
+                    (formulaImage): formulaImage is MathImageNode =>
+                      Boolean(formulaImage),
+                  );
+                }
 
                 return {
                   ...block,
-                  ...(resolvedNode || {}),
+                  descParts,
+                  formulaImages,
                 };
-              }
-
-              if (block.kind !== "theorem") {
-                return block;
-              }
-
-              let descParts = block.descParts;
-              if (Array.isArray(descParts)) {
-                descParts = await Promise.all(
-                  descParts.map(async (part) => {
-                    if (part.kind !== "math_image" || !part.image) {
-                      return part;
-                    }
-
-                    const resolvedImage = await this.resolveMathImageNodeWithCache(part.image);
-                    if (!resolvedImage) {
-                      return part;
-                    }
-
-                    return {
-                      ...part,
-                      image: resolvedImage,
-                    };
-                  }),
-                );
-              }
-
-              let formulaImages = block.formulaImages;
-              if (Array.isArray(formulaImages)) {
-                const resolvedFormulaImages = await Promise.all(
-                  formulaImages.map(async (formulaImage) => this.resolveMathImageNodeWithCache(formulaImage)),
-                );
-
-                formulaImages = resolvedFormulaImages.filter(
-                  (formulaImage): formulaImage is MathImageNode => Boolean(formulaImage),
-                );
-              }
-
-              return {
-                ...block,
-                descParts,
-                formulaImages,
-              };
-            }),
-          )
+              }),
+            )
           : [];
 
         return {
@@ -694,7 +713,9 @@ Page({
     );
   },
 
-  async hydrateMathImageCache(detail: DetailDocumentView): Promise<DetailDocumentView> {
+  async hydrateMathImageCache(
+    detail: DetailDocumentView,
+  ): Promise<DetailDocumentView> {
     const coreFormulaImage = detail.coreFormulaImage
       ? await this.resolveMathImageNodeWithCache(detail.coreFormulaImage)
       : null;
@@ -932,7 +953,6 @@ Page({
     }
   },
 
-  
   onLoad(options: Record<string, string | undefined>) {
     this.ensureShareMenu();
     this.routeSource = String(options.source || "detail").trim() || "detail";
@@ -948,7 +968,6 @@ Page({
     this.ensureShareMenu();
   },
 
-  
   onUnload() {
     clearTimeout(this.inertiaId);
     clearTimeout(this.measureTimer);
@@ -1047,17 +1066,14 @@ Page({
     }
   },
 
-  
   onReady() {
     this.scheduleMeasure();
   },
 
-  
   onRenderReady() {
     this.scheduleMeasure();
   },
 
-  
   scheduleMeasure() {
     clearTimeout(this.measureTimer);
 
@@ -1066,7 +1082,6 @@ Page({
     }, 80) as unknown as number;
   },
 
-  
   measureContent() {
     const query = wx.createSelectorQuery().in(this);
     query.select(".viewer").boundingClientRect();
@@ -1171,7 +1186,11 @@ Page({
     return new Promise((resolve, reject) => {
       wx.getNetworkType({
         success: (result) => {
-          resolve(String(result.networkType || "").trim().toLowerCase());
+          resolve(
+            String(result.networkType || "")
+              .trim()
+              .toLowerCase(),
+          );
         },
         fail: (error) => {
           reject(error);
@@ -1184,7 +1203,8 @@ Page({
     return new Promise((resolve) => {
       wx.showModal({
         title: "当前不是 Wi-Fi",
-        content: "高清文件可能消耗流量。你可以连接 Wi-Fi 后再下载，也可以继续本次下载。",
+        content:
+          "高清文件可能消耗流量。你可以连接 Wi-Fi 后再下载，也可以继续本次下载。",
         cancelText: "取消",
         confirmText: "继续下载",
         success: (result) => {
@@ -1245,9 +1265,7 @@ Page({
   },
 
   continuePdfDownloadWithExistingFlow() {
-    if (
-      !ENABLE_PDF_ENTITLEMENT_FLOW
-    ) {
+    if (!ENABLE_PDF_ENTITLEMENT_FLOW) {
       this.pendingPdfDownloadAfterUnlock = false;
       void this.openPdf();
       return;
@@ -1314,7 +1332,8 @@ Page({
         return;
       }
 
-      const shouldContinueDownload = await this.confirmNetworkForHdPdfDownload();
+      const shouldContinueDownload =
+        await this.confirmNetworkForHdPdfDownload();
       if (!shouldContinueDownload) {
         return;
       }
@@ -1588,7 +1607,8 @@ Page({
       case "success":
         nextStatus.stageLabel = nextStatus.stageLabel || "已完成";
         nextStatus.title = nextStatus.title || "PDF 已打开";
-        nextStatus.message = nextStatus.message || "你可以在阅读器中继续查看或分享。";
+        nextStatus.message =
+          nextStatus.message || "你可以在阅读器中继续查看或分享。";
         nextStatus.tone = "success";
         nextStatus.showProgress = false;
         nextStatus.canRetry = false;
@@ -1652,12 +1672,10 @@ Page({
     });
   },
 
-  
   buildFullPdfUrl(pdfUrl: string): string {
     return buildAbsoluteApiUrl(pdfUrl);
   },
 
-  
   resolvePdfFilename(): string {
     const explicitFilename = String(this.data.pdfFilename || "").trim();
     if (explicitFilename) {
@@ -1674,9 +1692,10 @@ Page({
     return DEFAULT_PDF_FILENAME;
   },
 
-  
   buildPdfCacheKey(rawPdfUrl: string): string {
-    const conclusionId = String(this.data.id || this.currentDetailId || "").trim();
+    const conclusionId = String(
+      this.data.id || this.currentDetailId || "",
+    ).trim();
     const normalizedPdfUrl = String(rawPdfUrl || "").trim();
     if (!conclusionId || !normalizedPdfUrl) {
       return "";
@@ -1711,7 +1730,11 @@ Page({
   getPdfCacheMap(): Record<string, string> {
     try {
       const rawCache = wx.getStorageSync(PDF_CACHE_STORAGE_KEY);
-      if (!rawCache || typeof rawCache !== "object" || Array.isArray(rawCache)) {
+      if (
+        !rawCache ||
+        typeof rawCache !== "object" ||
+        Array.isArray(rawCache)
+      ) {
         return {};
       }
 
@@ -1787,7 +1810,7 @@ Page({
         return;
       }
 
-      wx.getFileInfo({
+      wx.getFileSystemManager().getFileInfo({
         filePath: savedFilePath,
         success: () => {
           resolve(true);
@@ -1859,9 +1882,12 @@ Page({
     });
   },
 
-  savePdfFromTempFile(tempFilePath: string, pdfFilename: string): Promise<string> {
+  savePdfFromTempFile(
+    tempFilePath: string,
+    pdfFilename: string,
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
-      wx.saveFile({
+      wx.getFileSystemManager().saveFile({
         tempFilePath,
         success: (res) => {
           if (!res.savedFilePath) {
@@ -1946,7 +1972,10 @@ Page({
     }
 
     if (stage === "open" || stage === "cache") {
-      if (normalizedMessage.includes("no such file") || normalizedMessage.includes("not found")) {
+      if (
+        normalizedMessage.includes("no such file") ||
+        normalizedMessage.includes("not found")
+      ) {
         return {
           stageLabel: "打开失败",
           title: "本地文件已失效",
@@ -1987,7 +2016,6 @@ Page({
     };
   },
 
-  
   async openPdf() {
     if (this.data.pdfActionBusy || this.data.isDownloadingPdf) {
       return;
@@ -2019,7 +2047,9 @@ Page({
       context = resolvedContext;
       activeCacheKey = resolvedContext.cacheKey;
 
-      const cachedFilePath = await this.resolveValidCachedPdfPath(resolvedContext.cacheKey);
+      const cachedFilePath = await this.resolveValidCachedPdfPath(
+        resolvedContext.cacheKey,
+      );
       if (cachedFilePath) {
         this.setPdfStatusStage("cacheHit");
         this.setPdfStatusStage("opening", {
@@ -2090,7 +2120,8 @@ Page({
       });
       this.schedulePdfStatusDismiss();
     } catch (error) {
-      const stage = error instanceof PdfOperationError ? error.stage : "download";
+      const stage =
+        error instanceof PdfOperationError ? error.stage : "download";
 
       if ((stage === "open" || stage === "cache") && activeCacheKey) {
         this.removeCachedPdfFilePath(activeCacheKey);
@@ -2126,7 +2157,6 @@ Page({
     }
   },
 
-  
   onToggleZoom() {
     if (this.scale > 1.01) {
       this.resetTransform();
@@ -2141,19 +2171,16 @@ Page({
     });
   },
 
-  
   getTouches(e: WechatMiniprogram.TouchEvent): TouchPoint[] {
     return e.touches as unknown as TouchPoint[];
   },
 
-  
   getDistance(touches: TouchPoint[]) {
     const dx = touches[0].pageX - touches[1].pageX;
     const dy = touches[0].pageY - touches[1].pageY;
     return Math.sqrt(dx * dx + dy * dy);
   },
 
-  
   getCenter(touches: TouchPoint[]) {
     const first = this.getViewerPoint(touches[0]);
     const second = this.getViewerPoint(touches[1]);
@@ -2164,7 +2191,6 @@ Page({
     };
   },
 
-  
   getViewerPoint(point: TouchPoint) {
     return {
       x: point.pageX - this.viewerLeft,
@@ -2172,12 +2198,10 @@ Page({
     };
   },
 
-  
   getMaxScrollTop() {
     return Math.max(0, this.contentHeight - this.containerHeight);
   },
 
-  
   getRestoreScrollTop() {
     if (this.scale <= 1.01) {
       return Math.min(
@@ -2190,7 +2214,6 @@ Page({
     return Math.min(this.getMaxScrollTop(), Math.max(0, visibleTop));
   },
 
-  
   prepareZoomViewport(callback?: () => void) {
     const currentScrollTop = this.articleScrollTop;
 
@@ -2216,12 +2239,10 @@ Page({
     );
   },
 
-  
   buildTransformStyle() {
     return `transform: translate3d(${this.translateX}px, ${this.translateY}px, 0) scale(${this.scale});`;
   },
 
-  
   syncTransformState() {
     this.setData({
       transformStyle: this.buildTransformStyle(),
@@ -2230,7 +2251,6 @@ Page({
     });
   },
 
-  
   calcBounds() {
     const scaledWidth = this.contentWidth * this.scale;
     const scaledHeight = this.contentHeight * this.scale;
@@ -2266,7 +2286,6 @@ Page({
     };
   },
 
-  
   applyResistance(value: number, min: number, max: number) {
     if (value >= min && value <= max) {
       return value;
@@ -2279,7 +2298,6 @@ Page({
     return max + (value - max) * 0.35;
   },
 
-  
   rebound() {
     const bounds = this.calcBounds();
     const targetX = Math.min(
@@ -2331,7 +2349,6 @@ Page({
     animate();
   },
 
-  
   zoomTo(targetScale: number, centerX: number, centerY: number) {
     const clampedScale = Math.max(
       this.minScale,
@@ -2347,12 +2364,10 @@ Page({
     this.rebound();
   },
 
-  
   stopInertia() {
     clearTimeout(this.inertiaId);
   },
 
-  
   onArticleScroll(e: WechatMiniprogram.ScrollViewScroll) {
     if (this.scale > 1.01) {
       return;
@@ -2361,7 +2376,6 @@ Page({
     this.articleScrollTop = Number(e.detail.scrollTop || 0);
   },
 
-  
   startInertia() {
     if (this.scale <= 1.01) {
       return;
@@ -2398,7 +2412,6 @@ Page({
     step();
   },
 
-  
   handleDoubleTap(e: WechatMiniprogram.TouchEvent) {
     const now = Date.now();
 
@@ -2417,7 +2430,6 @@ Page({
     this.lastTapTime = now;
   },
 
-  
   onTouchStart(e: WechatMiniprogram.TouchEvent) {
     this.stopInertia();
     this.handleDoubleTap(e);
@@ -2445,7 +2457,6 @@ Page({
     }
   },
 
-  
   onTouchMove(e: WechatMiniprogram.TouchEvent) {
     const touches = this.getTouches(e);
 
@@ -2500,7 +2511,6 @@ Page({
     });
   },
 
-  
   onTouchEnd() {
     this.lastScale = this.scale;
     this.lastTranslateX = this.translateX;
@@ -2519,7 +2529,6 @@ Page({
     }
   },
 
-  
   resetTransform(syncData = true) {
     const restoreScrollTop = syncData ? this.getRestoreScrollTop() : 0;
 
@@ -2543,5 +2552,3 @@ Page({
     }
   },
 });
-
-
