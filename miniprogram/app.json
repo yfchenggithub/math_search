@@ -7,7 +7,6 @@
     "pages/detail/detail",
     "pages/mine/mine",
     "pages/settings/settings",
-    "pages/favorites/favorites",
     "pages/recent-browse/recent-browse"
   ],
   "tabBar": {

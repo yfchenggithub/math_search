@@ -769,23 +769,6 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
-  async handleFavoritesTap() {
-    await requireAuthAndRun(
-      () => new Promise<void>((resolve, reject) => {
-        wx.navigateTo({
-          url: "/pages/favorites/favorites",
-          success: () => resolve(),
-          fail: (error) => reject(error),
-        });
-      }),
-      {
-        title: "请先登录",
-        content: "登录后可查看和管理收藏列表",
-        loginSource: "favorites",
-      },
-    );
-  },
-
   async runProtectedAction(
     reason: string,
     action: () => Promise<void> | void,
@@ -831,11 +814,10 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
   },
 
   async handleBatchExportTap() {
-    await this.runProtectedAction("登录后可批量导出收藏 PDF", () => {
-      wx.navigateTo({
-        url: "/pages/favorites/favorites?mode=export",
-      });
-    }, "favorites");
+    wx.showToast({
+      title: "收藏页重设计中",
+      icon: "none",
+    });
   },
 
   async handleRewardAdTap() {
