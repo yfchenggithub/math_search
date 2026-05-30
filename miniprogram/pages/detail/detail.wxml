@@ -6,11 +6,11 @@
       <view class="toolbar-title">{{title}}</view>
       <view class="toolbar-sub">
         <text>{{category}}</text>
-        <text class="toolbar-id">ID {{id}}</text>
-        <text wx:if="{{viewState === 'content' && loadDurationLabel}}" class="toolbar-load-time">
-          加载 {{loadDurationLabel}}
-        </text>
-        <text class="toolbar-scale">{{scaleLabel}}</text>
+        <view class="toolbar-chip toolbar-id">ID {{id}}</view>
+        <view wx:if="{{viewState === 'content' && loadDurationLabel}}" class="toolbar-chip toolbar-load-time">
+          {{loadDurationLabel}}
+        </view>
+        <view class="toolbar-chip toolbar-scale">{{scaleLabel}}</view>
       </view>
     </view>
 

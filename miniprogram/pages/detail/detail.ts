@@ -285,6 +285,12 @@ Page({
       return "<1ms";
     }
 
+    if (safeDuration >= 1000) {
+      const seconds = safeDuration / 1000;
+      const precision = seconds >= 10 ? 0 : 1;
+      return `${seconds.toFixed(precision)}s`;
+    }
+
     return `${safeDuration}ms`;
   },
 
