@@ -11,8 +11,12 @@
       <view class="favorites-overview-card__left">
         <text class="favorites-overview-card__label">已收藏</text>
         <view class="favorites-overview-card__count-row">
-          <text class="favorites-overview-card__count">{{favoriteCount}}</text>
-          <text class="favorites-overview-card__unit">条</text>
+          <text class="favorites-overview-card__count">
+            {{favoriteCountLoaded ? favoriteCount : '--'}}
+          </text>
+          <text wx:if="{{favoriteCountLoaded}}" class="favorites-overview-card__unit">
+            条
+          </text>
         </view>
       </view>
 
@@ -27,7 +31,27 @@
 
     <view class="favorites-list-section">
       <view class="favorites-list-section__title">收藏内容</view>
-      <view class="favorites-list-section__list">
+
+      <view wx:if="{{isLoading}}" class="favorites-state-card">
+        <text class="favorites-state-card__title">正在加载收藏内容...</text>
+      </view>
+
+      <view wx:elif="{{loadErrorMessage}}" class="favorites-state-card">
+        <text class="favorites-state-card__title">加载失败</text>
+        <text class="favorites-state-card__desc">{{loadErrorMessage}}</text>
+        <button class="favorites-state-card__action" bindtap="handleRetryTap">
+          重试
+        </button>
+      </view>
+
+      <view wx:elif="{{isLoginRequired}}" class="favorites-state-card">
+        <text class="favorites-state-card__title">登录后可查看收藏内容</text>
+        <button class="favorites-state-card__action" bindtap="handleLoginTap">
+          去登录
+        </button>
+      </view>
+
+      <view wx:elif="{{favoriteItems.length > 0}}" class="favorites-list-section__list">
         <conclusion-card
           wx:for="{{favoriteItems}}"
           wx:key="id"
@@ -40,6 +64,10 @@
           section="favorites"
           bind:cardtap="handleFavoriteCardTap"
         ></conclusion-card>
+      </view>
+
+      <view wx:else class="favorites-state-card favorites-state-card--empty">
+        <text class="favorites-state-card__title">暂无收藏内容</text>
       </view>
     </view>
   </view>

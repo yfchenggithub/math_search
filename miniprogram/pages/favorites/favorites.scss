@@ -137,3 +137,52 @@ page {
 .favorites-list-section__list {
   margin-top: 12rpx;
 }
+
+.favorites-state-card {
+  margin-top: 12rpx;
+  padding: 26rpx 22rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  border: 1rpx solid #eceff4;
+  box-shadow: var(--favorites-card-shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+  text-align: center;
+}
+
+.favorites-state-card__title {
+  font-size: 27rpx;
+  line-height: 1.45;
+  color: var(--favorites-primary-text);
+  font-weight: 500;
+}
+
+.favorites-state-card__desc {
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: var(--favorites-muted-text);
+}
+
+.favorites-state-card__action {
+  margin: 4rpx 0 0;
+  min-width: 156rpx;
+  height: 62rpx;
+  line-height: 62rpx;
+  border-radius: 999rpx;
+  background: #111827;
+  color: #ffffff;
+  font-size: 23rpx;
+  font-weight: 600;
+  padding: 0 24rpx;
+}
+
+.favorites-state-card__action::after {
+  border: none;
+}
+
+.favorites-state-card--empty .favorites-state-card__title {
+  color: var(--favorites-muted-text);
+  font-weight: 450;
+}
