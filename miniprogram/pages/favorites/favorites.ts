@@ -44,10 +44,31 @@ const MODULE_LABEL_MAP: Record<string, string> = {
   set: "集合",
   conic: "圆锥曲线",
   vector: "向量",
-  trigonometry: "三角",
+  trigonometry: "三角函数",
   probability: "概率统计",
-  geometry: "立体几何",
+  geometry: "几何",
+  plane_geometry: "平面几何",
+  solid_geometry: "立体几何",
+  derivative: "导数",
 };
+
+const DEFAULT_MODULE_LABEL = "其他";
+const CHINESE_TEXT_PATTERN = /[一-龥]/;
+
+function resolveModuleLabel(module: string, rawModuleLabel: string): string {
+  const normalizedModule = String(module || "").trim().toLowerCase();
+  const mappedLabel = MODULE_LABEL_MAP[normalizedModule];
+  if (mappedLabel) {
+    return mappedLabel;
+  }
+
+  const normalizedRawLabel = String(rawModuleLabel || "").trim();
+  if (normalizedRawLabel && CHINESE_TEXT_PATTERN.test(normalizedRawLabel)) {
+    return normalizedRawLabel;
+  }
+
+  return DEFAULT_MODULE_LABEL;
+}
 
 function formatDateTime(input: string): string {
   if (!input) {
@@ -69,13 +90,18 @@ function formatDateTime(input: string): string {
 }
 
 function normalizeFavorite(item: FavoriteRecord): FavoriteItem {
-  const module = String(item.module || "").trim() || "function";
+  const module = String(item.module || "").trim().toLowerCase() || "function";
+
   return {
     ...item,
     module,
-    moduleLabel: item.moduleLabel || MODULE_LABEL_MAP[module] || module,
+    moduleLabel: resolveModuleLabel(module, item.moduleLabel),
     title: String(item.title || "").trim() || "未命名结论",
-    tags: Array.isArray(item.tags) ? item.tags.filter(Boolean) : [],
+    tags: Array.isArray(item.tags)
+      ? item.tags
+        .map((tag) => String(tag || "").trim())
+        .filter((tag) => Boolean(tag))
+      : [],
     summary: String(item.summary || "").trim(),
     favoritedAt: formatDateTime(String(item.favoritedAt || "")),
     pdfAvailable: Boolean(item.pdfAvailable),
@@ -377,6 +403,14 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     );
   },
 
+  handleFavoriteCardTap(event: WechatMiniprogram.BaseEvent) {
+    if (this.data.isManaging) {
+      return;
+    }
+
+    this.handleFavoriteDetailTap(event);
+  },
+
   handleFavoriteDetailTap(event: WechatMiniprogram.BaseEvent) {
     const id = String(event.currentTarget.dataset.id || "");
     if (!id) {
@@ -391,55 +425,6 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
           icon: "none",
         });
       },
-    });
-  },
-
-  handleViewTap(event: WechatMiniprogram.BaseEvent) {
-    this.handleFavoriteDetailTap(event);
-  },
-
-  handlePdfTap(event: WechatMiniprogram.BaseEvent) {
-    const id = String(event.currentTarget.dataset.id || "");
-    const current = this.data.favoriteList.find((item) => item.id === id);
-
-    if (!current) {
-      return;
-    }
-
-    if (!current.pdfAvailable) {
-      wx.showToast({
-        title: "该结论暂未提供 PDF",
-        icon: "none",
-      });
-      return;
-    }
-
-    wx.navigateTo({
-      url: `/pages/detail/detail?id=${id}&openPdf=1`,
-      fail: () => {
-        wx.showToast({
-          title: "PDF 打开失败",
-          icon: "none",
-        });
-      },
-    });
-  },
-
-  handleShareTap(event: WechatMiniprogram.BaseEvent) {
-    const id = String(event.currentTarget.dataset.id || "");
-    const current = this.data.favoriteList.find((item) => item.id === id);
-    if (!current) {
-      return;
-    }
-
-    wx.showShareMenu({
-      withShareTicket: true,
-      menus: ["shareAppMessage", "shareTimeline"],
-    });
-
-    wx.showToast({
-      title: `可分享：${current.title}`,
-      icon: "none",
     });
   },
 
