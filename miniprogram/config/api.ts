@@ -77,3 +77,8 @@ export const DETAIL_API_CONFIG = {
   ENABLE_LOCAL_FALLBACK: true,
   DETAIL_PATH_PREFIX: "/api/v1/conclusions",
 } as const;
+
+export const CONCLUSION_REQUEST_API_CONFIG = {
+  SUBMIT_PATH: "/api/v1/conclusion-requests",
+  ADMIN_LIST_PATH: "/api/v1/admin/conclusion-requests",
+} as const;

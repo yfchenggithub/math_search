@@ -920,6 +920,20 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
+  handleConclusionRequestAdminTap() {
+    profileLogger.info("click_conclusion_request_admin");
+
+    wx.navigateTo({
+      url: "/pages/conclusion-request-admin/conclusion-request-admin",
+      fail: () => {
+        wx.showToast({
+          title: "求结论管理页打开失败",
+          icon: "none",
+        });
+      },
+    });
+  },
+
   handleSettingsTap() {
     profileLogger.info("click_settings");
 

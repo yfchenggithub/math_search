@@ -3,6 +3,10 @@ import { FEATURE_FLAGS } from "../../config/feature-flags";
 import { addSearchHistory } from "../../services/history";
 import { getSettings } from "../../services/settings";
 import {
+  submitConclusionRequest,
+  type SubmitConclusionRequestPayload,
+} from "../../services/api/conclusion-requests-api";
+import {
   trackEvent,
   trackPageView,
   trackSearch,
@@ -79,6 +83,7 @@ const CONCLUSION_REQUEST_NOTE_MAX_LENGTH = 100;
 const CONCLUSION_REQUEST_COPY = {
   emptyToast: "先写下你想找的结论",
   submitSuccessToast: "已收到，这条结论已进入更新清单。",
+  submitFailedToast: "提交失败，请稍后再试",
 } as const;
 
 type QuickFilter = {
@@ -459,7 +464,7 @@ Page({
     });
   },
 
-  onConclusionRequestSubmit() {
+  async onConclusionRequestSubmit() {
     if (this.data.conclusionRequestSubmitting) {
       return;
     }
@@ -492,7 +497,7 @@ Page({
 
     trackEvent(
       "conclusion_request_submit",
-      payload,
+      { ...payload },
       {
         dedupeKey: `conclusion_request_submit:${query}:${note}`,
         dedupeMs: 1500,
@@ -500,21 +505,52 @@ Page({
     );
     searchPageLogger.info("conclusion_request_submit", payload);
 
-    this.setData({
-      conclusionRequestDialogVisible: false,
-      conclusionRequestNote: "",
-      conclusionRequestNoteLength: 0,
-      conclusionRequestSubmitting: false,
-      conclusionRequestQueryFocus: false,
-      conclusionRequestNoteFocus: false,
-      conclusionRequestEntry: "",
-    });
+    try {
+      const result = await submitConclusionRequest(payload);
 
-    wx.showToast({
-      title: CONCLUSION_REQUEST_COPY.submitSuccessToast,
-      icon: "none",
-      duration: 2200,
-    });
+      trackEvent("conclusion_request_submit_success", {
+        source: "home",
+        page: "home",
+        entry: payload.entry,
+        request_id: result.id,
+        status: result.status,
+      });
+
+      this.setData({
+        conclusionRequestDialogVisible: false,
+        conclusionRequestNote: "",
+        conclusionRequestNoteLength: 0,
+        conclusionRequestSubmitting: false,
+        conclusionRequestQueryFocus: false,
+        conclusionRequestNoteFocus: false,
+        conclusionRequestEntry: "",
+      });
+
+      wx.showToast({
+        title: CONCLUSION_REQUEST_COPY.submitSuccessToast,
+        icon: "none",
+        duration: 2200,
+      });
+    } catch (error) {
+      searchPageLogger.warn("conclusion_request_submit_failed", {
+        payload,
+        error,
+      });
+      trackEvent("conclusion_request_submit_fail", {
+        source: "home",
+        page: "home",
+        entry: payload.entry,
+        query: payload.query,
+        error,
+      });
+      this.setData({
+        conclusionRequestSubmitting: false,
+      });
+      wx.showToast({
+        title: getErrorMessage(error, CONCLUSION_REQUEST_COPY.submitFailedToast),
+        icon: "none",
+      });
+    }
   },
 
   onSuggestionTap(e: SearchTextTapEvent) {
@@ -949,7 +985,7 @@ Page({
   buildConclusionRequestPayload(
     query: string,
     note: string,
-  ): Record<string, string | number | boolean> {
+  ): SubmitConclusionRequestPayload {
     const resultCount = this.getCurrentResultCount();
 
     return {
