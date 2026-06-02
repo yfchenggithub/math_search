@@ -263,7 +263,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     }
 
     wx.showToast({
-      title: showRuntimeLogEntry ? "已显示运行日志" : "已隐藏运行日志",
+      title: showRuntimeLogEntry ? "已显示开发工具" : "已隐藏开发工具",
       icon: "none",
     });
   },
@@ -914,6 +914,20 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
       fail: () => {
         wx.showToast({
           title: "日志页打开失败",
+          icon: "none",
+        });
+      },
+    });
+  },
+
+  handleUserManagementTap() {
+    profileLogger.info("click_user_management");
+
+    wx.navigateTo({
+      url: "/pages/user-management/user-management",
+      fail: () => {
+        wx.showToast({
+          title: "用户管理页打开失败",
           icon: "none",
         });
       },

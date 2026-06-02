@@ -1,0 +1,131 @@
+<view class="user-management-page">
+  <navigation-bar
+    title="用户管理"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="user-management-page__container">
+    <view class="user-management-toolbar">
+      <view class="user-management-search">
+        <input
+          class="user-management-search__input"
+          value="{{searchInput}}"
+          placeholder="搜索用户 ID / 昵称"
+          confirm-type="search"
+          bindinput="handleKeywordInput"
+          bindconfirm="handleSearchConfirm"
+        />
+        <button
+          wx:if="{{searchInput || keyword}}"
+          class="user-management-search__clear"
+          bindtap="handleClearSearchTap"
+        >
+          清空
+        </button>
+        <button
+          class="user-management-search__submit"
+          bindtap="handleSearchConfirm"
+          disabled="{{loading || loadingMore}}"
+        >
+          搜索
+        </button>
+      </view>
+
+      <scroll-view class="user-management-filter" scroll-x="{{true}}" show-scrollbar="{{false}}">
+        <view class="user-management-filter__inner">
+          <block wx:for="{{filters}}" wx:key="value" wx:for-item="filter">
+            <view
+              class="user-management-filter__chip {{activeStatus === filter.value ? 'is-active' : ''}}"
+              data-status="{{filter.value}}"
+              bindtap="handleFilterTap"
+            >
+              {{filter.label}}
+            </view>
+          </block>
+        </view>
+      </scroll-view>
+
+      <view class="user-management-toolbar__meta">
+        <text class="user-management-toolbar__count">{{countText}}</text>
+        <button
+          class="user-management-toolbar__refresh"
+          bindtap="handleRefreshTap"
+          disabled="{{loading || loadingMore}}"
+        >
+          刷新
+        </button>
+      </view>
+    </view>
+
+    <view wx:if="{{loading && items.length === 0}}" class="user-management-state">
+      <text class="user-management-state__title">正在加载用户...</text>
+    </view>
+
+    <view wx:elif="{{errorMessage && items.length === 0}}" class="user-management-state">
+      <text class="user-management-state__title">加载失败</text>
+      <text class="user-management-state__desc">{{errorMessage}}</text>
+      <button class="user-management-state__action" bindtap="handleRetryTap">
+        重新加载
+      </button>
+    </view>
+
+    <view wx:elif="{{items.length === 0}}" class="user-management-state">
+      <text class="user-management-state__title">暂无用户</text>
+      <text class="user-management-state__desc">换个关键词或状态筛选试试</text>
+    </view>
+
+    <view wx:else class="user-management-list">
+      <block wx:for="{{items}}" wx:key="id" wx:for-item="item">
+        <view class="user-management-card">
+          <view class="user-management-card__head">
+            <image
+              class="user-management-card__avatar"
+              src="{{item.avatarSrc}}"
+              mode="aspectFill"
+            />
+            <view class="user-management-card__main">
+              <view class="user-management-card__title-row">
+                <text class="user-management-card__nickname">{{item.nickname || '微信用户'}}</text>
+                <text class="user-management-card__status user-management-card__status--{{item.statusClass}}">
+                  {{item.statusText}}
+                </text>
+              </view>
+              <text class="user-management-card__id">ID：{{item.id || '-'}}</text>
+            </view>
+          </view>
+
+          <view class="user-management-card__meta">
+            <text>注册：{{item.createdAtText}}</text>
+            <text>最近登录：{{item.lastLoginAtText}}</text>
+            <text>更新：{{item.updatedAtText}}</text>
+          </view>
+
+          <view class="user-management-card__actions">
+            <button
+              class="user-management-card__action user-management-card__action--{{item.actionStatus}}"
+              data-id="{{item.id}}"
+              data-status="{{item.actionStatus}}"
+              loading="{{updatingUserId === item.id}}"
+              disabled="{{updatingUserId !== '' && updatingUserId !== item.id}}"
+              catchtap="handleStatusActionTap"
+            >
+              {{item.actionLabel}}
+            </button>
+          </view>
+        </view>
+      </block>
+
+      <button
+        wx:if="{{hasMore}}"
+        class="user-management-load-more"
+        loading="{{loadingMore}}"
+        disabled="{{loadingMore}}"
+        bindtap="handleLoadMoreTap"
+      >
+        加载更多
+      </button>
+    </view>
+  </view>
+</view>

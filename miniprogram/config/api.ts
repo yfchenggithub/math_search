@@ -82,3 +82,7 @@ export const CONCLUSION_REQUEST_API_CONFIG = {
   SUBMIT_PATH: "/api/v1/conclusion-requests",
   ADMIN_LIST_PATH: "/api/v1/admin/conclusion-requests",
 } as const;
+
+export const USERS_API_CONFIG = {
+  LIST_PATH: "/api/v1/users",
+} as const;

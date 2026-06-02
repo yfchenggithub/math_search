@@ -7,6 +7,7 @@
     "pages/detail/detail",
     "pages/mine/mine",
     "pages/favorites/favorites",
+    "pages/user-management/user-management",
     "pages/conclusion-request-admin/conclusion-request-admin",
     "pages/settings/settings",
     "pages/recent-browse/recent-browse"
