@@ -18,21 +18,16 @@
   <view class="search-card">
     <view class="search-title">{{homeCopy.searchTitle}}</view>
 
-    <view class="search-box">
-      <input
-        class="search-input"
-        value="{{query}}"
-        bindinput="onInput"
-        bindconfirm="onConfirm"
-        confirm-type="search"
-        focus="{{focus}}"
-        placeholder="{{homeCopy.searchPlaceholder}}"
-      />
-
-      <view wx:if="{{showClear}}" class="clear-btn" bindtap="onClear">
-        ×
-      </view>
-    </view>
+    <search-box
+      value="{{query}}"
+      placeholder="{{homeCopy.searchPlaceholder}}"
+      focus="{{focus}}"
+      show-clear="{{showClear}}"
+      spacing-top="{{true}}"
+      bind:input="onInput"
+      bind:confirm="onConfirm"
+      bind:clear="onClear"
+    ></search-box>
 
     <view class="search-hint" bindtap="onConclusionRequestEntryTap">
       没搜到想要的结论？<text class="search-hint-link">点此告诉我们</text>，24小时内更新。

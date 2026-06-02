@@ -8,24 +8,14 @@
 
   <view class="user-management-page__container">
     <view class="user-management-toolbar">
-      <view class="user-management-search">
-        <input
-          class="user-management-search__input"
-          value="{{searchInput}}"
-          placeholder="搜索用户 ID / 昵称"
-          confirm-type="search"
-          bindinput="handleKeywordInput"
-          bindconfirm="handleSearchConfirm"
-        />
-
-        <view
-          wx:if="{{searchInput || keyword}}"
-          class="user-management-search__clear"
-          bindtap="handleClearSearchTap"
-        >
-          ×
-        </view>
-      </view>
+      <search-box
+        value="{{searchInput}}"
+        placeholder="搜索用户 ID / 昵称"
+        show-clear="{{searchInput !== '' || keyword !== ''}}"
+        bind:input="handleKeywordInput"
+        bind:confirm="handleSearchConfirm"
+        bind:clear="handleClearSearchTap"
+      ></search-box>
 
       <scroll-view class="user-management-filter" scroll-x="{{true}}" show-scrollbar="{{false}}">
         <view class="user-management-filter__inner">

@@ -1,0 +1,15 @@
+<view class="search-box {{spacingTop ? 'search-box--spaced' : ''}}">
+  <input
+    class="search-input"
+    value="{{value}}"
+    placeholder="{{placeholder}}"
+    confirm-type="{{confirmType}}"
+    focus="{{focus}}"
+    bindinput="handleInput"
+    bindconfirm="handleConfirm"
+  />
+
+  <view wx:if="{{showClear}}" class="clear-btn" bindtap="handleClear">
+    ×
+  </view>
+</view>

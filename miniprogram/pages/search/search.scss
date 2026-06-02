@@ -54,24 +54,6 @@
   color: #1f2937;
 }
 
-.search-box {
-  margin-top: 16rpx;
-  padding: 14rpx 20rpx;
-  border-radius: 24rpx;
-  border: 2rpx solid #dbe5ff;
-  background: #f8fbff;
-  display: flex;
-  align-items: center;
-  position: relative;
-}
-
-.search-input {
-  flex: 1;
-  padding-right: 56rpx;
-  font-size: 28rpx;
-  color: #111827;
-}
-
 .search-hint {
   margin-top: 14rpx;
   font-size: 23rpx;
@@ -81,21 +63,6 @@
 .search-hint-link {
   color: #2563eb;
   font-weight: 600;
-}
-
-.clear-btn {
-  position: absolute;
-  right: 16rpx;
-  top: 50%;
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 50%;
-  transform: translateY(-50%);
-  background: #e2e8f0;
-  color: #64748b;
-  text-align: center;
-  line-height: 36rpx;
-  font-size: 24rpx;
 }
 
 .suggest-box {
