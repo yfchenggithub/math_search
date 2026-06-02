@@ -4,6 +4,8 @@
  * - 所有异常统一处理
  * - 保证用户体验一致
  */
+const HOME_PAGE_URL = "/pages/search/search";
+
 export function handleInvalidAccess(reason: string) {
   wx.showToast({
     title: reason,
@@ -15,7 +17,12 @@ export function handleInvalidAccess(reason: string) {
       fail: () => {
         // 兜底：首页
         wx.switchTab({
-          url: "/pages/index/index",
+          url: HOME_PAGE_URL,
+          fail: () => {
+            wx.reLaunch({
+              url: HOME_PAGE_URL,
+            });
+          },
         });
       },
     });

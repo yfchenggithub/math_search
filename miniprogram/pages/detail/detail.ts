@@ -186,6 +186,8 @@ Page({
     authStatusToastMessage: "",
     authStatusToastRetryable: false,
     authStatusToastClosable: false,
+    showBackButton: true,
+    showHomeButton: false,
   },
   scale: 1,
   lastScale: 1,
@@ -237,6 +239,15 @@ Page({
 
   resolveFavoriteTargetId() {
     return String(this.currentDetailId || this.data.id || "").trim();
+  },
+
+  syncNavigationButtons() {
+    const showBackButton = getCurrentPages().length > 1;
+
+    this.setData({
+      showBackButton,
+      showHomeButton: !showBackButton,
+    });
   },
 
   resolveFavoriteStateFromCache(detailId: string): boolean | null {
@@ -1012,6 +1023,7 @@ Page({
   onLoad(options: Record<string, string | undefined>) {
     authService.init();
     this.ensureShareMenu();
+    this.syncNavigationButtons();
     this.routeSource = String(options.source || "detail").trim() || "detail";
     this.routeEntry = String(options.entry || "unknown").trim() || "unknown";
     this.detailViewTracked = false;
@@ -1023,6 +1035,7 @@ Page({
 
   onShow() {
     this.ensureShareMenu();
+    this.syncNavigationButtons();
   },
 
   onUnload() {

@@ -1,5 +1,7 @@
 import { getNavLayout } from "../../utils/nav";
 
+const HOME_PAGE_URL = "/pages/search/search";
+
 Component({
   options: {
     multipleSlots: true,
@@ -132,8 +134,13 @@ Component({
       this.triggerEvent("back", { delta: this.data.delta }, {});
     },
     home() {
-      wx.reLaunch({
-        url: "/pages/index/index",
+      wx.switchTab({
+        url: HOME_PAGE_URL,
+        fail: () => {
+          wx.reLaunch({
+            url: HOME_PAGE_URL,
+          });
+        },
       });
 
       this.triggerEvent("home", {}, {});
