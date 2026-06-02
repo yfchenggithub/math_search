@@ -23,6 +23,12 @@ import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
 
 type FavoritesPageStatus = "loading" | "ready" | "empty" | "error" | "guest";
+type FavoriteHandoutStatusType = "idle" | "loading" | "warning" | "error" | "success";
+
+type FavoriteHandoutFeedback = {
+  type: FavoriteHandoutStatusType;
+  message: string;
+};
 
 type FavoriteConclusionItem = {
   id: string;
@@ -37,6 +43,10 @@ type FavoritesPageData = {
   pageStatus: FavoritesPageStatus;
   favoriteCount: number;
   favoriteItems: FavoriteConclusionItem[];
+  favoriteHandoutMaxCount: number;
+  handoutLimitActionText: string;
+  handoutStatusType: FavoriteHandoutStatusType;
+  handoutStatusMessage: string;
   isGeneratingHandout: boolean;
   isRemovingFavorite: boolean;
 };
@@ -65,6 +75,7 @@ const FAVORITES_MAX_PAGE = 20;
 const CARD_TAG_LIMIT = 3;
 const DETAIL_HYDRATE_MAX_COUNT = 12;
 const FAVORITES_PREFETCH_MAX_COUNT = 20;
+const FAVORITE_HANDOUT_MAX_COUNT = 10;
 const DEFAULT_TITLE = "未命名结论";
 const DEFAULT_SUMMARY = "点击查看详情";
 const FAVORITE_CARD_UNAVAILABLE_MESSAGE = "收藏项暂不可用";
@@ -74,8 +85,12 @@ const FAVORITE_REMOVE_CONFIRM_FALLBACK_CONTENT = "取消后该条目将从收藏
 const FAVORITE_REMOVE_SUCCESS_MESSAGE = "已取消收藏";
 const FAVORITE_REMOVE_FAILED_MESSAGE = "取消收藏失败，请稍后重试";
 const SEARCH_PAGE_URL = "/pages/search/search";
-const HANDOUT_GENERATING_LOADING_TEXT = "正在整理收藏内容";
+const HANDOUT_GENERATING_STATUS_MESSAGE = "正在生成讲义，请稍候...";
+const HANDOUT_DOWNLOADING_STATUS_MESSAGE = "讲义已生成，正在打开 PDF...";
+const HANDOUT_OPEN_SUCCESS_MESSAGE = "讲义已打开，可在右上角分享或保存";
 const HANDOUT_NO_FAVORITES_MESSAGE = "收藏内容后即可生成讲义";
+const HANDOUT_MAX_FAVORITES_MESSAGE = `最多支持 ${FAVORITE_HANDOUT_MAX_COUNT} 条收藏生成讲义`;
+const HANDOUT_LIMIT_ACTION_TEXT = `超过 ${FAVORITE_HANDOUT_MAX_COUNT} 条不可生成`;
 const HANDOUT_STATUS_PROCESSING_MESSAGE = "讲义正在生成，请稍后重试";
 const HANDOUT_STATUS_EXPIRED_MESSAGE = "讲义已过期，请重新生成";
 const HANDOUT_STATUS_FAILED_MESSAGE = "生成失败，请检查网络后重试";
@@ -88,6 +103,20 @@ const HANDOUT_ERROR_CODE_MAP: Record<string, string> = {
   HANDOUT_SOURCE_PDF_MISSING: HANDOUT_SOURCE_PDF_MISSING_MESSAGE,
   HANDOUT_REQUEST_TOO_FREQUENT: HANDOUT_TOO_FREQUENT_MESSAGE,
   HANDOUT_EXPIRED: HANDOUT_STATUS_EXPIRED_MESSAGE,
+};
+const HANDOUT_LIMIT_EXCEEDED_ERROR_CODES: Record<string, true> = {
+  FAVORITES_LIMIT_EXCEEDED: true,
+  FAVORITE_HANDOUT_LIMIT_EXCEEDED: true,
+  HANDOUT_LIMIT_EXCEEDED: true,
+  HANDOUT_FAVORITE_LIMIT_EXCEEDED: true,
+  HANDOUT_MAX_FAVORITES_EXCEEDED: true,
+  HANDOUT_TOO_MANY_FAVORITES: true,
+  MAX_FAVORITES_EXCEEDED: true,
+  TOO_MANY_FAVORITES: true,
+};
+const HANDOUT_WARNING_ERROR_CODES: Record<string, true> = {
+  HANDOUT_REQUEST_TOO_FREQUENT: true,
+  HANDOUT_EXPIRED: true,
 };
 const MODULE_LABEL_MAP: Record<string, string> = {
   function: "函数",
@@ -155,7 +184,61 @@ function getFavoriteHandoutErrorMessageByCode(code: string): string {
     return "";
   }
 
+  if (HANDOUT_LIMIT_EXCEEDED_ERROR_CODES[code]) {
+    return HANDOUT_MAX_FAVORITES_MESSAGE;
+  }
+
   return HANDOUT_ERROR_CODE_MAP[code] || "";
+}
+
+function isFavoriteHandoutLimitExceeded(favoriteCount: number): boolean {
+  return favoriteCount > FAVORITE_HANDOUT_MAX_COUNT;
+}
+
+function isFavoriteHandoutLimitErrorCode(code: string): boolean {
+  return Boolean(HANDOUT_LIMIT_EXCEEDED_ERROR_CODES[code]);
+}
+
+function isFavoriteHandoutWarningErrorCode(code: string): boolean {
+  return Boolean(HANDOUT_WARNING_ERROR_CODES[code]);
+}
+
+function buildFavoriteHandoutLimitMessage(favoriteCount: number): string {
+  if (!isFavoriteHandoutLimitExceeded(favoriteCount)) {
+    return "";
+  }
+
+  return `${HANDOUT_MAX_FAVORITES_MESSAGE}，当前已收藏 ${favoriteCount} 条`;
+}
+
+function buildFavoriteHandoutStatusByCount(favoriteCount: number): FavoriteHandoutFeedback {
+  const limitMessage = buildFavoriteHandoutLimitMessage(favoriteCount);
+  if (limitMessage) {
+    return {
+      type: "warning",
+      message: limitMessage,
+    };
+  }
+
+  return {
+    type: "idle",
+    message: "",
+  };
+}
+
+function resolveFavoriteHandoutErrorFeedback(
+  code: string,
+  fallbackMessage: string,
+  favoriteCount: number,
+): FavoriteHandoutFeedback {
+  const isLimitError = isFavoriteHandoutLimitErrorCode(code);
+  const limitMessage = isLimitError ? buildFavoriteHandoutLimitMessage(favoriteCount) : "";
+  const mappedMessage = getFavoriteHandoutErrorMessageByCode(code);
+
+  return {
+    type: isLimitError || isFavoriteHandoutWarningErrorCode(code) ? "warning" : "error",
+    message: limitMessage || mappedMessage || fallbackMessage || HANDOUT_STATUS_FAILED_MESSAGE,
+  };
 }
 
 function appendTag(
@@ -478,6 +561,10 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     pageStatus: "loading",
     favoriteCount: 0,
     favoriteItems: [],
+    favoriteHandoutMaxCount: FAVORITE_HANDOUT_MAX_COUNT,
+    handoutLimitActionText: HANDOUT_LIMIT_ACTION_TEXT,
+    handoutStatusType: "idle",
+    handoutStatusMessage: "",
     isGeneratingHandout: false,
     isRemovingFavorite: false,
   },
@@ -517,19 +604,22 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     }
 
     if (this.data.favoriteCount <= 0) {
-      wx.showToast({
-        title: HANDOUT_NO_FAVORITES_MESSAGE,
-        icon: "none",
-      });
+      this.showFavoriteHandoutFeedback("warning", HANDOUT_NO_FAVORITES_MESSAGE);
+      return;
+    }
+
+    if (isFavoriteHandoutLimitExceeded(this.data.favoriteCount)) {
+      this.showFavoriteHandoutFeedback(
+        "warning",
+        buildFavoriteHandoutLimitMessage(this.data.favoriteCount),
+      );
       return;
     }
 
     this.setData({
       isGeneratingHandout: true,
-    });
-    wx.showLoading({
-      title: HANDOUT_GENERATING_LOADING_TEXT,
-      mask: true,
+      handoutStatusType: "loading",
+      handoutStatusMessage: HANDOUT_GENERATING_STATUS_MESSAGE,
     });
 
     try {
@@ -539,60 +629,53 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       const responseErrorMessage = normalizeText(handout.error?.message);
 
       if (responseErrorCode || responseErrorMessage) {
-        const mappedByCode = getFavoriteHandoutErrorMessageByCode(responseErrorCode);
-        wx.showToast({
-          title: mappedByCode || responseErrorMessage || HANDOUT_STATUS_FAILED_MESSAGE,
-          icon: "none",
-        });
+        const feedback = resolveFavoriteHandoutErrorFeedback(
+          responseErrorCode,
+          responseErrorMessage || HANDOUT_STATUS_FAILED_MESSAGE,
+          this.data.favoriteCount,
+        );
+        this.showFavoriteHandoutFeedback(feedback.type, feedback.message);
         return;
       }
 
       if (status === "processing") {
-        wx.showToast({
-          title: HANDOUT_STATUS_PROCESSING_MESSAGE,
-          icon: "none",
-        });
+        this.showFavoriteHandoutFeedback("warning", HANDOUT_STATUS_PROCESSING_MESSAGE);
         return;
       }
 
       if (status === "expired") {
-        wx.showToast({
-          title: HANDOUT_STATUS_EXPIRED_MESSAGE,
-          icon: "none",
-        });
+        this.showFavoriteHandoutFeedback("warning", HANDOUT_STATUS_EXPIRED_MESSAGE);
         return;
       }
 
       if (status === "failed") {
-        wx.showToast({
-          title: HANDOUT_STATUS_FAILED_MESSAGE,
-          icon: "none",
-        });
+        this.showFavoriteHandoutFeedback("error", HANDOUT_STATUS_FAILED_MESSAGE);
         return;
       }
 
       const pdfUrl = normalizeText(handout.pdfUrl);
       if (!pdfUrl) {
-        wx.showToast({
-          title: HANDOUT_STATUS_FAILED_MESSAGE,
-          icon: "none",
-        });
+        this.showFavoriteHandoutFeedback("error", HANDOUT_STATUS_FAILED_MESSAGE);
         return;
       }
 
+      this.setFavoriteHandoutStatus("loading", HANDOUT_DOWNLOADING_STATUS_MESSAGE);
       await downloadFavoriteHandoutPdf(pdfUrl, handout.filename || undefined);
+      this.setFavoriteHandoutStatus("success", HANDOUT_OPEN_SUCCESS_MESSAGE);
     } catch (error) {
       if (this.isAuthRequiredError(error)) {
+        this.clearFavoriteHandoutStatus();
         return;
       }
 
       const errorCode = getFavoriteHandoutErrorCode(error);
-      const mappedMessage = getFavoriteHandoutErrorMessageByCode(errorCode);
+      const feedback = resolveFavoriteHandoutErrorFeedback(
+        errorCode,
+        HANDOUT_UNKNOWN_ERROR_MESSAGE,
+        this.data.favoriteCount,
+      );
 
-      wx.showToast({
-        title: mappedMessage || HANDOUT_UNKNOWN_ERROR_MESSAGE,
-        icon: "none",
-      });
+      this.showFavoriteHandoutFeedback(feedback.type, feedback.message);
 
       favoritesPageLogger.warn("favorite_handout_generate_failed", {
         code: errorCode,
@@ -600,11 +683,29 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
         statusCode: error instanceof RequestError ? error.statusCode : undefined,
       });
     } finally {
-      wx.hideLoading();
       this.setData({
         isGeneratingHandout: false,
       });
     }
+  },
+
+  setFavoriteHandoutStatus(type: FavoriteHandoutStatusType, message: string) {
+    this.setData({
+      handoutStatusType: type,
+      handoutStatusMessage: message,
+    });
+  },
+
+  clearFavoriteHandoutStatus() {
+    this.setFavoriteHandoutStatus("idle", "");
+  },
+
+  showFavoriteHandoutFeedback(type: FavoriteHandoutStatusType, message: string) {
+    this.setFavoriteHandoutStatus(type, message);
+    wx.showToast({
+      title: message,
+      icon: "none",
+    });
   },
 
   handleRetryTap() {
@@ -763,11 +864,14 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       const nextItems = this.data.favoriteItems.filter((item) => item.id !== target.id);
       const nextCount = nextItems.length;
       const nextStatus: FavoritesPageStatus = nextCount > 0 ? "ready" : "empty";
+      const handoutStatus = buildFavoriteHandoutStatusByCount(nextCount);
 
       this.setData({
         favoriteItems: nextItems,
         favoriteCount: nextCount,
         pageStatus: nextStatus,
+        handoutStatusType: handoutStatus.type,
+        handoutStatusMessage: handoutStatus.message,
       });
 
       wx.showToast({
@@ -811,6 +915,8 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
         pageStatus: "guest",
         favoriteCount: 0,
         favoriteItems: [],
+        handoutStatusType: "idle",
+        handoutStatusMessage: "",
       });
       return;
     }
@@ -820,6 +926,8 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
         pageStatus: "loading",
         favoriteCount: 0,
         favoriteItems: [],
+        handoutStatusType: "idle",
+        handoutStatusMessage: "",
       });
     }
 
@@ -837,12 +945,15 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       );
       const favoriteCount = favoriteItems.length;
       const pageStatus: FavoritesPageStatus = favoriteCount > 0 ? "ready" : "empty";
+      const handoutStatus = buildFavoriteHandoutStatusByCount(favoriteCount);
 
       this.hasLoadedOnce = true;
       this.setData({
         pageStatus,
         favoriteCount,
         favoriteItems,
+        handoutStatusType: handoutStatus.type,
+        handoutStatusMessage: handoutStatus.message,
       });
 
       if (pageStatus === "ready") {
@@ -877,6 +988,8 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
         pageStatus: nextStatus,
         favoriteCount: 0,
         favoriteItems: [],
+        handoutStatusType: "idle",
+        handoutStatusMessage: "",
       });
 
       if (nextStatus === "error") {

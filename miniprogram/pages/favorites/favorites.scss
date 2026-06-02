@@ -75,6 +75,61 @@ page {
   color: #6b7280;
 }
 
+.favorites-handout-card__status {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 58rpx;
+  padding: 13rpx 16rpx;
+  border: 1rpx solid #d7e6ff;
+  border-radius: 16rpx;
+  background: #eef5ff;
+  color: #2454a6;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.favorites-handout-card__status--warning {
+  border-color: #f3d8a8;
+  background: #fff7e8;
+  color: #9a5b0b;
+}
+
+.favorites-handout-card__status--error {
+  border-color: #f2b8b8;
+  background: #fff1f1;
+  color: #b42318;
+}
+
+.favorites-handout-card__status--success {
+  border-color: #b9e2cb;
+  background: #effaf3;
+  color: #157347;
+}
+
+.favorites-handout-card__status-spinner {
+  width: 22rpx;
+  height: 22rpx;
+  border: 3rpx solid rgba(36, 84, 166, 0.2);
+  border-top-color: #2454a6;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: favorites-handout-spin 0.8s linear infinite;
+}
+
+.favorites-handout-card__status-text {
+  min-width: 0;
+  font-size: 23rpx;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+@keyframes favorites-handout-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .favorites-handout-card__footer {
   display: flex;
   align-items: flex-end;

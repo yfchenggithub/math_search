@@ -10,12 +10,23 @@
     <view class="favorites-handout-card">
       <view class="favorites-handout-card__header">
         <text class="favorites-handout-card__title">收藏讲义</text>
-        <text class="favorites-handout-card__badge">整理为 1 份 PDF</text>
+        <text class="favorites-handout-card__badge">最多 {{favoriteHandoutMaxCount}} 条 / 1 份 PDF</text>
       </view>
 
       <text class="favorites-handout-card__desc">
         将当前收藏内容整理为一份 PDF，方便打印和分享
       </text>
+
+      <view
+        wx:if="{{handoutStatusMessage}}"
+        class="favorites-handout-card__status favorites-handout-card__status--{{handoutStatusType}}"
+      >
+        <view
+          wx:if="{{handoutStatusType === 'loading'}}"
+          class="favorites-handout-card__status-spinner"
+        ></view>
+        <text class="favorites-handout-card__status-text">{{handoutStatusMessage}}</text>
+      </view>
 
       <view class="favorites-handout-card__footer">
         <view class="favorites-handout-card__count-block">
@@ -27,7 +38,7 @@
         </view>
 
         <button
-          class="favorites-handout-card__action {{(favoriteCount <= 0 || pageStatus === 'loading' || pageStatus === 'guest' || isGeneratingHandout) ? 'favorites-handout-card__action--disabled' : ''}}"
+          class="favorites-handout-card__action {{(favoriteCount <= 0 || favoriteCount > favoriteHandoutMaxCount || pageStatus === 'loading' || pageStatus === 'guest' || isGeneratingHandout) ? 'favorites-handout-card__action--disabled' : ''}}"
           bindtap="handleGenerateFavoriteHandoutTap"
           loading="{{isGeneratingHandout}}"
           disabled="{{isGeneratingHandout}}"
@@ -37,7 +48,7 @@
             class="favorites-handout-card__action-icon"
           ></view>
           <text class="favorites-handout-card__action-text">
-            {{isGeneratingHandout ? '正在生成讲义…' : '生成收藏讲义'}}
+            {{isGeneratingHandout ? '正在生成讲义…' : (favoriteCount > favoriteHandoutMaxCount ? handoutLimitActionText : '生成收藏讲义')}}
           </text>
         </button>
       </view>
