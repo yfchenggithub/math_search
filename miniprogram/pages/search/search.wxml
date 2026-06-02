@@ -34,6 +34,9 @@
       </view>
     </view>
 
+    <view class="search-hint" bindtap="onConclusionRequestEntryTap">
+      没搜到想要的结论？<text class="search-hint-link">点此告诉我们</text>，24小时内更新。
+    </view>
   </view>
 
   <view wx:if="{{query && suggestions.length > 0}}" class="suggest-box">
@@ -198,4 +201,64 @@
       </view>
     </view>
   </scroll-view>
+
+  <view
+    wx:if="{{conclusionRequestDialogVisible}}"
+    class="conclusion-request-layer"
+    catchtouchmove="noop"
+    bindtap="onConclusionRequestCancel"
+  >
+    <view class="conclusion-request-card" catchtap="noop">
+      <view class="conclusion-request-title">求结论</view>
+      <view class="conclusion-request-subtitle">
+        告诉我们你想找什么，后续会优先补齐高频需求。
+      </view>
+
+      <view class="conclusion-request-field">
+        <view class="conclusion-request-label">搜索词</view>
+        <input
+          class="conclusion-request-input"
+          value="{{conclusionRequestQuery}}"
+          bindinput="onConclusionRequestQueryInput"
+          maxlength="40"
+          placeholder="例如：柯西不等式"
+          focus="{{conclusionRequestQueryFocus}}"
+        />
+      </view>
+
+      <view class="conclusion-request-field">
+        <view class="conclusion-request-label">补充说明</view>
+        <textarea
+          class="conclusion-request-textarea"
+          value="{{conclusionRequestNote}}"
+          bindinput="onConclusionRequestNoteInput"
+          maxlength="{{conclusionRequestNoteMaxLength}}"
+          placeholder="可以写题型、场景，或你想看的结论"
+          show-confirm-bar="{{false}}"
+          auto-height="{{false}}"
+          focus="{{conclusionRequestNoteFocus}}"
+        ></textarea>
+        <view class="conclusion-request-counter">
+          {{conclusionRequestNoteLength}}/{{conclusionRequestNoteMaxLength}}
+        </view>
+      </view>
+
+      <view class="conclusion-request-actions">
+        <button
+          class="conclusion-request-btn conclusion-request-btn-ghost"
+          bindtap="onConclusionRequestCancel"
+        >
+          取消
+        </button>
+        <button
+          class="conclusion-request-btn conclusion-request-btn-primary"
+          loading="{{conclusionRequestSubmitting}}"
+          disabled="{{conclusionRequestSubmitting}}"
+          bindtap="onConclusionRequestSubmit"
+        >
+          提交
+        </button>
+      </view>
+    </view>
+  </view>
 </view>

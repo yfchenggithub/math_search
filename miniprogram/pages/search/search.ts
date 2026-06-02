@@ -74,6 +74,13 @@ const HOME_COPY = {
   noResultSubtitle: "可以换个关键词试试，例如：均值、导数、圆锥曲线",
 } as const;
 
+const CONCLUSION_REQUEST_QUERY_MAX_LENGTH = 40;
+const CONCLUSION_REQUEST_NOTE_MAX_LENGTH = 100;
+const CONCLUSION_REQUEST_COPY = {
+  emptyToast: "先写下你想找的结论",
+  submitSuccessToast: "已收到，这条结论已进入更新清单。",
+} as const;
+
 type QuickFilter = {
   key: string;
   label: string;
@@ -236,6 +243,15 @@ Page({
     listScrollTop: 0,
     homeRecommendSections: [] as HomeRecommendSection[],
     noResultRecommendItems: [] as HomeRecommendItem[],
+    conclusionRequestDialogVisible: false,
+    conclusionRequestQuery: "",
+    conclusionRequestNote: "",
+    conclusionRequestNoteLength: 0,
+    conclusionRequestNoteMaxLength: CONCLUSION_REQUEST_NOTE_MAX_LENGTH,
+    conclusionRequestSubmitting: false,
+    conclusionRequestQueryFocus: false,
+    conclusionRequestNoteFocus: false,
+    conclusionRequestEntry: "",
     showPdfEntitlementCard: ENABLE_PDF_ENTITLEMENT_FLOW,
     pdfEntitlement: {
       unlocked: false,
@@ -350,6 +366,8 @@ Page({
     return buildHomeTimelinePayload();
   },
 
+  noop() {},
+
   onInput(e: SearchInputEvent) {
     const value = String(e.detail.value || "");
 
@@ -367,6 +385,136 @@ Page({
     timer = setTimeout(() => {
       void this.executeInputFlow(value);
     }, 80);
+  },
+
+  onConclusionRequestEntryTap() {
+    const requestQuery = this.normalizeConclusionRequestText(
+      this.data.query,
+      CONCLUSION_REQUEST_QUERY_MAX_LENGTH,
+    );
+    const entry = this.resolveConclusionRequestEntry();
+    const shouldFocusQuery = requestQuery.length <= 0;
+
+    this.setData({
+      conclusionRequestDialogVisible: true,
+      conclusionRequestQuery: requestQuery,
+      conclusionRequestNote: "",
+      conclusionRequestNoteLength: 0,
+      conclusionRequestSubmitting: false,
+      conclusionRequestQueryFocus: shouldFocusQuery,
+      conclusionRequestNoteFocus: !shouldFocusQuery,
+      conclusionRequestEntry: entry,
+      suggestions: [],
+    });
+
+    trackEvent("conclusion_request_entry_click", {
+      source: "home",
+      page: "home",
+      entry,
+      query: requestQuery,
+      result_count: this.getCurrentResultCount(),
+    });
+  },
+
+  onConclusionRequestQueryInput(e: SearchInputEvent) {
+    const value = this.normalizeConclusionRequestText(
+      e.detail.value,
+      CONCLUSION_REQUEST_QUERY_MAX_LENGTH,
+    );
+
+    this.setData({
+      conclusionRequestQuery: value,
+    });
+  },
+
+  onConclusionRequestNoteInput(e: SearchInputEvent) {
+    const value = this.normalizeConclusionRequestText(
+      e.detail.value,
+      CONCLUSION_REQUEST_NOTE_MAX_LENGTH,
+    );
+
+    this.setData({
+      conclusionRequestNote: value,
+      conclusionRequestNoteLength: value.length,
+    });
+  },
+
+  onConclusionRequestCancel() {
+    if (this.data.conclusionRequestSubmitting) {
+      return;
+    }
+
+    if (this.data.conclusionRequestDialogVisible) {
+      trackEvent("conclusion_request_cancel", {
+        source: "home",
+        page: "home",
+        entry: this.data.conclusionRequestEntry || this.resolveConclusionRequestEntry(),
+      });
+    }
+
+    this.setData({
+      conclusionRequestDialogVisible: false,
+      conclusionRequestQueryFocus: false,
+      conclusionRequestNoteFocus: false,
+    });
+  },
+
+  onConclusionRequestSubmit() {
+    if (this.data.conclusionRequestSubmitting) {
+      return;
+    }
+
+    const query = this.normalizeConclusionRequestText(
+      this.data.conclusionRequestQuery,
+      CONCLUSION_REQUEST_QUERY_MAX_LENGTH,
+    );
+    const note = this.normalizeConclusionRequestText(
+      this.data.conclusionRequestNote,
+      CONCLUSION_REQUEST_NOTE_MAX_LENGTH,
+    );
+
+    if (!query && !note) {
+      wx.showToast({
+        title: CONCLUSION_REQUEST_COPY.emptyToast,
+        icon: "none",
+      });
+      return;
+    }
+
+    const payload = this.buildConclusionRequestPayload(query, note);
+
+    this.setData({
+      conclusionRequestSubmitting: true,
+      conclusionRequestQuery: query,
+      conclusionRequestNote: note,
+      conclusionRequestNoteLength: note.length,
+    });
+
+    trackEvent(
+      "conclusion_request_submit",
+      payload,
+      {
+        dedupeKey: `conclusion_request_submit:${query}:${note}`,
+        dedupeMs: 1500,
+      },
+    );
+    searchPageLogger.info("conclusion_request_submit", payload);
+
+    this.setData({
+      conclusionRequestDialogVisible: false,
+      conclusionRequestNote: "",
+      conclusionRequestNoteLength: 0,
+      conclusionRequestSubmitting: false,
+      conclusionRequestQueryFocus: false,
+      conclusionRequestNoteFocus: false,
+      conclusionRequestEntry: "",
+    });
+
+    wx.showToast({
+      title: CONCLUSION_REQUEST_COPY.submitSuccessToast,
+      icon: "none",
+      duration: 2200,
+    });
   },
 
   onSuggestionTap(e: SearchTextTapEvent) {
@@ -773,6 +921,47 @@ Page({
       debugInfo: null,
       activeTab: TAB_ALL,
     });
+  },
+
+  normalizeConclusionRequestText(value: unknown, maxLength: number): string {
+    const text = String(value || "").trim();
+    if (text.length <= maxLength) {
+      return text;
+    }
+
+    return text.slice(0, maxLength);
+  },
+
+  getCurrentResultCount(): number {
+    return Math.max(this.allResultsCache.length, this.data.results.length);
+  },
+
+  resolveConclusionRequestEntry(): string {
+    const query = String(this.data.query || "").trim();
+    const hasNoResult = query
+      && !this.data.loading
+      && !this.data.errorMessage
+      && this.getCurrentResultCount() <= 0;
+
+    return hasNoResult ? "search_no_result" : "search_hint";
+  },
+
+  buildConclusionRequestPayload(
+    query: string,
+    note: string,
+  ): Record<string, string | number | boolean> {
+    const resultCount = this.getCurrentResultCount();
+
+    return {
+      source: "home",
+      page: "home",
+      entry: this.data.conclusionRequestEntry || this.resolveConclusionRequestEntry(),
+      query,
+      note,
+      result_count: resultCount,
+      has_result: resultCount > 0,
+      active_tab: this.data.activeTab,
+    };
   },
 
   async loadHomeRecommendations() {
