@@ -1,6 +1,7 @@
 <view
   class="conclusion-card {{compact ? 'conclusion-card--compact' : ''}}"
   bindtap="onCardTap"
+  bindlongpress="onCardLongPress"
 >
   <view class="conclusion-card__title">{{title}}</view>
   <view class="conclusion-card__summary">{{summary}}</view>
@@ -22,4 +23,3 @@
     </view>
   </view>
 </view>
-

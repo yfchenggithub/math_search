@@ -2,6 +2,7 @@ import {
   createFavoriteHandout,
   downloadFavoriteHandoutPdf,
   getFavoritesList,
+  removeFavorite,
   type FavoriteRecord,
 } from "../../services/api/favorites-api";
 import { getRecentBrowse, type RecentBrowseItem } from "../../services/history";
@@ -33,9 +34,10 @@ type FavoritesPageData = {
   favoriteCount: number;
   favoriteItems: FavoriteConclusionItem[];
   isGeneratingHandout: boolean;
+  isRemovingFavorite: boolean;
 };
 
-type FavoriteCardTapEvent = {
+type FavoriteCardEvent = {
   detail?: {
     id?: string;
   };
@@ -61,6 +63,12 @@ const DETAIL_HYDRATE_MAX_COUNT = 12;
 const FAVORITES_PREFETCH_MAX_COUNT = 20;
 const DEFAULT_TITLE = "未命名结论";
 const DEFAULT_SUMMARY = "点击查看详情";
+const FAVORITE_CARD_UNAVAILABLE_MESSAGE = "收藏项暂不可用";
+const FAVORITE_REMOVE_ACTION_TEXT = "取消收藏";
+const FAVORITE_REMOVE_CONFIRM_TITLE = "取消收藏";
+const FAVORITE_REMOVE_CONFIRM_FALLBACK_CONTENT = "取消后该条目将从收藏列表移除";
+const FAVORITE_REMOVE_SUCCESS_MESSAGE = "已取消收藏";
+const FAVORITE_REMOVE_FAILED_MESSAGE = "取消收藏失败，请稍后重试";
 const SEARCH_PAGE_URL = "/pages/search/search";
 const HANDOUT_GENERATING_LOADING_TEXT = "正在整理收藏内容";
 const HANDOUT_NO_FAVORITES_MESSAGE = "收藏内容后即可生成讲义";
@@ -87,6 +95,15 @@ const MODULE_LABEL_MAP: Record<string, string> = {
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function buildFavoriteRemoveConfirmContent(title: string): string {
+  const normalizedTitle = normalizeText(title);
+  if (!normalizedTitle) {
+    return FAVORITE_REMOVE_CONFIRM_FALLBACK_CONTENT;
+  }
+
+  return `确认取消收藏「${normalizedTitle}」吗？`;
 }
 
 function normalizeDisplayTag(value: unknown): string {
@@ -458,6 +475,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     favoriteCount: 0,
     favoriteItems: [],
     isGeneratingHandout: false,
+    isRemovingFavorite: false,
   },
 
   favoritesRequestId: 0,
@@ -621,22 +639,10 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     );
   },
 
-  handleFavoriteCardTap(event: FavoriteCardTapEvent) {
-    const cardId = normalizeText(event.detail?.id);
-    if (!cardId) {
-      wx.showToast({
-        title: "收藏项暂不可用",
-        icon: "none",
-      });
-      return;
-    }
-
-    const target = this.data.favoriteItems.find((item) => item.id === cardId);
-    if (!target || !target.detailId) {
-      wx.showToast({
-        title: "收藏项暂不可用",
-        icon: "none",
-      });
+  handleFavoriteCardTap(event: FavoriteCardEvent) {
+    const target = this.resolveFavoriteCardTarget(event);
+    if (!target) {
+      this.showFavoriteUnavailableToast();
       return;
     }
 
@@ -649,6 +655,146 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
         });
       },
     });
+  },
+
+  async handleFavoriteCardLongPress(event: FavoriteCardEvent) {
+    if (this.data.isRemovingFavorite) {
+      return;
+    }
+
+    const target = this.resolveFavoriteCardTarget(event);
+    if (!target) {
+      this.showFavoriteUnavailableToast();
+      return;
+    }
+
+    const shouldRemove = await this.showFavoriteRemoveActionSheet();
+    if (!shouldRemove) {
+      return;
+    }
+
+    const confirmed = await this.showFavoriteRemoveConfirm(target);
+    if (!confirmed) {
+      return;
+    }
+
+    await this.commitFavoriteRemove(target);
+  },
+
+  resolveFavoriteCardTarget(event: FavoriteCardEvent): FavoriteConclusionItem | null {
+    const cardId = normalizeText(event.detail?.id);
+    if (!cardId) {
+      return null;
+    }
+
+    const target = this.data.favoriteItems.find((item) => item.id === cardId);
+    if (!target || !target.detailId) {
+      return null;
+    }
+
+    return target;
+  },
+
+  showFavoriteUnavailableToast() {
+    wx.showToast({
+      title: FAVORITE_CARD_UNAVAILABLE_MESSAGE,
+      icon: "none",
+    });
+  },
+
+  showFavoriteRemoveActionSheet(): Promise<boolean> {
+    return new Promise((resolve) => {
+      wx.showActionSheet({
+        itemList: [FAVORITE_REMOVE_ACTION_TEXT],
+        itemColor: "#d14343",
+        success: (result) => {
+          resolve(result.tapIndex === 0);
+        },
+        fail: (error) => {
+          const errorMessage = normalizeText((error as { errMsg?: string })?.errMsg).toLowerCase();
+          if (errorMessage.includes("cancel")) {
+            resolve(false);
+            return;
+          }
+
+          favoritesPageLogger.warn("favorite_remove_action_sheet_failed", {
+            error,
+          });
+          resolve(false);
+        },
+      });
+    });
+  },
+
+  showFavoriteRemoveConfirm(item: FavoriteConclusionItem): Promise<boolean> {
+    return new Promise((resolve) => {
+      wx.showModal({
+        title: FAVORITE_REMOVE_CONFIRM_TITLE,
+        content: buildFavoriteRemoveConfirmContent(item.title),
+        confirmText: FAVORITE_REMOVE_ACTION_TEXT,
+        confirmColor: "#d14343",
+        success: (result) => {
+          resolve(Boolean(result.confirm));
+        },
+        fail: (error) => {
+          favoritesPageLogger.warn("favorite_remove_confirm_failed", {
+            itemId: item.id,
+            error,
+          });
+          resolve(false);
+        },
+      });
+    });
+  },
+
+  async commitFavoriteRemove(target: FavoriteConclusionItem) {
+    this.setData({
+      isRemovingFavorite: true,
+    });
+
+    try {
+      await removeFavorite(target.detailId);
+
+      const nextItems = this.data.favoriteItems.filter((item) => item.id !== target.id);
+      const nextCount = nextItems.length;
+      const nextStatus: FavoritesPageStatus = nextCount > 0 ? "ready" : "empty";
+
+      this.setData({
+        favoriteItems: nextItems,
+        favoriteCount: nextCount,
+        pageStatus: nextStatus,
+      });
+
+      wx.showToast({
+        title: FAVORITE_REMOVE_SUCCESS_MESSAGE,
+        icon: "none",
+      });
+    } catch (error) {
+      if (this.isAuthRequiredError(error)) {
+        void this.refreshFavorites({
+          reason: "show_refresh",
+          showLoading: false,
+          silentOnError: false,
+        });
+        return;
+      }
+
+      favoritesPageLogger.warn("favorite_remove_failed", {
+        itemId: target.id,
+        detailId: target.detailId,
+        message: getErrorMessage(error, FAVORITE_REMOVE_FAILED_MESSAGE),
+        statusCode: error instanceof RequestError ? error.statusCode : undefined,
+        code: error instanceof RequestError ? error.code : undefined,
+      });
+      wx.showToast({
+        title: FAVORITE_REMOVE_FAILED_MESSAGE,
+        icon: "none",
+      });
+    } finally {
+      this.setData({
+        isRemovingFavorite: false,
+      });
+    }
   },
 
   async refreshFavorites(options: RefreshFavoritesOptions) {

@@ -62,6 +62,7 @@
           entry="favorites_card"
           section="favorites"
           bind:cardtap="handleFavoriteCardTap"
+          bind:cardlongpress="handleFavoriteCardLongPress"
         ></conclusion-card>
       </view>
 

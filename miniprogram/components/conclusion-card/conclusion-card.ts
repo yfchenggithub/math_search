@@ -1,4 +1,4 @@
-type ConclusionCardTapDetail = {
+type ConclusionCardEventDetail = {
   id: string;
   entry: string;
   section: string;
@@ -60,12 +60,24 @@ Component({
       this.emitCardTap();
     },
 
+    onCardLongPress() {
+      this.emitCardLongPress();
+    },
+
     onActionTap() {
       this.emitCardTap();
     },
 
     emitCardTap() {
-      const detail: ConclusionCardTapDetail = {
+      this.triggerEvent("cardtap", this.buildCardEventDetail());
+    },
+
+    emitCardLongPress() {
+      this.triggerEvent("cardlongpress", this.buildCardEventDetail());
+    },
+
+    buildCardEventDetail(): ConclusionCardEventDetail {
+      return {
         id: String(this.data.itemId || ""),
         entry: String(this.data.entry || ""),
         section: String(this.data.section || ""),
@@ -73,8 +85,6 @@ Component({
         module: String(this.data.module || ""),
         hasPdf: Boolean(this.data.hasPdf),
       };
-
-      this.triggerEvent("cardtap", detail);
     },
   },
 });
