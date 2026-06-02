@@ -17,20 +17,14 @@
           bindinput="handleKeywordInput"
           bindconfirm="handleSearchConfirm"
         />
-        <button
+
+        <view
           wx:if="{{searchInput || keyword}}"
           class="user-management-search__clear"
           bindtap="handleClearSearchTap"
         >
-          清空
-        </button>
-        <button
-          class="user-management-search__submit"
-          bindtap="handleSearchConfirm"
-          disabled="{{loading || loadingMore}}"
-        >
-          搜索
-        </button>
+          ×
+        </view>
       </view>
 
       <scroll-view class="user-management-filter" scroll-x="{{true}}" show-scrollbar="{{false}}">
