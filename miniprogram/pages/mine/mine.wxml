@@ -133,6 +133,15 @@
             </view>
           </view>
 
+          <view class="mine-list-item" bindtap="handleSearchKeywordsTap">
+            <view class="mine-list-item__left">
+              <text class="mine-list-item__label">搜索词语</text>
+            </view>
+            <view class="mine-list-item__right">
+              <text class="mine-list-item__arrow">></text>
+            </view>
+          </view>
+
           <view class="mine-list-item" bindtap="handleRuntimeLogsTap">
             <view class="mine-list-item__left">
               <text class="mine-list-item__label">运行日志</text>

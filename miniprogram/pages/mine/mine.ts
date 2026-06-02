@@ -934,6 +934,20 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
+  handleSearchKeywordsTap() {
+    profileLogger.info("click_search_keywords_admin");
+
+    wx.navigateTo({
+      url: "/pages/search-keywords-admin/search-keywords-admin",
+      fail: () => {
+        wx.showToast({
+          title: "搜索词语页面打开失败",
+          icon: "none",
+        });
+      },
+    });
+  },
+
   handleConclusionRequestAdminTap() {
     profileLogger.info("click_conclusion_request_admin");
 

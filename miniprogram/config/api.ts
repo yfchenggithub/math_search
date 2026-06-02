@@ -86,3 +86,7 @@ export const CONCLUSION_REQUEST_API_CONFIG = {
 export const USERS_API_CONFIG = {
   LIST_PATH: "/api/v1/users",
 } as const;
+
+export const SEARCH_KEYWORDS_API_CONFIG = {
+  ADMIN_LIST_PATH: "/api/v1/admin/search-keywords",
+} as const;

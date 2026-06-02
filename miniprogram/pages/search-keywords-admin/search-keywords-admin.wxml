@@ -1,0 +1,76 @@
+<view class="search-keywords-page">
+  <navigation-bar
+    title="搜索词语"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="search-keywords-page__container">
+    <view class="search-keywords-toolbar">
+      <search-box
+        value="{{searchInput}}"
+        placeholder="搜索关键词"
+        show-clear="{{searchInput !== '' || keyword !== ''}}"
+        bind:input="handleKeywordInput"
+        bind:confirm="handleSearchConfirm"
+        bind:clear="handleClearSearchTap"
+      ></search-box>
+
+      <view class="search-keywords-toolbar__meta">
+        <text class="search-keywords-toolbar__count">{{countText}}</text>
+        <button
+          class="search-keywords-toolbar__refresh"
+          bindtap="handleRefreshTap"
+          disabled="{{loading || loadingMore}}"
+        >
+          刷新
+        </button>
+      </view>
+    </view>
+
+    <view wx:if="{{loading && items.length === 0}}" class="search-keywords-state">
+      <text class="search-keywords-state__title">正在加载搜索词...</text>
+    </view>
+
+    <view wx:elif="{{errorMessage && items.length === 0}}" class="search-keywords-state">
+      <text class="search-keywords-state__title">加载失败</text>
+      <text class="search-keywords-state__desc">{{errorMessage}}</text>
+      <button class="search-keywords-state__action" bindtap="handleRetryTap">
+        重新加载
+      </button>
+    </view>
+
+    <view wx:elif="{{items.length === 0}}" class="search-keywords-state">
+      <text class="search-keywords-state__title">暂无搜索词</text>
+      <text class="search-keywords-state__desc">用户提交搜索后会出现在这里</text>
+    </view>
+
+    <view wx:else class="search-keywords-list">
+      <block wx:for="{{items}}" wx:key="id" wx:for-item="item">
+        <view class="search-keywords-card">
+          <view class="search-keywords-card__head">
+            <text class="search-keywords-card__keyword">{{item.keyword || '-'}}</text>
+            <text class="search-keywords-card__count">{{item.countText}}</text>
+          </view>
+
+          <view class="search-keywords-card__meta">
+            <text>{{item.resultText}}</text>
+            <text>最近：{{item.updatedAtText}}</text>
+            <text>首次：{{item.createdAtText}}</text>
+          </view>
+        </view>
+      </block>
+
+      <button
+        wx:if="{{hasMore}}"
+        class="search-keywords-load-more"
+        loading="{{loadingMore}}"
+        disabled="{{loadingMore}}"
+        bindtap="handleLoadMoreTap"
+      >
+        加载更多
+      </button>
+    </view>
+  </view>
+</view>
