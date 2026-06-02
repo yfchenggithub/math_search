@@ -3,6 +3,7 @@ export const STORAGE_KEYS = {
   LEGACY_AUTH_TOKEN: "auth_token",
   LEGACY_AUTH_USER: "auth_user",
   APP_SETTINGS: "app_settings_v1",
+  FAVORITE_STATE_CACHE: "favorite_conclusion_state_cache_v1",
   DETAIL_DOCUMENT_CACHE: "conclusion_detail_document_cache_v1",
   SEARCH_HISTORY: "search_history_v1",
   RECENT_BROWSE: "recent_browse_v1",

@@ -1,7 +1,12 @@
 ﻿import { FEATURE_FLAGS } from "../../config/feature-flags";
 import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
+import { authService } from "../../services/auth/auth-service";
 import type { AuthStatusToastType } from "../../services/auth/auth-types";
 import { prefetchConclusionBundlesByIds } from "../../services/conclusion-prefetch";
+import {
+  getCachedFavoriteState,
+  setCachedFavoriteState,
+} from "../../services/favorite-state-cache";
 import { recordRecentBrowse } from "../../services/history";
 import { getSettings } from "../../services/settings";
 import {
@@ -230,6 +235,55 @@ Page({
     return setTimeout(() => callback(), 16);
   },
 
+  resolveFavoriteTargetId() {
+    return String(this.currentDetailId || this.data.id || "").trim();
+  },
+
+  resolveFavoriteStateFromCache(detailId: string): boolean | null {
+    if (!authService.isAuthenticated()) {
+      return null;
+    }
+
+    const candidates = [
+      String(this.currentDetailId || "").trim(),
+      String(detailId || "").trim(),
+    ];
+
+    for (let index = 0; index < candidates.length; index += 1) {
+      const state = getCachedFavoriteState(candidates[index]);
+      if (state !== null) {
+        return state;
+      }
+    }
+
+    return null;
+  },
+
+  applyFavoriteStateOverride(detail: DetailDocumentView): DetailDocumentView {
+    const cachedFavoriteState = this.resolveFavoriteStateFromCache(detail.id);
+    if (cachedFavoriteState === null) {
+      return detail;
+    }
+
+    return {
+      ...detail,
+      isFavorited: cachedFavoriteState,
+      showFavoriteStatus: true,
+      favoriteStatusText: cachedFavoriteState ? "已收藏" : "未收藏",
+    };
+  },
+
+  syncFavoriteStateCache(isFavorited: boolean) {
+    const idCandidates = [
+      String(this.currentDetailId || "").trim(),
+      String(this.data.id || "").trim(),
+    ].filter((id) => Boolean(id));
+
+    idCandidates.forEach((id) => {
+      setCachedFavoriteState(id, isFavorited);
+    });
+  },
+
   async loadDetail(options: Record<string, string | undefined>) {
     const id = String(options.id || "").trim();
     this.currentDetailId = id;
@@ -302,37 +356,38 @@ Page({
     this.pendingPdfDownloadAfterUnlock = false;
     this.articleScrollTop = 0;
     const hydratedDetail = await this.hydrateMathImageCache(detail);
-    this.persistRecentBrowse(hydratedDetail);
+    const detailWithFavoriteState = this.applyFavoriteStateOverride(hydratedDetail);
+    this.persistRecentBrowse(detailWithFavoriteState);
 
     this.setData(
       {
-        id: hydratedDetail.id,
-        title: hydratedDetail.title,
-        category: hydratedDetail.category,
-        summary: hydratedDetail.summary,
-        summaryHtml: hydratedDetail.summaryHtml,
-        aliases: hydratedDetail.aliases,
-        aliasesDisplay: hydratedDetail.aliases.join(" / "),
-        tags: hydratedDetail.tags,
-        hasDifficulty: hydratedDetail.hasDifficulty,
-        difficultyLabel: hydratedDetail.difficultyLabel,
-        isFavorited: hydratedDetail.isFavorited,
+        id: detailWithFavoriteState.id,
+        title: detailWithFavoriteState.title,
+        category: detailWithFavoriteState.category,
+        summary: detailWithFavoriteState.summary,
+        summaryHtml: detailWithFavoriteState.summaryHtml,
+        aliases: detailWithFavoriteState.aliases,
+        aliasesDisplay: detailWithFavoriteState.aliases.join(" / "),
+        tags: detailWithFavoriteState.tags,
+        hasDifficulty: detailWithFavoriteState.hasDifficulty,
+        difficultyLabel: detailWithFavoriteState.difficultyLabel,
+        isFavorited: detailWithFavoriteState.isFavorited,
         favoriteActionBusy: false,
-        showFavoriteStatus: hydratedDetail.showFavoriteStatus,
-        favoriteStatusText: hydratedDetail.favoriteStatusText,
-        coreFormulaHtml: hydratedDetail.coreFormulaHtml,
-        coreFormulaImage: hydratedDetail.coreFormulaImage || null,
-        sections: hydratedDetail.sections,
-        pdfUrl: hydratedDetail.pdfUrl,
-        pdfFilename: hydratedDetail.pdfFilename,
-        pdfAvailable: hydratedDetail.pdfAvailable,
+        showFavoriteStatus: detailWithFavoriteState.showFavoriteStatus,
+        favoriteStatusText: detailWithFavoriteState.favoriteStatusText,
+        coreFormulaHtml: detailWithFavoriteState.coreFormulaHtml,
+        coreFormulaImage: detailWithFavoriteState.coreFormulaImage || null,
+        sections: detailWithFavoriteState.sections,
+        pdfUrl: detailWithFavoriteState.pdfUrl,
+        pdfFilename: detailWithFavoriteState.pdfFilename,
+        pdfAvailable: detailWithFavoriteState.pdfAvailable,
         pdfActionBusy: false,
         pdfActionLabel: "",
         pdfStatus: createIdlePdfStatus(),
         isUnlockModalVisible: false,
         isUnlockingPdfEntitlement: false,
         isDownloadingPdf: false,
-        sourceType: hydratedDetail.sourceType,
+        sourceType: detailWithFavoriteState.sourceType,
         viewState: "content",
         viewMessage: "",
         loadDurationMs: Math.max(0, Math.round(Number(loadDurationMs) || 0)),
@@ -348,22 +403,22 @@ Page({
           this.detailViewTracked = true;
           trackDetailView(
             {
-              item_id: hydratedDetail.id,
-              title: hydratedDetail.title,
-              module: hydratedDetail.category,
-              has_pdf: Boolean(hydratedDetail.pdfAvailable),
+              item_id: detailWithFavoriteState.id,
+              title: detailWithFavoriteState.title,
+              module: detailWithFavoriteState.category,
+              has_pdf: Boolean(detailWithFavoriteState.pdfAvailable),
               source: this.routeSource,
               page: "detail",
               entry: this.routeEntry,
             },
             {
-              dedupeKey: `detail_view:${hydratedDetail.id}`,
+              dedupeKey: `detail_view:${detailWithFavoriteState.id}`,
               dedupeMs: 10 * 60 * 1000,
             },
           );
         }
 
-        void prefetchConclusionBundlesByIds([hydratedDetail.id], {
+        void prefetchConclusionBundlesByIds([detailWithFavoriteState.id], {
           reason: "detail_content",
           maxCount: 1,
           detailConcurrency: 1,
@@ -843,7 +898,7 @@ Page({
       return;
     }
 
-    const conclusionId = String(this.data.id || "").trim();
+    const conclusionId = this.resolveFavoriteTargetId();
     if (!conclusionId) {
       detailPageLogger.warn("favorite_toggle_invalid_id", {
         id: this.data.id,
@@ -898,6 +953,7 @@ Page({
         showFavoriteStatus: true,
         favoriteStatusText: nextFavoriteState ? "已收藏" : "未收藏",
       });
+      this.syncFavoriteStateCache(nextFavoriteState);
 
       trackFavorite(
         nextFavoriteState ? "favorite_success" : "favorite_cancel",
@@ -954,6 +1010,7 @@ Page({
   },
 
   onLoad(options: Record<string, string | undefined>) {
+    authService.init();
     this.ensureShareMenu();
     this.routeSource = String(options.source || "detail").trim() || "detail";
     this.routeEntry = String(options.entry || "unknown").trim() || "unknown";

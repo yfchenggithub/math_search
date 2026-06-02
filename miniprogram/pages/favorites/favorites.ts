@@ -9,6 +9,10 @@ import { getRecentBrowse, type RecentBrowseItem } from "../../services/history";
 import { authService } from "../../services/auth/auth-service";
 import { prefetchConclusionBundlesByIds } from "../../services/conclusion-prefetch";
 import {
+  setCachedFavoriteState,
+  syncCachedFavoriteStates,
+} from "../../services/favorite-state-cache";
+import {
   getDetailDocument,
   getDetailDocumentById,
   type DetailDocumentView,
@@ -754,6 +758,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
 
     try {
       await removeFavorite(target.detailId);
+      setCachedFavoriteState(target.detailId, false);
 
       const nextItems = this.data.favoriteItems.filter((item) => item.id !== target.id);
       const nextCount = nextItems.length;
@@ -825,6 +830,7 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       }
 
       const uniqueRecords = dedupeFavoriteRecords(records);
+      syncCachedFavoriteStates(uniqueRecords.map((record) => record.id));
       const recentBrowseLookup = buildRecentBrowseLookup(getRecentBrowse());
       const favoriteItems = uniqueRecords.map((record) =>
         mapFavoriteRecordToCard(record, recentBrowseLookup)
