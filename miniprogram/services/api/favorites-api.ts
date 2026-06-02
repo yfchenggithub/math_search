@@ -1,6 +1,8 @@
 import { request } from "../request/request";
 import { downloadAndOpenPdfDocument } from "../pdf-document";
 
+const FAVORITE_HANDOUT_CREATE_TIMEOUT_MS = 30000;
+
 export interface FavoriteRecord {
   id: string;
   title: string;
@@ -231,6 +233,7 @@ export async function createFavoriteHandout(): Promise<FavoriteHandoutResponse> 
     method: "POST",
     data: {},
     authMode: "required",
+    timeout: FAVORITE_HANDOUT_CREATE_TIMEOUT_MS,
   });
 
   return normalizeFavoriteHandoutResponse(raw);

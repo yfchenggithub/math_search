@@ -3,7 +3,7 @@
  * Keep baseURL and search mode switches in one place for easy rollback.
  */
 import { createLogger } from "../utils/logger/logger";
-import type { ApiEnv }from "./runtime-env";
+import type { ApiEnv } from "./runtime-env";
 import { readApiEnvVersion } from "./runtime-env";
 
 const apiConfigLogger = createLogger("api-config");
@@ -47,7 +47,7 @@ function resolveApiBaseURL(): string {
 
 export const API_CONFIG = {
   baseURL: resolveApiBaseURL(),
-  timeout: 10000,
+  timeout: 20000,
   header: {
     "content-type": "application/json",
     Accept: "application/json",
