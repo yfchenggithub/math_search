@@ -23,6 +23,8 @@ export interface ConclusionCardCacheItem {
   coreFormulaLatex: string;
   previewType: ConclusionCardPreviewType;
   previewImage: string;
+  previewImageWidth: number;
+  previewImageHeight: number;
   previewText: string;
   previewFallbackText: string;
   updatedAt: number;
@@ -44,11 +46,16 @@ interface CoreFormulaInfo {
   latex: string;
   png: string;
   webp: string;
+  displayWidth: number;
+  displayHeight: number;
 }
 
 const CONCLUSION_CARD_CACHE_STORAGE_KEY = STORAGE_KEYS.CONCLUSION_CARD_CACHE;
 const CONCLUSION_CARD_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CONCLUSION_CARD_CACHE_MAX_COUNT = 500;
+const PREVIEW_IMAGE_MAX_WIDTH_PX = 288;
+const PREVIEW_IMAGE_MAX_HEIGHT_PX = 118;
+const PREVIEW_IMAGE_DEFAULT_WIDTH_PX = 160;
 const conclusionCardCacheLogger = createLogger("conclusion-card-cache");
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -114,6 +121,11 @@ function normalizeNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizePositiveNumber(value: unknown): number {
+  const numberValue = normalizeNumber(value);
+  return numberValue !== null && numberValue > 0 ? numberValue : 0;
+}
+
 function normalizeBoolean(value: unknown): boolean {
   if (typeof value === "boolean") {
     return value;
@@ -152,6 +164,8 @@ function normalizeCoreFormula(value: unknown): CoreFormulaInfo {
       latex: value.trim(),
       png: "",
       webp: "",
+      displayWidth: 0,
+      displayHeight: 0,
     };
   }
 
@@ -160,16 +174,66 @@ function normalizeCoreFormula(value: unknown): CoreFormulaInfo {
       latex: "",
       png: "",
       webp: "",
+      displayWidth: 0,
+      displayHeight: 0,
     };
   }
 
   const asset = isPlainObject(value.asset) ? value.asset : {};
+  const scale = normalizePositiveNumber(asset.scale) || 1;
+  const directWidth = normalizePositiveNumber(asset.display_width_px);
+  const directHeight = normalizePositiveNumber(asset.display_height_px);
+  const derivedWidth = normalizePositiveNumber(asset.width_px) / scale;
+  const derivedHeight = normalizePositiveNumber(asset.height_px) / scale;
 
   return {
     latex: toTrimmedString(value.latex || value.text || value.source),
     png: toTrimmedString(asset.png),
     webp: toTrimmedString(asset.webp),
+    displayWidth: directWidth || derivedWidth || 0,
+    displayHeight: directHeight || derivedHeight || 0,
   };
+}
+
+function normalizePreviewImageDimensions(
+  rawWidth: unknown,
+  rawHeight: unknown,
+): { width: number; height: number } {
+  let width = normalizePositiveNumber(rawWidth);
+  let height = normalizePositiveNumber(rawHeight);
+
+  if (width <= 0) {
+    return {
+      width: PREVIEW_IMAGE_DEFAULT_WIDTH_PX,
+      height: 0,
+    };
+  }
+
+  let scale = 1;
+  if (width > PREVIEW_IMAGE_MAX_WIDTH_PX) {
+    scale = Math.min(scale, PREVIEW_IMAGE_MAX_WIDTH_PX / width);
+  }
+
+  if (height > PREVIEW_IMAGE_MAX_HEIGHT_PX) {
+    scale = Math.min(scale, PREVIEW_IMAGE_MAX_HEIGHT_PX / height);
+  }
+
+  if (scale < 1) {
+    width = Math.max(1, Math.round(width * scale));
+    height = height > 0 ? Math.max(1, Math.round(height * scale)) : 0;
+  }
+
+  return {
+    width: Math.max(1, Math.round(width)),
+    height: height > 0 ? Math.max(1, Math.round(height)) : 0,
+  };
+}
+
+function normalizeFinalPreviewImageDimensions(
+  rawWidth: unknown,
+  rawHeight: unknown,
+): { width: number; height: number } {
+  return normalizePreviewImageDimensions(rawWidth, rawHeight);
 }
 
 function normalizeImageUrl(pathOrUrl: string): string {
@@ -222,6 +286,17 @@ function normalizeConclusionCardItemWithTimestamp(
   const previewType: ConclusionCardPreviewType = imageUrl
     ? "image"
     : ((rawPreviewText || coreFormulaLatex) ? "text" : "none");
+  const hasSourceImageDimensions = coreFormula.displayWidth > 0 && coreFormula.displayHeight > 0;
+  const previewImageDimensions = previewType !== "image"
+    ? { width: 0, height: 0 }
+    : (
+      hasSourceImageDimensions
+        ? normalizePreviewImageDimensions(coreFormula.displayWidth, coreFormula.displayHeight)
+        : normalizeFinalPreviewImageDimensions(
+          raw.previewImageWidth || raw.preview_image_width,
+          raw.previewImageHeight || raw.preview_image_height,
+        )
+    );
 
   return {
     id,
@@ -241,6 +316,8 @@ function normalizeConclusionCardItemWithTimestamp(
     coreFormulaLatex,
     previewType,
     previewImage: previewType === "image" ? imageUrl : "",
+    previewImageWidth: previewImageDimensions.width,
+    previewImageHeight: previewImageDimensions.height,
     previewText: previewType === "text" ? (rawPreviewText || coreFormulaLatex) : "",
     previewFallbackText: rawPreviewFallbackText || coreFormulaLatex || summary,
     updatedAt,

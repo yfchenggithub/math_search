@@ -36,7 +36,9 @@
     <image
       class="conclusion-card__preview-image"
       src="{{previewImage}}"
-      mode="aspectFit"
+      mode="widthFix"
+      lazy-load="{{true}}"
+      style="{{previewImageStyle}}"
       binderror="onPreviewImageError"
     ></image>
   </view>

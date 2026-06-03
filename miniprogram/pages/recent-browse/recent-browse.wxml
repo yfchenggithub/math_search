@@ -42,6 +42,8 @@
             preview-html="{{item.previewHtml}}"
             preview-text="{{item.previewText}}"
             preview-image="{{item.previewImage}}"
+            preview-image-width="{{item.previewImageWidth}}"
+            preview-image-height="{{item.previewImageHeight}}"
             preview-fallback-text="{{item.previewFallbackText}}"
             bind:cardtap="handleDetailTap"
           ></conclusion-card>

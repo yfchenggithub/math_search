@@ -16,6 +16,8 @@ type CardPreviewFields = {
   previewHtml: string;
   previewText: string;
   previewImage: string;
+  previewImageWidth: number;
+  previewImageHeight: number;
   previewFallbackText: string;
 };
 
@@ -216,6 +218,8 @@ function buildEmptyPreview(): CardPreviewFields {
     previewHtml: "",
     previewText: "",
     previewImage: "",
+    previewImageWidth: 0,
+    previewImageHeight: 0,
     previewFallbackText: "",
   };
 }
@@ -239,6 +243,8 @@ function buildCacheCardPreview(
       previewHtml: "",
       previewText: "",
       previewImage,
+      previewImageWidth: card.previewImageWidth,
+      previewImageHeight: card.previewImageHeight,
       previewFallbackText,
     };
   }
@@ -250,6 +256,8 @@ function buildCacheCardPreview(
       previewHtml: "",
       previewText,
       previewImage: "",
+      previewImageWidth: 0,
+      previewImageHeight: 0,
       previewFallbackText: previewFallbackText || previewText,
     };
   }

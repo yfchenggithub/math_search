@@ -138,6 +138,8 @@ type HomeRecommendItem = {
   previewHtml: string;
   previewText: string;
   previewImage: string;
+  previewImageWidth: number;
+  previewImageHeight: number;
   previewFallbackText: string;
   updatedAt?: string | number;
   rank?: number;
@@ -222,6 +224,8 @@ interface SearchCardItem extends ResultItem {
   previewHtml: string;
   previewText: string;
   previewImage: string;
+  previewImageWidth: number;
+  previewImageHeight: number;
   previewFallbackText: string;
   formulaHtml: string;
   formulaText: string;
@@ -1200,6 +1204,8 @@ Page({
       previewHtml: seed.previewHtml,
       previewText: seed.previewText,
       previewImage: seed.previewImage,
+      previewImageWidth: seed.previewImageWidth,
+      previewImageHeight: seed.previewImageHeight,
       previewFallbackText: seed.previewFallbackText,
       updatedAt: seed.updatedAt,
       rank: seed.rank,
@@ -1210,14 +1216,28 @@ Page({
     source: string,
     preferred?: Partial<Pick<
       HomeRecommendItem,
-      "previewType" | "previewHtml" | "previewText" | "previewImage" | "previewFallbackText"
+      | "previewType"
+      | "previewHtml"
+      | "previewText"
+      | "previewImage"
+      | "previewImageWidth"
+      | "previewImageHeight"
+      | "previewFallbackText"
     >>,
   ): Pick<
     HomeRecommendItem,
-    "previewType" | "previewHtml" | "previewText" | "previewImage" | "previewFallbackText"
+    | "previewType"
+    | "previewHtml"
+    | "previewText"
+    | "previewImage"
+    | "previewImageWidth"
+    | "previewImageHeight"
+    | "previewFallbackText"
   > {
     const formulaSource = String(source || "").trim();
     const previewImage = String(preferred?.previewImage || "").trim();
+    const previewImageWidth = this.normalizeOptionalNumber(preferred?.previewImageWidth) || 0;
+    const previewImageHeight = this.normalizeOptionalNumber(preferred?.previewImageHeight) || 0;
     const previewHtml = String(preferred?.previewHtml || "").trim();
     const previewText = String(preferred?.previewText || "").trim();
     const previewFallbackText = String(preferred?.previewFallbackText || formulaSource).trim();
@@ -1228,6 +1248,8 @@ Page({
         previewHtml: "",
         previewText: "",
         previewImage,
+        previewImageWidth,
+        previewImageHeight,
         previewFallbackText,
       };
     }
@@ -1238,6 +1260,8 @@ Page({
         previewHtml,
         previewText: "",
         previewImage: "",
+        previewImageWidth: 0,
+        previewImageHeight: 0,
         previewFallbackText,
       };
     }
@@ -1248,6 +1272,8 @@ Page({
         previewHtml: "",
         previewText,
         previewImage: "",
+        previewImageWidth: 0,
+        previewImageHeight: 0,
         previewFallbackText: previewFallbackText || previewText,
       };
     }
@@ -1258,6 +1284,8 @@ Page({
         previewHtml: "",
         previewText: "",
         previewImage: "",
+        previewImageWidth: 0,
+        previewImageHeight: 0,
         previewFallbackText: "",
       };
     }
@@ -1268,6 +1296,8 @@ Page({
       previewHtml: mathResult.html,
       previewText: mathResult.html ? "" : mathResult.source,
       previewImage: "",
+      previewImageWidth: 0,
+      previewImageHeight: 0,
       previewFallbackText: mathResult.source,
     };
   },

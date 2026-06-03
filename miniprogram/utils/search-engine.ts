@@ -160,6 +160,8 @@ export interface SearchViewItem {
   coreFormula: string;
   previewType: ConclusionCardPreviewType;
   previewImage: string;
+  previewImageWidth: number;
+  previewImageHeight: number;
   previewText: string;
   previewFallbackText: string;
   difficulty?: number;
@@ -177,7 +179,13 @@ export interface SearchViewItem {
 
 type SearchFormulaPreview = Pick<
   SearchViewItem,
-  "coreFormula" | "previewType" | "previewImage" | "previewText" | "previewFallbackText"
+  | "coreFormula"
+  | "previewType"
+  | "previewImage"
+  | "previewImageWidth"
+  | "previewImageHeight"
+  | "previewText"
+  | "previewFallbackText"
 >;
 
 export interface SearchFacadeResponse {
@@ -820,6 +828,8 @@ function buildSearchFormulaPreview(
   const coreFormula = cardItem?.coreFormulaLatex
     || normalizeCoreFormulaLatex(fallbackFormula);
   const previewImage = normalizeText(cardItem?.previewImage);
+  const previewImageWidth = normalizeNumber(cardItem?.previewImageWidth) ?? 0;
+  const previewImageHeight = normalizeNumber(cardItem?.previewImageHeight) ?? 0;
   const previewText = normalizeText(cardItem?.previewText) || coreFormula;
   const previewFallbackText = normalizeText(cardItem?.previewFallbackText)
     || coreFormula
@@ -830,6 +840,8 @@ function buildSearchFormulaPreview(
       coreFormula,
       previewType: "image",
       previewImage,
+      previewImageWidth,
+      previewImageHeight,
       previewText: "",
       previewFallbackText,
     };
@@ -840,6 +852,8 @@ function buildSearchFormulaPreview(
       coreFormula,
       previewType: "text",
       previewImage: "",
+      previewImageWidth: 0,
+      previewImageHeight: 0,
       previewText,
       previewFallbackText: previewFallbackText || previewText,
     };
@@ -849,6 +863,8 @@ function buildSearchFormulaPreview(
     coreFormula,
     previewType: "none",
     previewImage: "",
+    previewImageWidth: 0,
+    previewImageHeight: 0,
     previewText: "",
     previewFallbackText: "",
   };
