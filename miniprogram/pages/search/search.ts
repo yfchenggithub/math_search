@@ -40,6 +40,9 @@ import {
 } from "../../utils/share";
 
 const TAB_ALL = "all";
+const TAB_HOT = "hot";
+const TAB_COMMON = "common";
+const TAB_MODULE_TOGGLE = "__module_toggle__";
 const SET_DATA_WARN_BYTES = 180 * 1024;
 const PDF_ENTITLEMENT_REFRESH_INTERVAL_MS = 30 * 1000;
 const HOME_RECOMMEND_LIMIT = 4;
@@ -86,19 +89,35 @@ const CONCLUSION_REQUEST_COPY = {
   submitFailedToast: "提交失败，请稍后再试",
 } as const;
 
+type QuickFilterAction = "filter" | "toggle";
+
 type QuickFilter = {
   key: string;
   label: string;
+  action?: QuickFilterAction;
+};
+
+type ModuleFilter = QuickFilter & {
+  keywords: string[];
 };
 
 const QUICK_FILTERS: QuickFilter[] = [
   { key: TAB_ALL, label: "全部" },
-  { key: "hot", label: "高频" },
-  { key: "common", label: "常用" },
-  { key: "inequality", label: "不等式" },
-  { key: "function", label: "函数" },
-  { key: "conic", label: "圆锥" },
-  { key: "derivative", label: "导数" },
+  { key: TAB_HOT, label: "高频" },
+  { key: TAB_COMMON, label: "常用" },
+];
+
+const MODULE_FILTERS: ModuleFilter[] = [
+  { key: "category:集合", label: "集合", keywords: ["集合", "set"] },
+  { key: "category:立体几何", label: "立体几何", keywords: ["立体几何", "空间几何", "solid geometry"] },
+  { key: "category:向量", label: "向量", keywords: ["向量", "vector"] },
+  { key: "category:数列", label: "数列", keywords: ["数列", "sequence"] },
+  { key: "category:导数与函数", label: "导数与函数", keywords: ["导数与函数", "导数", "derivative", "function"] },
+  { key: "category:圆锥曲线", label: "圆锥曲线", keywords: ["圆锥曲线", "圆锥", "椭圆", "抛物线", "双曲线", "conic"] },
+  { key: "category:平面几何", label: "平面几何", keywords: ["平面几何", "plane geometry"] },
+  { key: "category:概率", label: "概率", keywords: ["概率", "probability"] },
+  { key: "category:不等式", label: "不等式", keywords: ["不等式", "inequality"] },
+  { key: "category:三角函数", label: "三角函数", keywords: ["三角函数", "三角", "trigonometry"] },
 ];
 
 const FILTER_KEYWORDS: Record<string, string[]> = {
@@ -107,6 +126,53 @@ const FILTER_KEYWORDS: Record<string, string[]> = {
   conic: ["圆锥", "conic", "椭圆", "抛物线", "双曲线"],
   derivative: ["导数", "derivative", "微分"],
 };
+
+function findModuleFilterByKey(key: string): ModuleFilter | null {
+  for (let index = 0; index < MODULE_FILTERS.length; index += 1) {
+    if (MODULE_FILTERS[index].key === key) {
+      return MODULE_FILTERS[index];
+    }
+  }
+
+  return null;
+}
+
+function buildPrimaryQuickFilters(
+  activeTab: string,
+  isModuleExpanded: boolean,
+): QuickFilter[] {
+  const toggleFilter: QuickFilter = {
+    key: TAB_MODULE_TOGGLE,
+    label: isModuleExpanded ? "收起 ∧" : "更多 ∨",
+    action: "toggle",
+  };
+
+  if (isModuleExpanded) {
+    return [
+      { key: TAB_ALL, label: "全部" },
+      { key: TAB_HOT, label: "高频" },
+      { key: TAB_COMMON, label: "常用" },
+      toggleFilter,
+    ];
+  }
+
+  const activeModule = findModuleFilterByKey(activeTab);
+  if (activeModule) {
+    return [
+      { key: TAB_ALL, label: "全部" },
+      { key: activeModule.key, label: activeModule.label },
+      { key: TAB_COMMON, label: "常用" },
+      toggleFilter,
+    ];
+  }
+
+  return [
+    { key: TAB_ALL, label: "全部" },
+    { key: TAB_HOT, label: "高频" },
+    { key: TAB_COMMON, label: "常用" },
+    toggleFilter,
+  ];
+}
 
 const HOME_RECOMMEND_COPY = {
   hotTitle: "热门结论",
@@ -163,6 +229,7 @@ type HomeRecommendSeed = HomeRecommendItem & {
   hotFlag: boolean;
   commonFlag: boolean;
   coreFormula: string;
+  moduleKey: string;
 };
 
 type HomeRecommendState = {
@@ -261,6 +328,9 @@ Page({
     rate2: 0,
 
     quickFilters: QUICK_FILTERS as QuickFilter[],
+    primaryQuickFilters: buildPrimaryQuickFilters(TAB_ALL, false),
+    moduleFilters: MODULE_FILTERS as ModuleFilter[],
+    isModuleExpanded: false,
     activeTab: TAB_ALL,
     showClear: false,
     listScrollTop: 0,
@@ -292,6 +362,7 @@ Page({
   searchTaskId: 0,
   suggestTaskId: 0,
   allResultsCache: [] as SearchCardItem[],
+  homeRecommendSeeds: [] as HomeRecommendSeed[],
   pdfEntitlementTimer: null as number | null,
   shareMenuReady: false,
   homeViewTracked: false,
@@ -637,6 +708,10 @@ Page({
     this.createSuggestTaskId();
 
     this.allResultsCache = [];
+    const recommendState = this.buildHomeRecommendationStateFromSeeds(
+      this.homeRecommendSeeds,
+      TAB_ALL,
+    );
 
     this.setData({
       query: "",
@@ -650,12 +725,22 @@ Page({
       results: [],
       debugInfo: null,
       activeTab: TAB_ALL,
+      isModuleExpanded: false,
+      primaryQuickFilters: buildPrimaryQuickFilters(TAB_ALL, false),
+      homeRecommendSections: recommendState.sections,
+      noResultRecommendItems: recommendState.noResultItems,
     });
   },
 
   onTabTap(e: SearchTabTapEvent) {
     const tab = String(e.currentTarget.dataset.tab || TAB_ALL);
-    const tabConfig = this.data.quickFilters.find((item) => item.key === tab);
+
+    if (tab === TAB_MODULE_TOGGLE) {
+      this.toggleModuleFilters();
+      return;
+    }
+
+    const tabConfig = this.resolveQuickFilter(tab);
     trackEvent("home_quick_filter_click", {
       source: "home",
       page: "home",
@@ -664,14 +749,35 @@ Page({
       filter_label: tabConfig?.label || tab,
     });
 
+    const isModuleExpanded = false;
     const filteredResults = this.filterResults(
       this.allResultsCache,
+      tab,
+    );
+    const recommendState = this.buildHomeRecommendationStateFromSeeds(
+      this.homeRecommendSeeds,
       tab,
     );
 
     this.setDataWithTrace("search_tab_switch", {
       activeTab: tab,
       results: filteredResults,
+      isModuleExpanded,
+      primaryQuickFilters: buildPrimaryQuickFilters(tab, isModuleExpanded),
+      homeRecommendSections: recommendState.sections,
+      noResultRecommendItems: recommendState.noResultItems,
+    });
+  },
+
+  toggleModuleFilters() {
+    const isModuleExpanded = !this.data.isModuleExpanded;
+
+    this.setData({
+      isModuleExpanded,
+      primaryQuickFilters: buildPrimaryQuickFilters(
+        this.data.activeTab,
+        isModuleExpanded,
+      ),
     });
   },
 
@@ -927,12 +1033,14 @@ Page({
     this.allResultsCache = allResults;
 
     const quickFilters = this.extendQuickFiltersWithResultCategories(allResults);
-    const nextActiveTab = quickFilters.some(
-      (filter) => filter.key === this.data.activeTab,
-    )
+    const nextActiveTab = this.isKnownFilterKey(this.data.activeTab, quickFilters)
       ? this.data.activeTab
       : TAB_ALL;
     const filteredResults = this.filterResults(allResults, nextActiveTab);
+    const recommendState = this.buildHomeRecommendationStateFromSeeds(
+      this.homeRecommendSeeds,
+      nextActiveTab,
+    );
 
     this.setDataWithTrace("search_state_success", {
       query: rawQuery,
@@ -943,6 +1051,12 @@ Page({
       debugInfo,
       quickFilters,
       activeTab: nextActiveTab,
+      primaryQuickFilters: buildPrimaryQuickFilters(
+        nextActiveTab,
+        this.data.isModuleExpanded,
+      ),
+      homeRecommendSections: recommendState.sections,
+      noResultRecommendItems: recommendState.noResultItems,
     });
   },
 
@@ -957,6 +1071,8 @@ Page({
       results: [],
       debugInfo: null,
       activeTab: TAB_ALL,
+      isModuleExpanded: false,
+      primaryQuickFilters: buildPrimaryQuickFilters(TAB_ALL, false),
     });
   },
 
@@ -974,6 +1090,12 @@ Page({
       results: [],
       debugInfo: null,
       activeTab: TAB_ALL,
+      isModuleExpanded: false,
+      primaryQuickFilters: buildPrimaryQuickFilters(TAB_ALL, false),
+      homeRecommendSections: this.buildHomeRecommendationStateFromSeeds(
+        this.homeRecommendSeeds,
+        TAB_ALL,
+      ).sections,
     });
   },
 
@@ -1021,7 +1143,11 @@ Page({
   async loadHomeRecommendations() {
     try {
       const response = await homeRecommendWithFacade(80);
-      const recommendState = this.buildHomeRecommendationState(response.items);
+      this.homeRecommendSeeds = this.buildHomeRecommendationSeeds(response.items);
+      const recommendState = this.buildHomeRecommendationStateFromSeeds(
+        this.homeRecommendSeeds,
+        this.data.activeTab,
+      );
 
       this.setData({
         homeRecommendSections: recommendState.sections,
@@ -1029,6 +1155,7 @@ Page({
       });
     } catch (error) {
       searchPageLogger.warn("home_recommend_load_failed", { error });
+      this.homeRecommendSeeds = [];
       this.setData({
         homeRecommendSections: [],
         noResultRecommendItems: [],
@@ -1037,8 +1164,16 @@ Page({
   },
 
   buildHomeRecommendationState(items: SearchViewItem[]): HomeRecommendState {
-    const seeds = this.buildHomeRecommendationSeeds(items);
+    return this.buildHomeRecommendationStateFromSeeds(
+      this.buildHomeRecommendationSeeds(items),
+      TAB_ALL,
+    );
+  },
 
+  buildHomeRecommendationStateFromSeeds(
+    seeds: HomeRecommendSeed[],
+    activeTab: string = TAB_ALL,
+  ): HomeRecommendState {
     if (seeds.length <= 0) {
       return {
         sections: [],
@@ -1053,6 +1188,30 @@ Page({
       seeds.slice().sort((left, right) => this.compareHotRecommendSeeds(left, right)),
       HOME_RECOMMEND_LIMIT,
     );
+    const noResultItems = hotSeeds
+      .slice(0, NO_RESULT_RECOMMEND_LIMIT)
+      .map((seed) => this.toHomeRecommendItem(seed));
+
+    if (activeTab !== TAB_ALL) {
+      const filteredSeeds = this.filterHomeRecommendSeeds(seeds, activeTab);
+      const sortedSeeds = filteredSeeds
+        .slice()
+        .sort((left, right) => this.compareFilteredRecommendSeeds(left, right, activeTab));
+      const selectedSeeds = this.pickHomeRecommendSeeds(sortedSeeds, HOME_RECOMMEND_LIMIT);
+      const sectionMeta = this.resolveFilteredRecommendSectionMeta(activeTab);
+
+      return {
+        sections: selectedSeeds.length > 0
+          ? [{
+            key: activeTab,
+            title: sectionMeta.title,
+            subtitle: sectionMeta.subtitle,
+            items: selectedSeeds.map((seed) => this.toHomeRecommendItem(seed)),
+          }]
+          : [],
+        noResultItems,
+      };
+    }
 
     if (hotSeeds.length > 0) {
       sections.push({
@@ -1105,14 +1264,142 @@ Page({
       }
     }
 
-    const noResultItems = hotSeeds
-      .slice(0, NO_RESULT_RECOMMEND_LIMIT)
-      .map((seed) => this.toHomeRecommendItem(seed));
-
     return {
       sections,
       noResultItems,
     };
+  },
+
+  filterHomeRecommendSeeds(
+    seeds: HomeRecommendSeed[],
+    activeTab: string,
+  ): HomeRecommendSeed[] {
+    if (activeTab === TAB_ALL) {
+      return seeds;
+    }
+
+    if (activeTab === TAB_HOT) {
+      return seeds.filter((seed) => this.isHotRecommendSeed(seed));
+    }
+
+    if (activeTab === TAB_COMMON) {
+      return seeds.filter((seed) => this.isCommonRecommendSeed(seed));
+    }
+
+    if (activeTab === "inequality") {
+      return seeds.filter((seed) => this.matchesRecommendSeedKeywords(seed, FILTER_KEYWORDS.inequality));
+    }
+
+    if (activeTab === "function") {
+      return seeds.filter((seed) => this.matchesRecommendSeedKeywords(seed, FILTER_KEYWORDS.function));
+    }
+
+    if (activeTab === "conic") {
+      return seeds.filter((seed) => this.matchesRecommendSeedKeywords(seed, FILTER_KEYWORDS.conic));
+    }
+
+    if (activeTab === "derivative") {
+      return seeds.filter((seed) => this.matchesRecommendSeedKeywords(seed, FILTER_KEYWORDS.derivative));
+    }
+
+    const moduleFilter = findModuleFilterByKey(activeTab);
+    if (moduleFilter) {
+      return seeds.filter((seed) => this.matchesRecommendSeedKeywords(seed, moduleFilter.keywords));
+    }
+
+    if (activeTab.startsWith("category:")) {
+      const category = activeTab.slice("category:".length).trim();
+      if (!category) {
+        return [];
+      }
+
+      return seeds.filter((seed) => this.matchesRecommendSeedKeywords(seed, [category]));
+    }
+
+    return seeds.filter((seed) => this.matchesRecommendSeedKeywords(seed, [activeTab]));
+  },
+
+  compareFilteredRecommendSeeds(
+    left: HomeRecommendSeed,
+    right: HomeRecommendSeed,
+    activeTab: string,
+  ): number {
+    if (activeTab === TAB_COMMON) {
+      return this.compareCommonRecommendSeeds(left, right);
+    }
+
+    return this.compareHotRecommendSeeds(left, right);
+  },
+
+  resolveFilteredRecommendSectionMeta(
+    activeTab: string,
+  ): Pick<HomeRecommendSection, "title" | "subtitle"> {
+    if (activeTab === TAB_HOT) {
+      return {
+        title: "高频结论",
+        subtitle: "考试与练习中更常出现的结论",
+      };
+    }
+
+    if (activeTab === TAB_COMMON) {
+      return {
+        title: HOME_RECOMMEND_COPY.commonTitle,
+        subtitle: HOME_RECOMMEND_COPY.commonSubtitle,
+      };
+    }
+
+    const moduleFilter = findModuleFilterByKey(activeTab);
+    if (moduleFilter) {
+      return {
+        title: `${moduleFilter.label}精选`,
+        subtitle: "按模块整理的常用结论与模型",
+      };
+    }
+
+    return {
+      title: "筛选结果",
+      subtitle: "按当前分类整理的结论与模型",
+    };
+  },
+
+  isHotRecommendSeed(seed: HomeRecommendSeed): boolean {
+    if (seed.hotFlag || seed.hotScore >= 80) {
+      return true;
+    }
+
+    return this.matchesRecommendSeedKeywords(seed, ["高频", "热门", "hot"]);
+  },
+
+  isCommonRecommendSeed(seed: HomeRecommendSeed): boolean {
+    if (seed.commonFlag) {
+      return true;
+    }
+
+    return this.matchesRecommendSeedKeywords(seed, ["常用", "基础", "common"]);
+  },
+
+  matchesRecommendSeedKeywords(seed: HomeRecommendSeed, keywords: string[]): boolean {
+    const text = this.buildRecommendSeedSearchText(seed);
+    const normalizedKeywords = keywords.map((keyword) => keyword.toLowerCase());
+
+    return this.hasAnyKeyword(text, normalizedKeywords);
+  },
+
+  buildRecommendSeedSearchText(seed: HomeRecommendSeed): string {
+    const rawTags = seed.rawTags.join(" ");
+    const tags = seed.tags.join(" ");
+
+    return [
+      seed.title,
+      seed.module,
+      seed.moduleKey,
+      rawTags,
+      tags,
+      seed.summary,
+      seed.coreFormula,
+    ]
+      .map((part) => String(part || "").toLowerCase())
+      .join(" ");
   },
 
   buildHomeRecommendationSeeds(items: SearchViewItem[]): HomeRecommendSeed[] {
@@ -1127,6 +1414,7 @@ Page({
       const title = String(item.title || id).trim() || id;
       const summary = this.resolveSummaryText(item) || HOME_RECOMMEND_COPY.defaultSummary;
       const module = this.resolveCategory(item);
+      const moduleKey = String(item.module || item.moduleDir || "").trim();
       const coreFormula = String(item.coreFormula || "").trim();
       const preview = this.buildFormulaPreview(coreFormula, item);
       const rawTags = Array.isArray(item.tags)
@@ -1164,6 +1452,7 @@ Page({
         hotFlag,
         commonFlag,
         coreFormula,
+        moduleKey,
       });
     });
 
@@ -1653,6 +1942,18 @@ Page({
       seenKeys[item.key] = true;
     });
 
+    MODULE_FILTERS.forEach((item) => {
+      if (seenKeys[item.key]) {
+        return;
+      }
+
+      seenKeys[item.key] = true;
+      filters.push({
+        key: item.key,
+        label: item.label,
+      });
+    });
+
     categories.forEach((category) => {
       const normalizedCategory = String(category || "").trim();
       if (!normalizedCategory) {
@@ -1678,6 +1979,47 @@ Page({
     return filters;
   },
 
+  resolveQuickFilter(key: string): QuickFilter | null {
+    const moduleFilter = findModuleFilterByKey(key);
+    if (moduleFilter) {
+      return moduleFilter;
+    }
+
+    const quickFilter = this.data.quickFilters.find((item) => item.key === key);
+    if (quickFilter) {
+      return quickFilter;
+    }
+
+    if (key === TAB_MODULE_TOGGLE) {
+      return {
+        key: TAB_MODULE_TOGGLE,
+        label: this.data.isModuleExpanded ? "收起 ∧" : "更多 ∨",
+        action: "toggle",
+      };
+    }
+
+    return null;
+  },
+
+  isKnownFilterKey(key: string, filters: QuickFilter[]): boolean {
+    if (!key) {
+      return false;
+    }
+
+    if (filters.some((filter) => filter.key === key)) {
+      return true;
+    }
+
+    if (findModuleFilterByKey(key)) {
+      return true;
+    }
+
+    return key === "inequality"
+      || key === "function"
+      || key === "conic"
+      || key === "derivative";
+  },
+
   extendQuickFiltersWithResultCategories(results: SearchCardItem[]): QuickFilter[] {
     const categories: string[] = [];
 
@@ -1696,6 +2038,10 @@ Page({
 
   isCoveredByPresetCategory(category: string): boolean {
     const normalized = category.toLowerCase();
+
+    if (MODULE_FILTERS.some((filter) => this.hasAnyKeyword(normalized, filter.keywords))) {
+      return true;
+    }
 
     return this.hasAnyKeyword(normalized, FILTER_KEYWORDS.inequality)
       || this.hasAnyKeyword(normalized, FILTER_KEYWORDS.function)
@@ -1819,12 +2165,17 @@ Page({
       return results;
     }
 
-    if (activeTab === "hot") {
+    if (activeTab === TAB_HOT) {
       return results.filter((item) => this.isHotItem(item));
     }
 
-    if (activeTab === "common") {
+    if (activeTab === TAB_COMMON) {
       return results.filter((item) => this.isCommonItem(item));
+    }
+
+    const moduleFilter = findModuleFilterByKey(activeTab);
+    if (moduleFilter) {
+      return results.filter((item) => this.matchesKeywordFilter(item, moduleFilter.keywords));
     }
 
     if (activeTab === "inequality") {
@@ -2135,18 +2486,50 @@ Page({
   },
 
   getModuleLabel(module: string): string {
+    if (module === "set" || module === "sets") {
+      return "集合";
+    }
+
+    if (module === "solid_geometry" || module === "solid-geometry") {
+      return "立体几何";
+    }
+
+    if (module === "vector" || module === "vectors") {
+      return "向量";
+    }
+
+    if (module === "sequence" || module === "sequences") {
+      return "数列";
+    }
+
     if (module === "function") {
-      return "\u51fd\u6570";
+      return "导数与函数";
+    }
+
+    if (module === "derivative" || module === "calculus") {
+      return "导数与函数";
+    }
+
+    if (module === "conic" || module === "conics") {
+      return "圆锥曲线";
+    }
+
+    if (module === "plane_geometry" || module === "plane-geometry") {
+      return "平面几何";
+    }
+
+    if (module === "probability") {
+      return "概率";
     }
 
     if (module === "trigonometry") {
-      return "\u4e09\u89d2\u51fd\u6570";
+      return "三角函数";
     }
 
     if (module === "inequality") {
-      return "\u4e0d\u7b49\u5f0f";
+      return "不等式";
     }
 
-    return "\u6570\u5b66";
+    return "数学";
   },
 });
