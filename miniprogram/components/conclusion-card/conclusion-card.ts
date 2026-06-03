@@ -17,6 +17,10 @@ Component({
       type: String,
       value: "",
     },
+    titleSegments: {
+      type: Array,
+      value: [],
+    },
     summary: {
       type: String,
       value: "",
@@ -53,6 +57,40 @@ Component({
       type: Boolean,
       value: true,
     },
+    previewType: {
+      type: String,
+      value: "none",
+    },
+    previewHtml: {
+      type: String,
+      value: "",
+    },
+    previewText: {
+      type: String,
+      value: "",
+    },
+    previewImage: {
+      type: String,
+      value: "",
+    },
+    previewFallbackText: {
+      type: String,
+      value: "",
+    },
+  },
+
+  data: {
+    previewImageLoadFailed: false,
+  },
+
+  observers: {
+    "previewType, previewImage"() {
+      if (this.data.previewImageLoadFailed) {
+        this.setData({
+          previewImageLoadFailed: false,
+        });
+      }
+    },
   },
 
   methods: {
@@ -66,6 +104,12 @@ Component({
 
     onActionTap() {
       this.emitCardTap();
+    },
+
+    onPreviewImageError() {
+      this.setData({
+        previewImageLoadFailed: true,
+      });
     },
 
     emitCardTap() {

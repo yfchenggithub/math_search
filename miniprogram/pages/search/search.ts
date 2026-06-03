@@ -125,6 +125,8 @@ type HighlightSegment = {
   highlight: boolean;
 };
 
+type CardPreviewType = "html" | "text" | "image" | "none";
+
 type HomeRecommendItem = {
   id: string;
   title: string;
@@ -132,6 +134,11 @@ type HomeRecommendItem = {
   module?: string;
   tags: string[];
   hasPdf: boolean;
+  previewType: CardPreviewType;
+  previewHtml: string;
+  previewText: string;
+  previewImage: string;
+  previewFallbackText: string;
   updatedAt?: string | number;
   rank?: number;
 };
@@ -143,7 +150,10 @@ type HomeRecommendSection = {
   items: HomeRecommendItem[];
 };
 
-type HomeRecommendSeed = HomeRecommendItem & {
+type HomeRecommendSeed = Omit<
+  HomeRecommendItem,
+  "previewType" | "previewHtml" | "previewText" | "previewImage" | "previewFallbackText"
+> & {
   sourceOrder: number;
   rawTags: string[];
   hotScore: number;
@@ -153,6 +163,7 @@ type HomeRecommendSeed = HomeRecommendItem & {
   createdAtTs: number;
   hotFlag: boolean;
   commonFlag: boolean;
+  coreFormula: string;
 };
 
 type HomeRecommendState = {
@@ -208,6 +219,7 @@ type ExecuteSearchOptions = {
 interface SearchCardItem extends ResultItem {
   titleSegments: HighlightSegment[];
   category: string;
+  displayTags: string[];
   searchScore: number;
   formulaHtml: string;
   formulaText: string;
@@ -1109,6 +1121,7 @@ Page({
       const title = String(item.title || id).trim() || id;
       const summary = this.resolveSummaryText(item) || HOME_RECOMMEND_COPY.defaultSummary;
       const module = this.resolveCategory(item);
+      const coreFormula = String(item.coreFormula || "").trim();
       const rawTags = Array.isArray(item.tags)
         ? item.tags
           .map((tag) => String(tag || "").trim())
@@ -1142,6 +1155,7 @@ Page({
         createdAtTs,
         hotFlag,
         commonFlag,
+        coreFormula,
       });
     });
 
@@ -1171,6 +1185,8 @@ Page({
   },
 
   toHomeRecommendItem(seed: HomeRecommendSeed): HomeRecommendItem {
+    const preview = this.buildFormulaPreview(seed.coreFormula);
+
     return {
       id: seed.id,
       title: seed.title,
@@ -1178,8 +1194,34 @@ Page({
       module: seed.module,
       tags: seed.tags,
       hasPdf: seed.hasPdf,
+      ...preview,
       updatedAt: seed.updatedAt,
       rank: seed.rank,
+    };
+  },
+
+  buildFormulaPreview(source: string): Pick<
+    HomeRecommendItem,
+    "previewType" | "previewHtml" | "previewText" | "previewImage" | "previewFallbackText"
+  > {
+    const formulaSource = String(source || "").trim();
+    if (!formulaSource) {
+      return {
+        previewType: "none",
+        previewHtml: "",
+        previewText: "",
+        previewImage: "",
+        previewFallbackText: "",
+      };
+    }
+
+    const mathResult = renderMath(formulaSource, true);
+    return {
+      previewType: mathResult.html ? "html" : "text",
+      previewHtml: mathResult.html,
+      previewText: mathResult.html ? "" : mathResult.source,
+      previewImage: "",
+      previewFallbackText: mathResult.source,
     };
   },
 
@@ -1466,6 +1508,7 @@ Page({
         module: item.moduleDir || item.module || category,
         category,
         tags: Array.isArray(item.tags) ? item.tags : [],
+        displayTags: this.buildSearchResultTags(category, level),
         level,
         freq: frequency,
         score,
@@ -1475,6 +1518,22 @@ Page({
         usage: summary,
       };
     });
+  },
+
+  buildSearchResultTags(category: string, level: string): string[] {
+    const tags: string[] = [];
+    const normalizedCategory = String(category || "").trim();
+    const normalizedLevel = String(level || "").trim();
+
+    if (normalizedCategory) {
+      tags.push(normalizedCategory);
+    }
+
+    if (normalizedLevel && normalizedLevel !== "-") {
+      tags.push(`难度 ${normalizedLevel}`);
+    }
+
+    return tags;
   },
 
   resolveSummaryText(item: SearchViewItem): string {

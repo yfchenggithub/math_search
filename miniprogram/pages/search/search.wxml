@@ -107,6 +107,11 @@
                 section="{{section.key}}"
                 module="{{recommend.module}}"
                 has-pdf="{{recommend.hasPdf}}"
+                preview-type="{{recommend.previewType}}"
+                preview-html="{{recommend.previewHtml}}"
+                preview-text="{{recommend.previewText}}"
+                preview-image="{{recommend.previewImage}}"
+                preview-fallback-text="{{recommend.previewFallbackText}}"
                 bind:cardtap="onDetailTap"
               ></conclusion-card>
             </block>
@@ -140,61 +145,33 @@
           section="no_result"
           module="{{recommend.module}}"
           has-pdf="{{recommend.hasPdf}}"
+          preview-type="{{recommend.previewType}}"
+          preview-html="{{recommend.previewHtml}}"
+          preview-text="{{recommend.previewText}}"
+          preview-image="{{recommend.previewImage}}"
+          preview-fallback-text="{{recommend.previewFallbackText}}"
           bind:cardtap="onDetailTap"
         ></conclusion-card>
       </block>
     </view>
 
-    <view
-      class="card"
+    <conclusion-card
       wx:for="{{results}}"
       wx:key="id"
-      bindtap="onDetailTap"
-      data-id="{{item.id}}"
-      data-entry="search_result_card"
-      data-module="{{item.module}}"
-    >
-      <view class="card-top">
-        <view class="card-title">
-          <block wx:for="{{item.titleSegments}}" wx:key="index">
-            <text class="{{item.highlight ? 'hl' : ''}}">
-              {{item.text}}
-            </text>
-          </block>
-        </view>
-
-        <view class="score">评分 {{item.score}}</view>
-      </view>
-
-      <view class="formula">
-        <scroll-view scroll-x class="formula-scroll" enhanced="{{true}}">
-          <rich-text class="formula-rich" nodes="{{item.formulaHtml}}"></rich-text>
-        </scroll-view>
-      </view>
-
-      <view class="tags">
-        <text class="tag">分类：{{item.category}}</text>
-        <text class="tag">难度：{{item.level}}</text>
-        <text class="tag">频率：{{item.freq}}</text>
-        <text class="tag red">热度：{{item.recentScore}}</text>
-      </view>
-
-      <view class="usage">
-        {{item.usage}}
-      </view>
-
-      <view class="footer">
-        <view
-          class="detail-btn"
-          catchtap="onDetailTap"
-          data-id="{{item.id}}"
-          data-entry="search_result_button"
-          data-module="{{item.module}}"
-        >
-          查看详情
-        </view>
-      </view>
-    </view>
+      item-id="{{item.id}}"
+      title="{{item.title}}"
+      title-segments="{{item.titleSegments}}"
+      summary="{{item.summary}}"
+      tags="{{item.displayTags}}"
+      module="{{item.module}}"
+      entry="search_result_card"
+      section="results"
+      preview-type="html"
+      preview-html="{{item.formulaHtml}}"
+      preview-fallback-text="{{item.formulaText || item.summary}}"
+      action-text="查看详情"
+      bind:cardtap="onDetailTap"
+    ></conclusion-card>
   </scroll-view>
 
   <view

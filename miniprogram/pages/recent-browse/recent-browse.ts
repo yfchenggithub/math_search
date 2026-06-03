@@ -8,6 +8,17 @@ import {
   initSearchEngine,
   type SearchDoc,
 } from "../../utils/search-engine";
+import { renderMath } from "../../utils/math-render";
+
+type CardPreviewType = "html" | "text" | "image" | "none";
+
+type CardPreviewFields = {
+  previewType: CardPreviewType;
+  previewHtml: string;
+  previewText: string;
+  previewImage: string;
+  previewFallbackText: string;
+};
 
 type RecentBrowseCardItem = {
   id: string;
@@ -15,7 +26,7 @@ type RecentBrowseCardItem = {
   summary: string;
   tags: string[];
   viewedAt: number;
-};
+} & CardPreviewFields;
 
 type DetailTapEvent = {
   currentTarget?: {
@@ -201,6 +212,32 @@ function buildCardTags(record: RecentBrowseItem, doc: SearchDoc | null): string[
   return tags;
 }
 
+function buildEmptyPreview(): CardPreviewFields {
+  return {
+    previewType: "none",
+    previewHtml: "",
+    previewText: "",
+    previewImage: "",
+    previewFallbackText: "",
+  };
+}
+
+function buildFormulaPreview(source: unknown): CardPreviewFields {
+  const formulaSource = toTrimmedString(source);
+  if (!formulaSource) {
+    return buildEmptyPreview();
+  }
+
+  const mathResult = renderMath(formulaSource, true);
+  return {
+    previewType: mathResult.html ? "html" : "text",
+    previewHtml: mathResult.html,
+    previewText: mathResult.html ? "" : mathResult.source,
+    previewImage: "",
+    previewFallbackText: mathResult.source,
+  };
+}
+
 function buildRecentBrowseCard(item: RecentBrowseItem): RecentBrowseCardItem {
   const doc = getSearchDocument(item.id);
   const title = toTrimmedString(item.title) || toTrimmedString(doc?.title) || item.id;
@@ -216,6 +253,7 @@ function buildRecentBrowseCard(item: RecentBrowseItem): RecentBrowseCardItem {
     summary,
     tags,
     viewedAt: item.viewedAt,
+    ...buildFormulaPreview(doc?.coreFormula),
   };
 }
 

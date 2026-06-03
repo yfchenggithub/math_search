@@ -3,7 +3,56 @@
   bindtap="onCardTap"
   bindlongpress="onCardLongPress"
 >
-  <view class="conclusion-card__title">{{title}}</view>
+  <view class="conclusion-card__title">
+    <block wx:if="{{titleSegments && titleSegments.length > 0}}">
+      <text
+        wx:for="{{titleSegments}}"
+        wx:key="index"
+        wx:for-item="segment"
+        class="{{segment.highlight ? 'conclusion-card__title-highlight' : ''}}"
+      >{{segment.text}}</text>
+    </block>
+    <block wx:else>{{title}}</block>
+  </view>
+
+  <view
+    wx:if="{{previewType === 'html' && previewHtml}}"
+    class="conclusion-card__preview conclusion-card__preview--html"
+  >
+    <scroll-view scroll-x class="conclusion-card__preview-scroll" enhanced="{{true}}">
+      <rich-text class="conclusion-card__preview-rich" nodes="{{previewHtml}}"></rich-text>
+    </scroll-view>
+  </view>
+  <view
+    wx:elif="{{previewType === 'text' && previewText}}"
+    class="conclusion-card__preview conclusion-card__preview--text"
+  >
+    <text class="conclusion-card__preview-text">{{previewText}}</text>
+  </view>
+  <view
+    wx:elif="{{previewType === 'image' && previewImage && !previewImageLoadFailed}}"
+    class="conclusion-card__preview conclusion-card__preview--image"
+  >
+    <image
+      class="conclusion-card__preview-image"
+      src="{{previewImage}}"
+      mode="aspectFit"
+      binderror="onPreviewImageError"
+    ></image>
+  </view>
+  <view
+    wx:elif="{{previewType === 'image' && previewFallbackText && (!previewImage || previewImageLoadFailed)}}"
+    class="conclusion-card__preview conclusion-card__preview--text"
+  >
+    <text class="conclusion-card__preview-text">{{previewFallbackText}}</text>
+  </view>
+  <view
+    wx:elif="{{previewFallbackText && ((previewType === 'html' && !previewHtml) || (previewType === 'text' && !previewText))}}"
+    class="conclusion-card__preview conclusion-card__preview--text"
+  >
+    <text class="conclusion-card__preview-text">{{previewFallbackText}}</text>
+  </view>
+
   <view class="conclusion-card__summary">{{summary}}</view>
 
   <view wx:if="{{showTags && tags.length > 0}}" class="conclusion-card__tags">

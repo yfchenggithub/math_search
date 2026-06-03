@@ -16,8 +16,10 @@ import {
   getDetailDocument,
   getDetailDocumentById,
   type DetailDocumentView,
+  type MathImageNode,
 } from "../../utils/detail-content";
 import { getSearchDocument, initSearchEngine } from "../../utils/search-engine";
+import { renderMath } from "../../utils/math-render";
 import { RequestError, getErrorMessage } from "../../utils/request";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
@@ -30,6 +32,16 @@ type FavoriteHandoutFeedback = {
   message: string;
 };
 
+type CardPreviewType = "html" | "text" | "image" | "none";
+
+type CardPreviewFields = {
+  previewType: CardPreviewType;
+  previewHtml: string;
+  previewText: string;
+  previewImage: string;
+  previewFallbackText: string;
+};
+
 type FavoriteConclusionItem = {
   id: string;
   detailId: string;
@@ -37,7 +49,7 @@ type FavoriteConclusionItem = {
   summary: string;
   tags: string[];
   module: string;
-};
+} & CardPreviewFields;
 
 type FavoritesPageData = {
   pageStatus: FavoritesPageStatus;
@@ -406,6 +418,85 @@ function pickBestSummary(summaryCandidates: string[], module: string, tags: stri
   return "";
 }
 
+function buildEmptyPreview(): CardPreviewFields {
+  return {
+    previewType: "none",
+    previewHtml: "",
+    previewText: "",
+    previewImage: "",
+    previewFallbackText: "",
+  };
+}
+
+function buildFormulaPreview(source: unknown): CardPreviewFields {
+  const formulaSource = normalizeText(source);
+  if (!formulaSource) {
+    return buildEmptyPreview();
+  }
+
+  const mathResult = renderMath(formulaSource, true);
+  return {
+    previewType: mathResult.html ? "html" : "text",
+    previewHtml: mathResult.html,
+    previewText: mathResult.html ? "" : mathResult.source,
+    previewImage: "",
+    previewFallbackText: mathResult.source,
+  };
+}
+
+function getMathImagePreviewUrl(node: MathImageNode | null | undefined): string {
+  if (!node) {
+    return "";
+  }
+
+  return (
+    normalizeText(node.imageUrl)
+    || normalizeText(node.asset?.png)
+    || normalizeText(node.asset?.webp)
+  );
+}
+
+function buildDetailPreview(detail: DetailDocumentView | null | undefined): CardPreviewFields {
+  if (!detail) {
+    return buildEmptyPreview();
+  }
+
+  const imageUrl = getMathImagePreviewUrl(detail.coreFormulaImage);
+  if (imageUrl) {
+    return {
+      previewType: "image",
+      previewHtml: "",
+      previewText: "",
+      previewImage: imageUrl,
+      previewFallbackText: normalizeText(detail.coreFormula) || normalizeText(detail.summary),
+    };
+  }
+
+  const coreFormulaHtml = normalizeText(detail.coreFormulaHtml);
+  if (coreFormulaHtml) {
+    return {
+      previewType: "html",
+      previewHtml: coreFormulaHtml,
+      previewText: "",
+      previewImage: "",
+      previewFallbackText: normalizeText(detail.coreFormula) || normalizeText(detail.summary),
+    };
+  }
+
+  return buildFormulaPreview(detail.coreFormula);
+}
+
+function pickCardPreview(...candidates: CardPreviewFields[]): CardPreviewFields {
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    if (candidate.previewType !== "none") {
+      return candidate;
+    }
+  }
+
+  return buildEmptyPreview();
+}
+
 function mapFavoriteRecordToCard(
   record: FavoriteRecord,
   recentBrowseLookup: Record<string, RecentBrowseItem>,
@@ -457,6 +548,10 @@ function mapFavoriteRecordToCard(
     module,
     tags,
   ) || (tags.length > 0 ? tags.join(" / ") : DEFAULT_SUMMARY);
+  const preview = pickCardPreview(
+    buildDetailPreview(detail),
+    buildFormulaPreview(doc?.coreFormula),
+  );
 
   return {
     id: detailId,
@@ -465,6 +560,7 @@ function mapFavoriteRecordToCard(
     summary,
     tags,
     module,
+    ...preview,
   };
 }
 
@@ -500,6 +596,7 @@ function mergeCardWithDetail(
     module,
     tags,
   ) || (tags.length > 0 ? tags.join(" / ") : DEFAULT_SUMMARY);
+  const preview = pickCardPreview(buildDetailPreview(detail), item);
 
   return {
     ...item,
@@ -507,6 +604,7 @@ function mergeCardWithDetail(
     summary,
     tags,
     module,
+    ...preview,
   };
 }
 
@@ -520,6 +618,16 @@ function isSameCardContent(left: FavoriteConclusionItem, right: FavoriteConclusi
   }
 
   if (left.title !== right.title || left.summary !== right.summary || left.module !== right.module) {
+    return false;
+  }
+
+  if (
+    left.previewType !== right.previewType
+    || left.previewHtml !== right.previewHtml
+    || left.previewText !== right.previewText
+    || left.previewImage !== right.previewImage
+    || left.previewFallbackText !== right.previewFallbackText
+  ) {
     return false;
   }
 

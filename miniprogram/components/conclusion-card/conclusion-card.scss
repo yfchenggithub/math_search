@@ -21,6 +21,49 @@
   overflow: hidden;
 }
 
+.conclusion-card__title-highlight {
+  color: #1d4ed8;
+}
+
+.conclusion-card__preview {
+  margin-top: 12rpx;
+  border-radius: 18rpx;
+  background: #f8fafc;
+  border: 1rpx solid #e6edf7;
+  overflow: hidden;
+}
+
+.conclusion-card__preview-scroll {
+  width: 100%;
+}
+
+.conclusion-card__preview-rich {
+  display: block;
+  padding: 14rpx 16rpx;
+  min-width: 100%;
+  color: #1f2937;
+  font-size: 25rpx;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.conclusion-card__preview-text {
+  display: -webkit-box;
+  padding: 14rpx 16rpx;
+  color: #1f2937;
+  font-size: 25rpx;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.conclusion-card__preview-image {
+  display: block;
+  width: 100%;
+  height: 180rpx;
+}
+
 .conclusion-card__summary {
   margin-top: 10rpx;
   font-size: 24rpx;
@@ -54,14 +97,22 @@
 }
 
 .conclusion-card__action {
-  padding: 8rpx 18rpx;
-  border-radius: 999rpx;
-  background: #eff6ff;
-  color: #1d4ed8;
+  padding: 0;
+  color: #64748b;
   font-size: 22rpx;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .conclusion-card--compact .conclusion-card__title {
   font-size: 28rpx;
+}
+
+.conclusion-card--compact .conclusion-card__preview {
+  margin-top: 10rpx;
+}
+
+.conclusion-card--compact .conclusion-card__preview-rich,
+.conclusion-card--compact .conclusion-card__preview-text {
+  padding: 12rpx 14rpx;
+  font-size: 24rpx;
 }

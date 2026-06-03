@@ -37,6 +37,11 @@
             summary="{{item.summary}}"
             tags="{{item.tags}}"
             entry="recent_browse_card"
+            preview-type="{{item.previewType}}"
+            preview-html="{{item.previewHtml}}"
+            preview-text="{{item.previewText}}"
+            preview-image="{{item.previewImage}}"
+            preview-fallback-text="{{item.previewFallbackText}}"
             bind:cardtap="handleDetailTap"
           ></conclusion-card>
         </block>

@@ -72,6 +72,11 @@
           module="{{item.module}}"
           entry="favorites_card"
           section="favorites"
+          preview-type="{{item.previewType}}"
+          preview-html="{{item.previewHtml}}"
+          preview-text="{{item.previewText}}"
+          preview-image="{{item.previewImage}}"
+          preview-fallback-text="{{item.previewFallbackText}}"
           bind:cardtap="handleFavoriteCardTap"
           bind:cardlongpress="handleFavoriteCardLongPress"
         ></conclusion-card>
