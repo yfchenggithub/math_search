@@ -1,0 +1,98 @@
+<view class="conclusion-management-page">
+  <navigation-bar
+    title="结论管理"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="conclusion-management-page__container">
+    <view class="management-toolbar">
+      <scroll-view class="management-module-filter" scroll-x="{{true}}" show-scrollbar="{{false}}">
+        <view class="management-module-filter__inner">
+          <view
+            wx:for="{{moduleFilters}}"
+            wx:key="label"
+            class="management-module-filter__chip {{activeModule === item.backendModule ? 'is-active' : ''}}"
+            data-module="{{item.backendModule}}"
+            bindtap="handleModuleTap"
+          >
+            {{item.label}}
+          </view>
+        </view>
+      </scroll-view>
+
+      <view class="management-search">
+        <search-box
+          value="{{searchInput}}"
+          placeholder="搜索结论标题或关键词"
+          show-clear="{{searchInput !== '' || keyword !== ''}}"
+          bind:input="handleKeywordInput"
+          bind:confirm="handleSearchConfirm"
+          bind:clear="handleClearSearchTap"
+        ></search-box>
+      </view>
+
+      <view class="management-toolbar__meta">
+        <text class="management-toolbar__count">{{countText}}</text>
+        <button
+          class="management-toolbar__refresh"
+          bindtap="handleRefreshTap"
+          disabled="{{loading || loadingMore}}"
+        >
+          刷新
+        </button>
+      </view>
+    </view>
+
+    <view wx:if="{{loading && items.length === 0}}" class="management-state">
+      <text class="management-state__title">正在加载结论...</text>
+    </view>
+
+    <view wx:elif="{{errorMessage && items.length === 0}}" class="management-state">
+      <text class="management-state__title">加载失败</text>
+      <text class="management-state__desc">{{errorMessage}}</text>
+      <button class="management-state__action" bindtap="handleRetryTap">
+        重新加载
+      </button>
+    </view>
+
+    <view wx:elif="{{items.length === 0}}" class="management-state">
+      <text class="management-state__title">暂无结论</text>
+      <text class="management-state__desc">当前模块或关键词下没有二级结论</text>
+    </view>
+
+    <view wx:else class="management-list">
+      <block wx:for="{{items}}" wx:key="id" wx:for-item="item">
+        <conclusion-card
+          item-id="{{item.id}}"
+          title="{{item.title}}"
+          summary="{{item.summary}}"
+          tags="{{item.tags}}"
+          module="{{item.module}}"
+          entry="conclusion_management_card"
+          section="{{activeModule || 'all'}}"
+          preview-type="{{item.previewType}}"
+          preview-html="{{item.previewHtml}}"
+          preview-text="{{item.previewText}}"
+          preview-image="{{item.previewImage}}"
+          preview-image-width="{{item.previewImageWidth}}"
+          preview-image-height="{{item.previewImageHeight}}"
+          preview-fallback-text="{{item.previewFallbackText || item.summary}}"
+          action-text="查看详情"
+          bind:cardtap="handleCardTap"
+        ></conclusion-card>
+      </block>
+
+      <button
+        wx:if="{{hasMore}}"
+        class="management-load-more"
+        loading="{{loadingMore}}"
+        disabled="{{loadingMore}}"
+        bindtap="handleLoadMoreTap"
+      >
+        加载更多
+      </button>
+    </view>
+  </view>
+</view>

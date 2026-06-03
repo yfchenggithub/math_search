@@ -934,6 +934,20 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
+  handleConclusionManagementTap() {
+    profileLogger.info("click_conclusion_management");
+
+    wx.navigateTo({
+      url: "/pages/conclusion-management/conclusion-management",
+      fail: () => {
+        wx.showToast({
+          title: "结论管理页打开失败",
+          icon: "none",
+        });
+      },
+    });
+  },
+
   handleSearchKeywordsTap() {
     profileLogger.info("click_search_keywords_admin");
 

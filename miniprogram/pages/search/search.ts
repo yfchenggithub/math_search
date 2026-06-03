@@ -1,5 +1,9 @@
 import type { ResultItem } from "../../types/search";
 import { FEATURE_FLAGS } from "../../config/feature-flags";
+import {
+  CONTENT_MODULE_FILTERS,
+  type ContentModuleFilter,
+} from "../../constants/content-modules";
 import { addSearchHistory } from "../../services/history";
 import { getSettings } from "../../services/settings";
 import {
@@ -97,9 +101,7 @@ type QuickFilter = {
   action?: QuickFilterAction;
 };
 
-type ModuleFilter = QuickFilter & {
-  keywords: string[];
-};
+type ModuleFilter = QuickFilter & ContentModuleFilter;
 
 const QUICK_FILTERS: QuickFilter[] = [
   { key: TAB_ALL, label: "全部" },
@@ -107,18 +109,7 @@ const QUICK_FILTERS: QuickFilter[] = [
   { key: TAB_COMMON, label: "常用" },
 ];
 
-const MODULE_FILTERS: ModuleFilter[] = [
-  { key: "category:集合", label: "集合", keywords: ["集合", "set"] },
-  { key: "category:立体几何", label: "立体几何", keywords: ["立体几何", "空间几何", "solid geometry"] },
-  { key: "category:向量", label: "向量", keywords: ["向量", "vector"] },
-  { key: "category:数列", label: "数列", keywords: ["数列", "sequence"] },
-  { key: "category:导数与函数", label: "导数与函数", keywords: ["导数与函数", "导数", "derivative", "function"] },
-  { key: "category:圆锥曲线", label: "圆锥曲线", keywords: ["圆锥曲线", "圆锥", "椭圆", "抛物线", "双曲线", "conic"] },
-  { key: "category:平面几何", label: "平面几何", keywords: ["平面几何", "plane geometry"] },
-  { key: "category:概率", label: "概率", keywords: ["概率", "probability"] },
-  { key: "category:不等式", label: "不等式", keywords: ["不等式", "inequality"] },
-  { key: "category:三角函数", label: "三角函数", keywords: ["三角函数", "三角", "trigonometry"] },
-];
+const MODULE_FILTERS: ModuleFilter[] = CONTENT_MODULE_FILTERS;
 
 const FILTER_KEYWORDS: Record<string, string[]> = {
   inequality: ["不等式", "inequality"],
@@ -2490,7 +2481,7 @@ Page({
       return "集合";
     }
 
-    if (module === "solid_geometry" || module === "solid-geometry") {
+    if (module === "solid_geometry" || module === "solid-geometry" || module === "geometry-solid") {
       return "立体几何";
     }
 
@@ -2514,11 +2505,11 @@ Page({
       return "圆锥曲线";
     }
 
-    if (module === "plane_geometry" || module === "plane-geometry") {
+    if (module === "plane_geometry" || module === "plane-geometry" || module === "geometry-plane") {
       return "平面几何";
     }
 
-    if (module === "probability") {
+    if (module === "probability" || module === "probability-stat") {
       return "概率";
     }
 
