@@ -5,21 +5,16 @@ import {
   removeFavorite,
   type FavoriteRecord,
 } from "../../services/api/favorites-api";
-import { getRecentBrowse, type RecentBrowseItem } from "../../services/history";
 import { authService } from "../../services/auth/auth-service";
+import {
+  resolveConclusionCards,
+  type ConclusionCardCacheItem,
+} from "../../services/conclusion-card-cache";
 import { prefetchConclusionBundlesByIds } from "../../services/conclusion-prefetch";
 import {
   setCachedFavoriteState,
   syncCachedFavoriteStates,
 } from "../../services/favorite-state-cache";
-import {
-  getDetailDocument,
-  getDetailDocumentById,
-  type DetailDocumentView,
-  type MathImageNode,
-} from "../../utils/detail-content";
-import { getSearchDocument, initSearchEngine } from "../../utils/search-engine";
-import { renderMath } from "../../utils/math-render";
 import { RequestError, getErrorMessage } from "../../utils/request";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
@@ -85,7 +80,6 @@ const favoritesPageLogger = createLogger("favorites-page");
 const FAVORITES_PAGE_SIZE = 50;
 const FAVORITES_MAX_PAGE = 20;
 const CARD_TAG_LIMIT = 3;
-const DETAIL_HYDRATE_MAX_COUNT = 12;
 const FAVORITES_PREFETCH_MAX_COUNT = 20;
 const FAVORITE_HANDOUT_MAX_COUNT = 10;
 const DEFAULT_TITLE = "未命名结论";
@@ -287,96 +281,6 @@ function resolveModuleLabel(module: unknown, moduleLabel: unknown): string {
   return normalizeDisplayTag(module) || "数学";
 }
 
-function buildIdCandidates(rawId: unknown): string[] {
-  const id = normalizeText(rawId);
-  if (!id) {
-    return [];
-  }
-
-  const list: string[] = [];
-  const seen: Record<string, true> = {};
-  const push = (value: string) => {
-    const normalized = normalizeText(value);
-    if (!normalized || seen[normalized]) {
-      return;
-    }
-
-    seen[normalized] = true;
-    list.push(normalized);
-  };
-
-  push(id);
-  push(id.toUpperCase());
-  push(id.toLowerCase());
-
-  const withoutQuery = id.split("?")[0];
-  push(withoutQuery);
-  push(withoutQuery.toUpperCase());
-  push(withoutQuery.toLowerCase());
-
-  const parts = withoutQuery.split(/[/:#]/).map((part) => normalizeText(part));
-  const tail = parts.length > 0 ? parts[parts.length - 1] : "";
-  push(tail);
-  push(tail.toUpperCase());
-  push(tail.toLowerCase());
-
-  return list;
-}
-
-function resolveSearchDocumentById(rawId: unknown) {
-  const idCandidates = buildIdCandidates(rawId);
-  for (let index = 0; index < idCandidates.length; index += 1) {
-    const doc = getSearchDocument(idCandidates[index]);
-    if (doc) {
-      return doc;
-    }
-  }
-
-  return null;
-}
-
-function resolveLocalDetailById(rawId: unknown): DetailDocumentView | null {
-  const idCandidates = buildIdCandidates(rawId);
-  for (let index = 0; index < idCandidates.length; index += 1) {
-    const detail = getDetailDocument(idCandidates[index]);
-    if (detail) {
-      return detail;
-    }
-  }
-
-  return null;
-}
-
-function buildRecentBrowseLookup(list: RecentBrowseItem[]): Record<string, RecentBrowseItem> {
-  const lookup: Record<string, RecentBrowseItem> = {};
-
-  list.forEach((item) => {
-    const idCandidates = buildIdCandidates(item.id);
-    idCandidates.forEach((candidateId) => {
-      if (!lookup[candidateId]) {
-        lookup[candidateId] = item;
-      }
-    });
-  });
-
-  return lookup;
-}
-
-function resolveRecentBrowseById(
-  lookup: Record<string, RecentBrowseItem>,
-  rawId: unknown,
-): RecentBrowseItem | null {
-  const idCandidates = buildIdCandidates(rawId);
-  for (let index = 0; index < idCandidates.length; index += 1) {
-    const hit = lookup[idCandidates[index]];
-    if (hit) {
-      return hit;
-    }
-  }
-
-  return null;
-}
-
 function isLowInformationSummary(summary: string, module: string, tags: string[]): boolean {
   const normalizedSummary = normalizeText(summary);
   if (!normalizedSummary) {
@@ -428,130 +332,89 @@ function buildEmptyPreview(): CardPreviewFields {
   };
 }
 
-function buildFormulaPreview(source: unknown): CardPreviewFields {
-  const formulaSource = normalizeText(source);
-  if (!formulaSource) {
+function buildCacheCardPreview(
+  card: ConclusionCardCacheItem | null | undefined,
+  fallbackSummary: string,
+): CardPreviewFields {
+  if (!card) {
     return buildEmptyPreview();
   }
 
-  const mathResult = renderMath(formulaSource, true);
-  return {
-    previewType: mathResult.html ? "html" : "text",
-    previewHtml: mathResult.html,
-    previewText: mathResult.html ? "" : mathResult.source,
-    previewImage: "",
-    previewFallbackText: mathResult.source,
-  };
-}
+  const previewImage = normalizeText(card.previewImage);
+  const previewFallbackText = normalizeText(card.previewFallbackText)
+    || normalizeText(card.coreFormulaLatex)
+    || normalizeText(fallbackSummary);
 
-function getMathImagePreviewUrl(node: MathImageNode | null | undefined): string {
-  if (!node) {
-    return "";
-  }
-
-  return (
-    normalizeText(node.imageUrl)
-    || normalizeText(node.asset?.png)
-    || normalizeText(node.asset?.webp)
-  );
-}
-
-function buildDetailPreview(detail: DetailDocumentView | null | undefined): CardPreviewFields {
-  if (!detail) {
-    return buildEmptyPreview();
-  }
-
-  const imageUrl = getMathImagePreviewUrl(detail.coreFormulaImage);
-  if (imageUrl) {
+  if (previewImage) {
     return {
       previewType: "image",
       previewHtml: "",
       previewText: "",
-      previewImage: imageUrl,
-      previewFallbackText: normalizeText(detail.coreFormula) || normalizeText(detail.summary),
+      previewImage,
+      previewFallbackText,
     };
   }
 
-  const coreFormulaHtml = normalizeText(detail.coreFormulaHtml);
-  if (coreFormulaHtml) {
+  const previewText = normalizeText(card.previewText) || normalizeText(card.coreFormulaLatex);
+  if (previewText) {
     return {
-      previewType: "html",
-      previewHtml: coreFormulaHtml,
-      previewText: "",
+      previewType: "text",
+      previewHtml: "",
+      previewText,
       previewImage: "",
-      previewFallbackText: normalizeText(detail.coreFormula) || normalizeText(detail.summary),
+      previewFallbackText: previewFallbackText || previewText,
     };
-  }
-
-  return buildFormulaPreview(detail.coreFormula);
-}
-
-function pickCardPreview(...candidates: CardPreviewFields[]): CardPreviewFields {
-  for (let index = 0; index < candidates.length; index += 1) {
-    const candidate = candidates[index];
-    if (candidate.previewType !== "none") {
-      return candidate;
-    }
   }
 
   return buildEmptyPreview();
 }
 
-function mapFavoriteRecordToCard(
+function buildFavoriteTagsFromCache(
+  card: ConclusionCardCacheItem | null | undefined,
   record: FavoriteRecord,
-  recentBrowseLookup: Record<string, RecentBrowseItem>,
-): FavoriteConclusionItem {
-  const detailId = normalizeText(record.id);
-  const doc = resolveSearchDocumentById(detailId);
-  const detail = resolveLocalDetailById(detailId);
-  const recentBrowse = resolveRecentBrowseById(recentBrowseLookup, detailId);
-  const module = resolveModuleLabel(record.module, record.moduleLabel);
-  const title = normalizeText(recentBrowse?.title)
-    || normalizeText(detail?.title)
-    || normalizeText(doc?.title)
-    || normalizeText(record.title)
-    || DEFAULT_TITLE;
+  module: string,
+): string[] {
   const tags: string[] = [];
   const seenTags: Record<string, true> = {};
 
   appendTag(tags, seenTags, module);
-  if (Array.isArray(recentBrowse?.tags)) {
-    recentBrowse.tags.forEach((tag) => {
+  appendTag(tags, seenTags, card?.category);
+  if (Array.isArray(card?.tags)) {
+    card.tags.forEach((tag) => {
       appendTag(tags, seenTags, tag);
     });
   }
-  if (Array.isArray(detail?.tags)) {
-    detail.tags.forEach((tag) => {
-      appendTag(tags, seenTags, tag);
-    });
-  }
-  if (Array.isArray(record.tags)) {
+  if (Array.isArray(record.tags) && tags.length <= 1) {
     record.tags.forEach((tag) => {
       appendTag(tags, seenTags, tag);
     });
   }
-  if (Array.isArray(doc?.tags)) {
-    doc.tags.forEach((tag) => {
-      appendTag(tags, seenTags, tag);
-    });
-  }
-  appendTag(tags, seenTags, detail?.category);
-  appendTag(tags, seenTags, doc?.category);
 
+  return tags;
+}
+
+function mapFavoriteRecordToCard(
+  record: FavoriteRecord,
+  card: ConclusionCardCacheItem | null | undefined,
+): FavoriteConclusionItem {
+  const detailId = normalizeText(record.id);
+  const module = resolveModuleLabel(
+    card?.module || record.module,
+    card?.category || record.moduleLabel,
+  );
+  const title = normalizeText(card?.title)
+    || normalizeText(record.title)
+    || DEFAULT_TITLE;
+  const tags = buildFavoriteTagsFromCache(card, record, module);
   const summary = pickBestSummary(
     [
-      normalizeText(recentBrowse?.summary),
-      normalizeText(detail?.summary),
-      normalizeText(doc?.summary),
+      normalizeText(card?.summary),
       normalizeText(record.summary),
     ],
     module,
     tags,
   ) || (tags.length > 0 ? tags.join(" / ") : DEFAULT_SUMMARY);
-  const preview = pickCardPreview(
-    buildDetailPreview(detail),
-    buildFormulaPreview(doc?.coreFormula),
-  );
+  const preview = buildCacheCardPreview(card, summary);
 
   return {
     id: detailId,
@@ -562,86 +425,6 @@ function mapFavoriteRecordToCard(
     module,
     ...preview,
   };
-}
-
-function isThinCardContent(item: FavoriteConclusionItem): boolean {
-  return (
-    item.tags.length <= 1
-    || isLowInformationSummary(item.summary, item.module, item.tags)
-  );
-}
-
-function mergeCardWithDetail(
-  item: FavoriteConclusionItem,
-  detail: DetailDocumentView,
-): FavoriteConclusionItem {
-  const module = normalizeText(item.module) || normalizeDisplayTag(detail.category) || "数学";
-  const tags: string[] = [];
-  const seenTags: Record<string, true> = {};
-
-  appendTag(tags, seenTags, module);
-  item.tags.forEach((tag) => {
-    appendTag(tags, seenTags, tag);
-  });
-  if (Array.isArray(detail.tags)) {
-    detail.tags.forEach((tag) => {
-      appendTag(tags, seenTags, tag);
-    });
-  }
-  appendTag(tags, seenTags, detail.category);
-
-  const title = normalizeText(detail.title) || normalizeText(item.title) || DEFAULT_TITLE;
-  const summary = pickBestSummary(
-    [normalizeText(detail.summary), normalizeText(item.summary)],
-    module,
-    tags,
-  ) || (tags.length > 0 ? tags.join(" / ") : DEFAULT_SUMMARY);
-  const preview = pickCardPreview(buildDetailPreview(detail), item);
-
-  return {
-    ...item,
-    title,
-    summary,
-    tags,
-    module,
-    ...preview,
-  };
-}
-
-function isSameCardContent(left: FavoriteConclusionItem, right: FavoriteConclusionItem): boolean {
-  if (left.id !== right.id) {
-    return false;
-  }
-
-  if (left.detailId !== right.detailId) {
-    return false;
-  }
-
-  if (left.title !== right.title || left.summary !== right.summary || left.module !== right.module) {
-    return false;
-  }
-
-  if (
-    left.previewType !== right.previewType
-    || left.previewHtml !== right.previewHtml
-    || left.previewText !== right.previewText
-    || left.previewImage !== right.previewImage
-    || left.previewFallbackText !== right.previewFallbackText
-  ) {
-    return false;
-  }
-
-  if (left.tags.length !== right.tags.length) {
-    return false;
-  }
-
-  for (let index = 0; index < left.tags.length; index += 1) {
-    if (left.tags[index] !== right.tags[index]) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 function dedupeFavoriteRecords(records: FavoriteRecord[]): FavoriteRecord[] {
@@ -682,7 +465,6 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
 
   onLoad() {
     authService.init();
-    initSearchEngine();
     void this.refreshFavorites({
       reason: "initial",
       showLoading: true,
@@ -1047,9 +829,19 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
 
       const uniqueRecords = dedupeFavoriteRecords(records);
       syncCachedFavoriteStates(uniqueRecords.map((record) => record.id));
-      const recentBrowseLookup = buildRecentBrowseLookup(getRecentBrowse());
+      const favoriteIds = uniqueRecords.map((record) => record.id);
+      const resolvedCards = await resolveConclusionCards(favoriteIds);
+      if (!this.isLatestFavoritesRequest(requestId)) {
+        return;
+      }
+
+      const cardMap: Record<string, ConclusionCardCacheItem> = {};
+      resolvedCards.items.forEach((item) => {
+        cardMap[item.id] = item;
+      });
+
       const favoriteItems = uniqueRecords.map((record) =>
-        mapFavoriteRecordToCard(record, recentBrowseLookup)
+        mapFavoriteRecordToCard(record, cardMap[record.id])
       );
       const favoriteCount = favoriteItems.length;
       const pageStatus: FavoritesPageStatus = favoriteCount > 0 ? "ready" : "empty";
@@ -1066,7 +858,6 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
 
       if (pageStatus === "ready") {
         void this.prefetchFavoriteBundles(uniqueRecords);
-        void this.hydrateThinFavoriteCards(requestId);
       }
     } catch (error) {
       if (!this.isLatestFavoritesRequest(requestId)) {
@@ -1162,84 +953,6 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
     }
 
     return allRecords;
-  },
-
-  async hydrateThinFavoriteCards(requestId: number) {
-    if (!this.isLatestFavoritesRequest(requestId)) {
-      return;
-    }
-
-    const sourceItems = this.data.favoriteItems;
-    if (!Array.isArray(sourceItems) || sourceItems.length <= 0) {
-      return;
-    }
-
-    const targets = sourceItems
-      .map((item, index) => ({ item, index }))
-      .filter(({ item }) => isThinCardContent(item))
-      .slice(0, DETAIL_HYDRATE_MAX_COUNT);
-
-    if (targets.length <= 0) {
-      return;
-    }
-
-    const nextItems = sourceItems.slice();
-    let hasChanged = false;
-
-    for (let index = 0; index < targets.length; index += 1) {
-      if (!this.isLatestFavoritesRequest(requestId)) {
-        return;
-      }
-
-      const target = targets[index];
-      const detail = await this.resolveDetailForHydration(target.item.detailId);
-      if (!detail) {
-        continue;
-      }
-
-      const mergedItem = mergeCardWithDetail(target.item, detail);
-      if (isSameCardContent(target.item, mergedItem)) {
-        continue;
-      }
-
-      nextItems[target.index] = mergedItem;
-      hasChanged = true;
-    }
-
-    if (!hasChanged || !this.isLatestFavoritesRequest(requestId)) {
-      return;
-    }
-
-    this.setData({
-      favoriteItems: nextItems,
-    });
-  },
-
-  async resolveDetailForHydration(detailId: string): Promise<DetailDocumentView | null> {
-    const idCandidates = buildIdCandidates(detailId);
-    if (idCandidates.length <= 0) {
-      return null;
-    }
-
-    for (let index = 0; index < idCandidates.length; index += 1) {
-      const localDetail = getDetailDocument(idCandidates[index]);
-      if (localDetail) {
-        return localDetail;
-      }
-    }
-
-    for (let index = 0; index < idCandidates.length; index += 1) {
-      try {
-        const remoteDetail = await getDetailDocumentById(idCandidates[index]);
-        if (remoteDetail) {
-          return remoteDetail;
-        }
-      } catch (_error) {
-        // Ignore single-item detail hydrate failure; keep list stable.
-      }
-    }
-
-    return null;
   },
 
   async prefetchFavoriteBundles(records: FavoriteRecord[]): Promise<void> {

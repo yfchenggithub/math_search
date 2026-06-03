@@ -172,22 +172,22 @@ function normalizeRecentBrowse(raw: unknown): RecentBrowseItem[] {
 
   for (let index = 0; index < raw.length; index += 1) {
     const candidate = raw[index];
-    if (!isPlainObject(candidate)) {
-      continue;
-    }
 
-    const id = toTrimmedString(candidate.id);
+    const id = typeof candidate === "string"
+      ? toTrimmedString(candidate)
+      : (isPlainObject(candidate) ? toTrimmedString(candidate.id) : "");
     if (!id) {
       continue;
     }
 
+    const source = isPlainObject(candidate) ? candidate : {};
     const incoming: RecentBrowseItem = {
       id,
-      title: toTrimmedString(candidate.title),
-      module: toTrimmedString(candidate.module),
-      summary: toTrimmedString(candidate.summary),
-      tags: normalizeStringList(candidate.tags),
-      viewedAt: toTimestamp(candidate.viewedAt, Date.now() - index),
+      title: toTrimmedString(source.title),
+      module: toTrimmedString(source.module),
+      summary: toTrimmedString(source.summary),
+      tags: normalizeStringList(source.tags),
+      viewedAt: toTimestamp(source.viewedAt, Date.now() - index),
     };
 
     byId[id] = mergeRecentBrowseItem(byId[id], incoming);
@@ -257,10 +257,10 @@ export function recordRecentBrowse(input: RecentBrowseInput): RecentBrowseItem[]
   const current = getRecentBrowse();
   const nextItem: RecentBrowseItem = {
     id,
-    title: toTrimmedString(input.title),
-    module: toTrimmedString(input.module),
-    summary: toTrimmedString(input.summary),
-    tags: normalizeStringList(input.tags),
+    title: "",
+    module: "",
+    summary: "",
+    tags: [],
     viewedAt: Date.now(),
   };
   const next: RecentBrowseItem[] = [

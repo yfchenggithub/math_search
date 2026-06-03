@@ -36,6 +36,7 @@
             title="{{item.title}}"
             summary="{{item.summary}}"
             tags="{{item.tags}}"
+            module="{{item.module}}"
             entry="recent_browse_card"
             preview-type="{{item.previewType}}"
             preview-html="{{item.previewHtml}}"

@@ -4,11 +4,10 @@ import {
   type RecentBrowseItem,
 } from "../../services/history";
 import {
-  getSearchDocument,
-  initSearchEngine,
-  type SearchDoc,
-} from "../../utils/search-engine";
-import { renderMath } from "../../utils/math-render";
+  resolveConclusionCards,
+  type ConclusionCardCacheItem,
+} from "../../services/conclusion-card-cache";
+import { createLogger } from "../../utils/logger/logger";
 
 type CardPreviewType = "html" | "text" | "image" | "none";
 
@@ -25,6 +24,7 @@ type RecentBrowseCardItem = {
   title: string;
   summary: string;
   tags: string[];
+  module: string;
   viewedAt: number;
 } & CardPreviewFields;
 
@@ -60,6 +60,7 @@ const RECENT_BROWSE_COPY = {
   clearFailedToast: "清空失败，请稍后重试",
   openDetailFailedToast: "详情页打开失败",
 };
+const recentBrowsePageLogger = createLogger("recent-browse-page");
 
 function toTrimmedString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -184,7 +185,7 @@ function normalizeRecentBrowseList(list: RecentBrowseItem[]): RecentBrowseItem[]
     .sort((left, right) => right.viewedAt - left.viewedAt);
 }
 
-function buildCardTags(record: RecentBrowseItem, doc: SearchDoc | null): string[] {
+function buildCardTags(card: ConclusionCardCacheItem | null | undefined): string[] {
   const tags: string[] = [];
   const seen: Record<string, true> = {};
 
@@ -198,16 +199,13 @@ function buildCardTags(record: RecentBrowseItem, doc: SearchDoc | null): string[
     tags.push(tag);
   };
 
-  appendTag(record.module);
-  record.tags.forEach((tag) => {
-    appendTag(tag);
-  });
-  appendTag(doc?.category);
-
-  const moduleText = toTrimmedString(doc?.module);
-  if (!tags.length && moduleText) {
-    appendTag(resolveModuleLabel(moduleText));
+  appendTag(card?.category);
+  if (Array.isArray(card?.tags)) {
+    card.tags.forEach((tag) => {
+      appendTag(tag);
+    });
   }
+  appendTag(resolveModuleLabel(toTrimmedString(card?.module)));
 
   return tags;
 }
@@ -222,29 +220,54 @@ function buildEmptyPreview(): CardPreviewFields {
   };
 }
 
-function buildFormulaPreview(source: unknown): CardPreviewFields {
-  const formulaSource = toTrimmedString(source);
-  if (!formulaSource) {
+function buildCacheCardPreview(
+  card: ConclusionCardCacheItem | null | undefined,
+  fallbackSummary: string,
+): CardPreviewFields {
+  if (!card) {
     return buildEmptyPreview();
   }
 
-  const mathResult = renderMath(formulaSource, true);
-  return {
-    previewType: mathResult.html ? "html" : "text",
-    previewHtml: mathResult.html,
-    previewText: mathResult.html ? "" : mathResult.source,
-    previewImage: "",
-    previewFallbackText: mathResult.source,
-  };
+  const previewImage = toTrimmedString(card.previewImage);
+  const previewFallbackText = toTrimmedString(card.previewFallbackText)
+    || toTrimmedString(card.coreFormulaLatex)
+    || toTrimmedString(fallbackSummary);
+
+  if (previewImage) {
+    return {
+      previewType: "image",
+      previewHtml: "",
+      previewText: "",
+      previewImage,
+      previewFallbackText,
+    };
+  }
+
+  const previewText = toTrimmedString(card.previewText) || toTrimmedString(card.coreFormulaLatex);
+  if (previewText) {
+    return {
+      previewType: "text",
+      previewHtml: "",
+      previewText,
+      previewImage: "",
+      previewFallbackText: previewFallbackText || previewText,
+    };
+  }
+
+  return buildEmptyPreview();
 }
 
-function buildRecentBrowseCard(item: RecentBrowseItem): RecentBrowseCardItem {
-  const doc = getSearchDocument(item.id);
-  const title = toTrimmedString(item.title) || toTrimmedString(doc?.title) || item.id;
-  const tags = buildCardTags(item, doc);
+function buildRecentBrowseCard(
+  item: RecentBrowseItem,
+  card: ConclusionCardCacheItem | null | undefined,
+): RecentBrowseCardItem {
+  const title = toTrimmedString(card?.title) || item.id;
+  const tags = buildCardTags(card);
+  const module = resolveModuleLabel(
+    toTrimmedString(card?.category) || toTrimmedString(card?.module),
+  );
   const summary =
-    toTrimmedString(item.summary)
-    || toTrimmedString(doc?.summary)
+    toTrimmedString(card?.summary)
     || (tags.length > 0 ? tags.join(" / ") : RECENT_BROWSE_COPY.fallbackSummary);
 
   return {
@@ -252,8 +275,9 @@ function buildRecentBrowseCard(item: RecentBrowseItem): RecentBrowseCardItem {
     title,
     summary,
     tags,
+    module,
     viewedAt: item.viewedAt,
-    ...buildFormulaPreview(doc?.coreFormula),
+    ...buildCacheCardPreview(card, summary),
   };
 }
 
@@ -265,38 +289,62 @@ Page<RecentBrowsePageData, WechatMiniprogram.IAnyObject>({
     isLoading: false,
   },
 
+  recentBrowseRequestId: 0,
+
   onLoad() {
-    initSearchEngine();
-    this.reloadRecentBrowse();
+    void this.reloadRecentBrowse();
   },
 
   onShow() {
-    this.reloadRecentBrowse();
+    void this.reloadRecentBrowse();
   },
 
   onPullDownRefresh() {
-    this.reloadRecentBrowse();
-    wx.stopPullDownRefresh();
+    void this.reloadRecentBrowse().finally(() => {
+      wx.stopPullDownRefresh();
+    });
   },
 
-  reloadRecentBrowse() {
+  async reloadRecentBrowse() {
+    const requestId = this.createRecentBrowseRequestId();
+
     this.setData({
       isLoading: true,
     });
 
     try {
-      const recentBrowseList = normalizeRecentBrowseList(getRecentBrowse()).map((item) =>
-        buildRecentBrowseCard(item)
+      const recentBrowseItems = normalizeRecentBrowseList(getRecentBrowse());
+      const recentBrowseIds = recentBrowseItems.map((item) => item.id);
+      const resolvedCards = await resolveConclusionCards(recentBrowseIds);
+      if (!this.isLatestRecentBrowseRequest(requestId)) {
+        return;
+      }
+
+      const cardMap: Record<string, ConclusionCardCacheItem> = {};
+      resolvedCards.items.forEach((item) => {
+        cardMap[item.id] = item;
+      });
+
+      const recentBrowseList = recentBrowseItems.map((item) =>
+        buildRecentBrowseCard(item, cardMap[item.id])
       );
 
       this.setData({
         recentBrowseList,
         hasData: recentBrowseList.length > 0,
       });
+    } catch (error) {
+      if (this.isLatestRecentBrowseRequest(requestId)) {
+        recentBrowsePageLogger.warn("recent_browse_cards_resolve_failed", {
+          error,
+        });
+      }
     } finally {
-      this.setData({
-        isLoading: false,
-      });
+      if (this.isLatestRecentBrowseRequest(requestId)) {
+        this.setData({
+          isLoading: false,
+        });
+      }
     }
   },
 
@@ -371,5 +419,14 @@ Page<RecentBrowsePageData, WechatMiniprogram.IAnyObject>({
         }
       },
     });
+  },
+
+  createRecentBrowseRequestId(): number {
+    this.recentBrowseRequestId += 1;
+    return this.recentBrowseRequestId;
+  },
+
+  isLatestRecentBrowseRequest(requestId: number): boolean {
+    return requestId === this.recentBrowseRequestId;
   },
 });

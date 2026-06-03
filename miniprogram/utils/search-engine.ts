@@ -1,4 +1,9 @@
 import { SEARCH_API_CONFIG } from "../config/api";
+import {
+  normalizeConclusionCardItem,
+  writeConclusionCardsToCache,
+  type ConclusionCardPreviewType,
+} from "../services/conclusion-card-cache";
 import { loadSearchBundleFallback } from "./data-loader";
 import { createLogger } from "./logger/logger";
 import { request } from "./request";
@@ -29,6 +34,7 @@ const searchEngineLogger = createLogger("search-engine");
  */
 type SearchIndexTuple = [string, number, number];
 type SearchSuggestionTuple = [string, string, number];
+type RawCoreFormula = string | Record<string, unknown> | null | undefined;
 
 /**
  * `SearchDoc` 表示搜索索引中的单个文档。
@@ -42,7 +48,7 @@ export interface SearchDoc {
   summary?: string;
   category?: string;
   tags?: string[];
-  coreFormula?: string;
+  coreFormula?: RawCoreFormula;
   rank?: number;
   difficulty?: number;
   searchBoost?: number;
@@ -152,6 +158,10 @@ export interface SearchViewItem {
   summary: string;
   snippet: string;
   coreFormula: string;
+  previewType: ConclusionCardPreviewType;
+  previewImage: string;
+  previewText: string;
+  previewFallbackText: string;
   difficulty?: number;
   rank?: number;
   searchBoost?: number;
@@ -164,6 +174,11 @@ export interface SearchViewItem {
   badgeList: string[];
   isFavorited: boolean;
 }
+
+type SearchFormulaPreview = Pick<
+  SearchViewItem,
+  "coreFormula" | "previewType" | "previewImage" | "previewText" | "previewFallbackText"
+>;
 
 export interface SearchFacadeResponse {
   query: string;
@@ -208,7 +223,9 @@ interface RemoteSearchItemRaw {
   snippet?: string;
   category?: string;
   tags?: string[];
-  coreFormula?: string;
+  coreFormula?: RawCoreFormula;
+  core_formula?: RawCoreFormula;
+  formula?: RawCoreFormula;
   rank?: number;
   difficulty?: number;
   searchBoost?: number;
@@ -665,6 +682,8 @@ async function homeRecommendRemoteFacade(
   const primaryItems = Array.isArray(remoteData.items) ? remoteData.items : [];
   const fallbackItems = Array.isArray(remoteData.list) ? remoteData.list : [];
   const remoteItems = primaryItems.length > 0 ? primaryItems : fallbackItems;
+  writeConclusionCardsToCache(remoteItems);
+
   const items = remoteItems
     .map((item, index) => adaptRemoteSearchItem(item, index))
     .filter((item) => Boolean(item.id))
@@ -739,6 +758,8 @@ async function searchRemoteFacade(query: string): Promise<SearchFacadeResponse> 
   });
 
   const remoteItems = Array.isArray(remoteData.items) ? remoteData.items : [];
+  writeConclusionCardsToCache(remoteItems);
+
   const items = remoteItems.map((item, index) => adaptRemoteSearchItem(item, index));
   const facets = normalizeRemoteFacets(remoteData.facets, items);
 
@@ -767,6 +788,8 @@ function buildLocalFacadeResponse(query: string, fallbackUsed = false): SearchFa
   }
 
   const response = searchWithDebug(query);
+  writeConclusionCardsToCache(response.results.map((result) => result.doc));
+
   const items = response.results.map((result) => adaptLocalSearchResult(result));
   const facets = buildFacetsFromItems(items);
 
@@ -788,6 +811,61 @@ function buildLocalFacadeResponse(query: string, fallbackUsed = false): SearchFa
   };
 }
 
+function buildSearchFormulaPreview(
+  rawItem: unknown,
+  fallbackFormula: unknown,
+  fallbackText: string,
+): SearchFormulaPreview {
+  const cardItem = normalizeConclusionCardItem(rawItem);
+  const coreFormula = cardItem?.coreFormulaLatex
+    || normalizeCoreFormulaLatex(fallbackFormula);
+  const previewImage = normalizeText(cardItem?.previewImage);
+  const previewText = normalizeText(cardItem?.previewText) || coreFormula;
+  const previewFallbackText = normalizeText(cardItem?.previewFallbackText)
+    || coreFormula
+    || normalizeText(fallbackText);
+
+  if (previewImage) {
+    return {
+      coreFormula,
+      previewType: "image",
+      previewImage,
+      previewText: "",
+      previewFallbackText,
+    };
+  }
+
+  if (previewText) {
+    return {
+      coreFormula,
+      previewType: "text",
+      previewImage: "",
+      previewText,
+      previewFallbackText: previewFallbackText || previewText,
+    };
+  }
+
+  return {
+    coreFormula,
+    previewType: "none",
+    previewImage: "",
+    previewText: "",
+    previewFallbackText: "",
+  };
+}
+
+function normalizeCoreFormulaLatex(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (!isPlainObject(value)) {
+    return "";
+  }
+
+  return normalizeText(value.latex || value.text || value.source);
+}
+
 function adaptLocalSearchResult(result: SearchResult): SearchViewItem {
   const doc = result.doc;
   const moduleLabel = getModuleLabel(doc.module);
@@ -795,6 +873,7 @@ function adaptLocalSearchResult(result: SearchResult): SearchViewItem {
   const tags = normalizeTags(doc.tags);
   const summary = resolveSummaryText(normalizeText(doc.summary), tags, doc.title);
   const difficulty = normalizeNumber(doc.difficulty);
+  const formulaPreview = buildSearchFormulaPreview(doc, doc.coreFormula, summary);
 
   return {
     id: doc.id,
@@ -805,7 +884,7 @@ function adaptLocalSearchResult(result: SearchResult): SearchViewItem {
     tags,
     summary,
     snippet: summary,
-    coreFormula: normalizeText(doc.coreFormula),
+    ...formulaPreview,
     difficulty: difficulty ?? undefined,
     rank: normalizeNumber(doc.rank) ?? undefined,
     searchBoost: normalizeNumber(doc.searchBoost) ?? undefined,
@@ -841,6 +920,11 @@ function adaptRemoteSearchItem(item: RemoteSearchItemRaw, index: number): Search
   const score = normalizeScore(item.score ?? rank ?? searchBoost ?? hotScore ?? 0);
 
   const category = normalizeText(item.category) || moduleLabel;
+  const formulaPreview = buildSearchFormulaPreview(
+    item,
+    item.coreFormula || item.core_formula || item.formula,
+    summary,
+  );
 
   return {
     id,
@@ -851,7 +935,7 @@ function adaptRemoteSearchItem(item: RemoteSearchItemRaw, index: number): Search
     tags,
     summary,
     snippet: summary,
-    coreFormula: normalizeText(item.coreFormula),
+    ...formulaPreview,
     difficulty: difficulty ?? undefined,
     rank: rank ?? undefined,
     searchBoost: searchBoost ?? undefined,

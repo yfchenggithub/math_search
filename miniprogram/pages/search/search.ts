@@ -150,10 +150,7 @@ type HomeRecommendSection = {
   items: HomeRecommendItem[];
 };
 
-type HomeRecommendSeed = Omit<
-  HomeRecommendItem,
-  "previewType" | "previewHtml" | "previewText" | "previewImage" | "previewFallbackText"
-> & {
+type HomeRecommendSeed = HomeRecommendItem & {
   sourceOrder: number;
   rawTags: string[];
   hotScore: number;
@@ -221,6 +218,11 @@ interface SearchCardItem extends ResultItem {
   category: string;
   displayTags: string[];
   searchScore: number;
+  previewType: CardPreviewType;
+  previewHtml: string;
+  previewText: string;
+  previewImage: string;
+  previewFallbackText: string;
   formulaHtml: string;
   formulaText: string;
   freq: string;
@@ -1122,6 +1124,7 @@ Page({
       const summary = this.resolveSummaryText(item) || HOME_RECOMMEND_COPY.defaultSummary;
       const module = this.resolveCategory(item);
       const coreFormula = String(item.coreFormula || "").trim();
+      const preview = this.buildFormulaPreview(coreFormula, item);
       const rawTags = Array.isArray(item.tags)
         ? item.tags
           .map((tag) => String(tag || "").trim())
@@ -1144,6 +1147,7 @@ Page({
         module,
         tags: this.buildRecommendTags(module, rawTags, hasPdf),
         hasPdf,
+        ...preview,
         updatedAt: updatedAtTs > 0 ? updatedAtTs : undefined,
         rank: rankValue > 0 ? rankValue : undefined,
         sourceOrder: index,
@@ -1185,8 +1189,6 @@ Page({
   },
 
   toHomeRecommendItem(seed: HomeRecommendSeed): HomeRecommendItem {
-    const preview = this.buildFormulaPreview(seed.coreFormula);
-
     return {
       id: seed.id,
       title: seed.title,
@@ -1194,17 +1196,62 @@ Page({
       module: seed.module,
       tags: seed.tags,
       hasPdf: seed.hasPdf,
-      ...preview,
+      previewType: seed.previewType,
+      previewHtml: seed.previewHtml,
+      previewText: seed.previewText,
+      previewImage: seed.previewImage,
+      previewFallbackText: seed.previewFallbackText,
       updatedAt: seed.updatedAt,
       rank: seed.rank,
     };
   },
 
-  buildFormulaPreview(source: string): Pick<
+  buildFormulaPreview(
+    source: string,
+    preferred?: Partial<Pick<
+      HomeRecommendItem,
+      "previewType" | "previewHtml" | "previewText" | "previewImage" | "previewFallbackText"
+    >>,
+  ): Pick<
     HomeRecommendItem,
     "previewType" | "previewHtml" | "previewText" | "previewImage" | "previewFallbackText"
   > {
     const formulaSource = String(source || "").trim();
+    const previewImage = String(preferred?.previewImage || "").trim();
+    const previewHtml = String(preferred?.previewHtml || "").trim();
+    const previewText = String(preferred?.previewText || "").trim();
+    const previewFallbackText = String(preferred?.previewFallbackText || formulaSource).trim();
+
+    if (previewImage) {
+      return {
+        previewType: "image",
+        previewHtml: "",
+        previewText: "",
+        previewImage,
+        previewFallbackText,
+      };
+    }
+
+    if (previewHtml) {
+      return {
+        previewType: "html",
+        previewHtml,
+        previewText: "",
+        previewImage: "",
+        previewFallbackText,
+      };
+    }
+
+    if (previewText) {
+      return {
+        previewType: "text",
+        previewHtml: "",
+        previewText,
+        previewImage: "",
+        previewFallbackText: previewFallbackText || previewText,
+      };
+    }
+
     if (!formulaSource) {
       return {
         previewType: "none",
@@ -1490,7 +1537,10 @@ Page({
       const title = item.title || item.id;
       const summary = this.resolveSummaryText(item);
       const formulaSource = item.coreFormula || title;
-      const mathResult = renderMath(formulaSource, true);
+      const preview = this.buildFormulaPreview(formulaSource, item);
+      const formulaText = preview.previewFallbackText
+        || preview.previewText
+        || formulaSource;
       const category = this.resolveCategory(item);
       const level =
         item.difficultyLabel || this.formatDifficulty(item.difficulty);
@@ -1502,9 +1552,10 @@ Page({
         title,
         titleSegments: this.highlightSegments(title, highlightQuery),
         summary,
-        formula: mathResult.source,
-        formulaHtml: mathResult.html,
-        formulaText: mathResult.source,
+        formula: formulaText,
+        ...preview,
+        formulaHtml: preview.previewHtml,
+        formulaText,
         module: item.moduleDir || item.module || category,
         category,
         tags: Array.isArray(item.tags) ? item.tags : [],
