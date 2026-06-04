@@ -17,9 +17,9 @@
         bind:clear="handleClearSearchTap"
       ></search-box>
 
-      <view class="search-keywords-filter">
+      <view class="search-keywords-filter search-keywords-filter--time">
         <text class="search-keywords-filter__label">时间</text>
-        <view class="search-keywords-filter__chips">
+        <view class="search-keywords-filter__chips search-keywords-filter__chips--time">
           <button
             wx:for="{{timeRangeOptions}}"
             wx:key="value"
@@ -32,9 +32,9 @@
         </view>
       </view>
 
-      <view class="search-keywords-filter">
+      <view class="search-keywords-filter search-keywords-filter--result">
         <text class="search-keywords-filter__label">结果</text>
-        <view class="search-keywords-filter__chips">
+        <view class="search-keywords-filter__chips search-keywords-filter__chips--result">
           <button
             wx:for="{{resultFilterOptions}}"
             wx:key="value"

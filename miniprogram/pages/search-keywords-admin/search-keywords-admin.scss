@@ -17,45 +17,53 @@ page {
 
 .search-keywords-toolbar {
   border-radius: 24rpx;
-  padding: 22rpx;
+  padding: 20rpx 20rpx 22rpx;
   background: #ffffff;
   box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.05);
 }
 
 .search-keywords-filter {
-  margin-top: 18rpx;
-  display: flex;
-  align-items: flex-start;
+  margin-top: 20rpx;
+  display: block;
+}
+
+.search-keywords-filter--result {
+  margin-top: 16rpx;
 }
 
 .search-keywords-filter__label {
-  flex-shrink: 0;
-  width: 64rpx;
-  height: 52rpx;
-  line-height: 52rpx;
+  display: block;
+  margin-bottom: 10rpx;
   color: #6b7280;
-  font-size: 22rpx;
+  font-size: 21rpx;
   font-weight: 600;
+  line-height: 1.2;
 }
 
 .search-keywords-filter__chips {
-  flex: 1;
-  min-width: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
+  align-items: center;
+  gap: 10rpx;
 }
 
 .search-keywords-filter__chip {
+  flex: 1 1 0;
   margin: 0;
-  height: 52rpx;
-  line-height: 52rpx;
-  padding: 0 20rpx;
+  box-sizing: border-box;
+  width: auto;
+  min-width: 0;
+  height: 54rpx;
+  line-height: 54rpx;
+  padding: 0 8rpx;
   border-radius: 999rpx;
   background: #f3f4f6;
   color: #4b5563;
-  font-size: 21rpx;
+  font-size: 20rpx;
   font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .search-keywords-filter__chip.is-active {
@@ -65,23 +73,27 @@ page {
 }
 
 .search-keywords-toolbar__meta {
-  margin-top: 18rpx;
+  margin-top: 20rpx;
+  padding-top: 18rpx;
+  border-top: 1rpx solid #eef2f7;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16rpx;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14rpx;
 }
 
 .search-keywords-toolbar__count {
-  flex: 1;
-  min-width: 0;
-  font-size: 23rpx;
+  display: block;
+  width: 100%;
+  font-size: 22rpx;
   color: #6b7280;
-  line-height: 1.5;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .search-keywords-toolbar__actions {
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 12rpx;
@@ -89,11 +101,14 @@ page {
 
 .search-keywords-toolbar__refresh,
 .search-keywords-toolbar__export {
+  flex: 1 1 0;
   margin: 0;
-  min-width: 112rpx;
-  height: 56rpx;
-  line-height: 56rpx;
-  padding: 0 22rpx;
+  box-sizing: border-box;
+  width: auto;
+  min-width: 0;
+  height: 62rpx;
+  line-height: 62rpx;
+  padding: 0 18rpx;
   border-radius: 999rpx;
   background: #f4f4f5;
   color: #374151;
@@ -102,7 +117,6 @@ page {
 }
 
 .search-keywords-toolbar__export {
-  min-width: 146rpx;
   background: #111827;
   color: #ffffff;
 }
