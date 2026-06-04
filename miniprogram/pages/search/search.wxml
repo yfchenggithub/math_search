@@ -97,9 +97,6 @@
     scroll-y
     class="list"
     scroll-top="{{listScrollTop}}"
-    refresher-enabled="{{true}}"
-    refresher-triggered="{{homeRefresherTriggered}}"
-    bindrefresherrefresh="onHomeRefresherRefresh"
   >
     <view wx:if="{{loading}}" class="state-box state-loading">
       搜索中...

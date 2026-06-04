@@ -282,7 +282,6 @@ type ExecuteSearchOptions = {
 };
 
 type RefreshHomePageDataOptions = {
-  triggeredByScrollView?: boolean;
   showCompletionToast?: boolean;
 };
 
@@ -338,7 +337,6 @@ Page({
     activeTab: TAB_ALL,
     showClear: false,
     listScrollTop: 0,
-    homeRefresherTriggered: false,
     homeRecommendSections: [] as HomeRecommendSection[],
     noResultRecommendItems: [] as HomeRecommendItem[],
     conclusionRequestDialogVisible: false,
@@ -441,23 +439,9 @@ Page({
     });
   },
 
-  onHomeRefresherRefresh() {
-    void this.refreshHomePageData({
-      triggeredByScrollView: true,
-      showCompletionToast: true,
-    });
-  },
-
   async refreshHomePageData(options: RefreshHomePageDataOptions = {}) {
-    const triggeredByScrollView = Boolean(options.triggeredByScrollView);
     const showCompletionToast = Boolean(options.showCompletionToast);
     const query = String(this.data.query || "");
-
-    if (triggeredByScrollView) {
-      this.setData({
-        homeRefresherTriggered: true,
-      });
-    }
 
     try {
       initSearchEngine();
@@ -525,12 +509,6 @@ Page({
           message: getErrorMessage(error, "刷新失败，请稍后重试"),
           closable: true,
           source: "unknown",
-        });
-      }
-    } finally {
-      if (triggeredByScrollView) {
-        this.setData({
-          homeRefresherTriggered: false,
         });
       }
     }
