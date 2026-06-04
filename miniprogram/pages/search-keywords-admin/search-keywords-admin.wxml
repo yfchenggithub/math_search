@@ -17,15 +17,55 @@
         bind:clear="handleClearSearchTap"
       ></search-box>
 
+      <view class="search-keywords-filter">
+        <text class="search-keywords-filter__label">时间</text>
+        <view class="search-keywords-filter__chips">
+          <button
+            wx:for="{{timeRangeOptions}}"
+            wx:key="value"
+            class="search-keywords-filter__chip {{item.active ? 'is-active' : ''}}"
+            data-value="{{item.value}}"
+            bindtap="handleTimeRangeTap"
+          >
+            {{item.label}}
+          </button>
+        </view>
+      </view>
+
+      <view class="search-keywords-filter">
+        <text class="search-keywords-filter__label">结果</text>
+        <view class="search-keywords-filter__chips">
+          <button
+            wx:for="{{resultFilterOptions}}"
+            wx:key="value"
+            class="search-keywords-filter__chip {{item.active ? 'is-active' : ''}}"
+            data-value="{{item.value}}"
+            bindtap="handleResultFilterTap"
+          >
+            {{item.label}}
+          </button>
+        </view>
+      </view>
+
       <view class="search-keywords-toolbar__meta">
         <text class="search-keywords-toolbar__count">{{countText}}</text>
-        <button
-          class="search-keywords-toolbar__refresh"
-          bindtap="handleRefreshTap"
-          disabled="{{loading || loadingMore}}"
-        >
-          刷新
-        </button>
+        <view class="search-keywords-toolbar__actions">
+          <button
+            class="search-keywords-toolbar__export"
+            loading="{{exportingCsv}}"
+            bindtap="handleExportCsvTap"
+            disabled="{{loading || loadingMore || exportingCsv}}"
+          >
+            导出 CSV
+          </button>
+          <button
+            class="search-keywords-toolbar__refresh"
+            bindtap="handleRefreshTap"
+            disabled="{{loading || loadingMore}}"
+          >
+            刷新
+          </button>
+        </view>
       </view>
     </view>
 

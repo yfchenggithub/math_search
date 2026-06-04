@@ -1,5 +1,8 @@
 import { SEARCH_KEYWORDS_API_CONFIG } from "../../config/api";
-import { request } from "../request/request";
+import { buildAbsoluteApiUrl } from "../../utils/api-url";
+import { getAccessToken, getSession } from "../../utils/storage/token-storage";
+import { authService } from "../auth/auth-service";
+import { RequestError, request } from "../request/request";
 
 export interface SearchKeywordRecord {
   id: number;
@@ -12,11 +15,22 @@ export interface SearchKeywordRecord {
   updatedAt: string;
 }
 
+export type SearchKeywordResultFilter = "all" | "no_result" | "low_result";
+
 export interface ListSearchKeywordsParams {
   keyword?: string;
+  startDate?: string;
+  endDate?: string;
+  resultFilter?: SearchKeywordResultFilter;
+  lowResultThreshold?: number;
   page?: number;
   pageSize?: number;
 }
+
+export type ExportSearchKeywordsCsvParams = Omit<
+  ListSearchKeywordsParams,
+  "page" | "pageSize"
+>;
 
 export interface SearchKeywordListResponse {
   total: number;
@@ -26,6 +40,7 @@ export interface SearchKeywordListResponse {
 }
 
 type SearchKeywordsQuery = Record<string, string | number | boolean | undefined>;
+type CsvDownloadHeader = Record<string, string>;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
@@ -71,21 +86,131 @@ function normalizeListResponse(raw: unknown): SearchKeywordListResponse {
   };
 }
 
+function buildSearchKeywordsQuery(
+  params: ListSearchKeywordsParams = {},
+  includePagination: boolean,
+): SearchKeywordsQuery {
+  return {
+    keyword: params.keyword,
+    start_date: params.startDate,
+    end_date: params.endDate,
+    result_filter: params.resultFilter,
+    low_result_threshold: params.lowResultThreshold,
+    page: includePagination ? params.page : undefined,
+    page_size: includePagination ? params.pageSize : undefined,
+  };
+}
+
+function appendQueryEntry(
+  pairs: string[],
+  key: string,
+  value: string | number | boolean,
+): void {
+  pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+}
+
+function buildQueryString(query: SearchKeywordsQuery): string {
+  const pairs: string[] = [];
+  const keys = Object.keys(query);
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+    const value = query[key];
+
+    if (value === undefined) {
+      continue;
+    }
+
+    appendQueryEntry(pairs, key, value);
+  }
+
+  return pairs.join("&");
+}
+
+function appendQueryToUrl(url: string, query: SearchKeywordsQuery): string {
+  const queryString = buildQueryString(query);
+  if (!queryString) {
+    return url;
+  }
+
+  const connector = url.includes("?") ? "&" : "?";
+  return `${url}${connector}${queryString}`;
+}
+
+function resolveCsvDownloadHeader(): CsvDownloadHeader {
+  const accessToken = getAccessToken();
+  if (!accessToken) {
+    authService.onAuthExpired();
+    throw new RequestError("Please login first", {
+      statusCode: 401,
+      code: "AUTH_REQUIRED_NO_TOKEN",
+    });
+  }
+
+  const tokenType = getSession()?.tokenType || "Bearer";
+  return {
+    Authorization: `${tokenType} ${accessToken}`,
+  };
+}
+
+function buildCsvDownloadUrl(params: ExportSearchKeywordsCsvParams = {}): string {
+  const exportUrl = buildAbsoluteApiUrl(SEARCH_KEYWORDS_API_CONFIG.ADMIN_EXPORT_PATH);
+  if (!exportUrl) {
+    throw new RequestError("CSV export url is invalid");
+  }
+
+  return appendQueryToUrl(exportUrl, buildSearchKeywordsQuery(params, false));
+}
+
 export async function listSearchKeywords(
   params: ListSearchKeywordsParams = {},
 ): Promise<SearchKeywordListResponse> {
-  const query: SearchKeywordsQuery = {
-    keyword: params.keyword,
-    page: params.page,
-    page_size: params.pageSize,
-  };
-
   const raw = await request<unknown>({
     url: SEARCH_KEYWORDS_API_CONFIG.ADMIN_LIST_PATH,
     method: "GET",
-    query,
+    query: buildSearchKeywordsQuery(params, true),
     authMode: "required",
   });
 
   return normalizeListResponse(raw);
+}
+
+export async function downloadSearchKeywordsCsv(
+  params: ExportSearchKeywordsCsvParams = {},
+): Promise<string> {
+  const url = buildCsvDownloadUrl(params);
+  const header = resolveCsvDownloadHeader();
+
+  return new Promise((resolve, reject) => {
+    wx.downloadFile({
+      url,
+      header,
+      success: (response) => {
+        if (response.statusCode === 401) {
+          authService.onAuthExpired();
+          reject(new RequestError("Please login first", {
+            statusCode: 401,
+            code: 401,
+            data: response,
+          }));
+          return;
+        }
+
+        if (response.statusCode !== 200 || !response.tempFilePath) {
+          reject(new RequestError(`CSV export failed (HTTP ${response.statusCode})`, {
+            statusCode: response.statusCode,
+            data: response,
+          }));
+          return;
+        }
+
+        resolve(response.tempFilePath);
+      },
+      fail: (error) => {
+        reject(new RequestError(String(error.errMsg || "CSV export failed"), {
+          data: error,
+        }));
+      },
+    });
+  });
 }

@@ -89,6 +89,7 @@ export const USERS_API_CONFIG = {
 
 export const SEARCH_KEYWORDS_API_CONFIG = {
   ADMIN_LIST_PATH: "/api/v1/admin/search-keywords",
+  ADMIN_EXPORT_PATH: "/api/v1/admin/search-keywords/export.csv",
 } as const;
 
 export const CONCLUSIONS_ADMIN_API_CONFIG = {
