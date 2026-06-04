@@ -2,11 +2,19 @@ import {
   CONTENT_MODULE_FILTERS,
   type ContentModuleFilter,
 } from "../../constants/content-modules";
+import type { AuthStatusToastType } from "../../services/auth/auth-types";
 import {
   listAdminConclusions,
   type AdminConclusionRecord,
   type AdminConclusionPreviewType,
 } from "../../services/api/conclusions-admin-api";
+import type { AuthStatusToastState } from "../../utils/auth/auth-status-feedback";
+import {
+  hideAuthStatusToast,
+  retryAuthStatusToast,
+  showAuthStatusToast,
+  subscribeAuthStatusToast,
+} from "../../utils/auth/auth-status-feedback";
 import { createLogger } from "../../utils/logger/logger";
 import { renderMath } from "../../utils/math-render";
 import { getErrorMessage } from "../../utils/request";
@@ -72,6 +80,12 @@ type ConclusionManagementData = {
   errorMessage: string;
   hasMore: boolean;
   countText: string;
+  authStatusToastVisible: boolean;
+  authStatusToastType: AuthStatusToastType;
+  authStatusToastTitle: string;
+  authStatusToastMessage: string;
+  authStatusToastRetryable: boolean;
+  authStatusToastClosable: boolean;
 };
 
 const PAGE_SIZE = 20;
@@ -230,16 +244,90 @@ Page<ConclusionManagementData, WechatMiniprogram.IAnyObject>({
     loadingMore: false,
     errorMessage: "",
     hasMore: false,
+    authStatusToastVisible: false,
+    authStatusToastType: "idle",
+    authStatusToastTitle: "",
+    authStatusToastMessage: "",
+    authStatusToastRetryable: false,
+    authStatusToastClosable: false,
     countText: "暂无结论",
   },
 
+  unsubscribeAuthStatusToast: undefined as undefined | (() => void),
+
   onLoad() {
+    this.unsubscribeAuthStatusToast = subscribeAuthStatusToast((state) => {
+      this.syncAuthStatusToast(state);
+    });
     void this.refreshConclusions();
   },
 
   onPullDownRefresh() {
-    void this.refreshConclusions().finally(() => {
-      wx.stopPullDownRefresh();
+    void this.refreshConclusions()
+      .then(() => {
+        this.showRefreshCompleteToast();
+      })
+      .catch((error: unknown) => {
+        managementLogger.warn("conclusion_admin_pull_refresh_failed", { error });
+        showAuthStatusToast({
+          type: "error",
+          title: "刷新失败",
+          message: getErrorMessage(error, "刷新失败，请稍后重试"),
+          closable: true,
+          source: "unknown",
+        });
+      })
+      .finally(() => {
+        wx.stopPullDownRefresh();
+      });
+  },
+
+  onUnload() {
+    this.unsubscribeAuthStatusToast?.();
+    this.unsubscribeAuthStatusToast = undefined;
+    hideAuthStatusToast("conclusion_management_unload");
+  },
+
+  handleAuthStatusToastRetry() {
+    const retried = retryAuthStatusToast();
+    if (!retried) {
+      hideAuthStatusToast("retry_unavailable");
+    }
+  },
+
+  handleAuthStatusToastClose() {
+    hideAuthStatusToast("manual_close");
+  },
+
+  syncAuthStatusToast(state: AuthStatusToastState) {
+    this.setData({
+      authStatusToastVisible: state.visible,
+      authStatusToastType: state.type,
+      authStatusToastTitle: state.title,
+      authStatusToastMessage: state.message,
+      authStatusToastRetryable: state.retryable,
+      authStatusToastClosable: state.closable,
+    });
+  },
+
+  showRefreshCompleteToast() {
+    const errorMessage = String(this.data.errorMessage || "").trim();
+    if (errorMessage) {
+      showAuthStatusToast({
+        type: "error",
+        title: "刷新失败",
+        message: errorMessage,
+        closable: true,
+        source: "unknown",
+      });
+      return;
+    }
+
+    showAuthStatusToast({
+      type: "success",
+      title: "刷新完成",
+      message: "结论列表已更新",
+      source: "unknown",
     });
   },
 

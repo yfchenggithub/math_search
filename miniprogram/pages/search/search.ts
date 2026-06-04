@@ -6,10 +6,18 @@ import {
 } from "../../constants/content-modules";
 import { addSearchHistory } from "../../services/history";
 import { getSettings } from "../../services/settings";
+import type { AuthStatusToastType } from "../../services/auth/auth-types";
 import {
   submitConclusionRequest,
   type SubmitConclusionRequestPayload,
 } from "../../services/api/conclusion-requests-api";
+import type { AuthStatusToastState } from "../../utils/auth/auth-status-feedback";
+import {
+  hideAuthStatusToast,
+  retryAuthStatusToast,
+  showAuthStatusToast,
+  subscribeAuthStatusToast,
+} from "../../utils/auth/auth-status-feedback";
 import {
   trackEvent,
   trackPageView,
@@ -273,6 +281,11 @@ type ExecuteSearchOptions = {
   entry?: string;
 };
 
+type RefreshHomePageDataOptions = {
+  triggeredByScrollView?: boolean;
+  showCompletionToast?: boolean;
+};
+
 interface SearchCardItem extends ResultItem {
   titleSegments: HighlightSegment[];
   category: string;
@@ -325,6 +338,7 @@ Page({
     activeTab: TAB_ALL,
     showClear: false,
     listScrollTop: 0,
+    homeRefresherTriggered: false,
     homeRecommendSections: [] as HomeRecommendSection[],
     noResultRecommendItems: [] as HomeRecommendItem[],
     conclusionRequestDialogVisible: false,
@@ -348,6 +362,12 @@ Page({
     pdfEntitlementHint: PDF_COPY.lockedHint as string,
     pdfEntitlementActionText: PDF_COPY.lockedAction as string,
     pdfEntitlementActionBusy: false,
+    authStatusToastVisible: false,
+    authStatusToastType: "idle" as AuthStatusToastType,
+    authStatusToastTitle: "",
+    authStatusToastMessage: "",
+    authStatusToastRetryable: false,
+    authStatusToastClosable: false,
   },
 
   searchTaskId: 0,
@@ -357,9 +377,13 @@ Page({
   pdfEntitlementTimer: null as number | null,
   shareMenuReady: false,
   homeViewTracked: false,
+  unsubscribeAuthStatusToast: undefined as undefined | (() => void),
 
   onLoad() {
     this.ensureShareMenu();
+    this.unsubscribeAuthStatusToast = subscribeAuthStatusToast((state) => {
+      this.syncAuthStatusToast(state);
+    });
     initSearchEngine();
 
     const meta = getSearchMeta();
@@ -409,6 +433,109 @@ Page({
     }
   },
 
+  onPullDownRefresh() {
+    void this.refreshHomePageData({
+      showCompletionToast: true,
+    }).finally(() => {
+      wx.stopPullDownRefresh();
+    });
+  },
+
+  onHomeRefresherRefresh() {
+    void this.refreshHomePageData({
+      triggeredByScrollView: true,
+      showCompletionToast: true,
+    });
+  },
+
+  async refreshHomePageData(options: RefreshHomePageDataOptions = {}) {
+    const triggeredByScrollView = Boolean(options.triggeredByScrollView);
+    const showCompletionToast = Boolean(options.showCompletionToast);
+    const query = String(this.data.query || "");
+
+    if (triggeredByScrollView) {
+      this.setData({
+        homeRefresherTriggered: true,
+      });
+    }
+
+    try {
+      initSearchEngine();
+
+      const meta = getSearchMeta();
+      const total = meta.totalDocs;
+      const hotCount = meta.hotDocCount;
+      const highExamFrequencyCount = meta.highExamFrequencyCount;
+      const quickFilters = this.buildQuickFilters(meta.categories);
+      const activeTab = this.isKnownFilterKey(this.data.activeTab, quickFilters)
+        ? this.data.activeTab
+        : TAB_ALL;
+
+      this.setData({
+        total,
+        hotCount,
+        learned: total,
+        rate1: this.calculateRate(hotCount, total),
+        rate2: this.calculateRate(highExamFrequencyCount, total),
+        quickFilters,
+        activeTab,
+        primaryQuickFilters: buildPrimaryQuickFilters(
+          activeTab,
+          this.data.isModuleExpanded,
+        ),
+      });
+
+      const recommendationsReady = await this.loadHomeRecommendations();
+
+      if (query.trim()) {
+        await this.executeSearch(query);
+        if (showCompletionToast) {
+          this.showRefreshCompleteToast(recommendationsReady);
+        }
+        return;
+      }
+
+      this.allResultsCache = [];
+      const recommendState = this.buildHomeRecommendationStateFromSeeds(
+        this.homeRecommendSeeds,
+        activeTab,
+      );
+
+      this.setDataWithTrace("home_refresh_empty_state", {
+        loading: false,
+        errorMessage: "",
+        suggestLoading: false,
+        suggestErrorMessage: "",
+        suggestions: [],
+        results: [],
+        debugInfo: null,
+        showClear: query.length > 0,
+        homeRecommendSections: recommendState.sections,
+        noResultRecommendItems: recommendState.noResultItems,
+      });
+      if (showCompletionToast) {
+        this.showRefreshCompleteToast(recommendationsReady);
+      }
+    } catch (error) {
+      searchPageLogger.warn("home_refresh_failed", { error });
+      if (showCompletionToast) {
+        showAuthStatusToast({
+          type: "error",
+          title: "刷新失败",
+          message: getErrorMessage(error, "刷新失败，请稍后重试"),
+          closable: true,
+          source: "unknown",
+        });
+      }
+    } finally {
+      if (triggeredByScrollView) {
+        this.setData({
+          homeRefresherTriggered: false,
+        });
+      }
+    }
+  },
+
   onHide() {
     this.stopPdfEntitlementTimer();
   },
@@ -420,6 +547,9 @@ Page({
     }
 
     this.stopPdfEntitlementTimer();
+    this.unsubscribeAuthStatusToast?.();
+    this.unsubscribeAuthStatusToast = undefined;
+    hideAuthStatusToast("search_unload");
   },
 
   ensureShareMenu() {
@@ -452,6 +582,50 @@ Page({
   },
 
   noop() {},
+
+  handleAuthStatusToastRetry() {
+    const retried = retryAuthStatusToast();
+    if (!retried) {
+      hideAuthStatusToast("retry_unavailable");
+    }
+  },
+
+  handleAuthStatusToastClose() {
+    hideAuthStatusToast("manual_close");
+  },
+
+  syncAuthStatusToast(state: AuthStatusToastState) {
+    this.setData({
+      authStatusToastVisible: state.visible,
+      authStatusToastType: state.type,
+      authStatusToastTitle: state.title,
+      authStatusToastMessage: state.message,
+      authStatusToastRetryable: state.retryable,
+      authStatusToastClosable: state.closable,
+    });
+  },
+
+  showRefreshCompleteToast(recommendationsReady: boolean) {
+    const errorMessage = String(this.data.errorMessage || "").trim();
+    if (errorMessage || !recommendationsReady) {
+      showAuthStatusToast({
+        type: "error",
+        title: "刷新失败",
+        message: errorMessage || "推荐内容刷新失败，请稍后再试",
+        closable: true,
+        source: "unknown",
+      });
+      return;
+    }
+
+    const query = String(this.data.query || "").trim();
+    showAuthStatusToast({
+      type: "success",
+      title: "刷新完成",
+      message: query ? "当前搜索结果已更新" : "首页推荐已更新",
+      source: "unknown",
+    });
+  },
 
   onInput(e: SearchInputEvent) {
     const value = String(e.detail.value || "");
@@ -1131,7 +1305,7 @@ Page({
     };
   },
 
-  async loadHomeRecommendations() {
+  async loadHomeRecommendations(): Promise<boolean> {
     try {
       const response = await homeRecommendWithFacade(80);
       this.homeRecommendSeeds = this.buildHomeRecommendationSeeds(response.items);
@@ -1144,6 +1318,7 @@ Page({
         homeRecommendSections: recommendState.sections,
         noResultRecommendItems: recommendState.noResultItems,
       });
+      return true;
     } catch (error) {
       searchPageLogger.warn("home_recommend_load_failed", { error });
       this.homeRecommendSeeds = [];
@@ -1151,6 +1326,7 @@ Page({
         homeRecommendSections: [],
         noResultRecommendItems: [],
       });
+      return false;
     }
   },
 
@@ -1602,7 +1778,7 @@ Page({
       return right.createdAtTs - left.createdAtTs;
     }
 
-    return right.sourceOrder - left.sourceOrder;
+    return left.sourceOrder - right.sourceOrder;
   },
 
   compareCommonRecommendSeeds(left: HomeRecommendSeed, right: HomeRecommendSeed): number {

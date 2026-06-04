@@ -93,7 +93,14 @@
     </view>
   </view>
 
-  <scroll-view scroll-y class="list" scroll-top="{{listScrollTop}}">
+  <scroll-view
+    scroll-y
+    class="list"
+    scroll-top="{{listScrollTop}}"
+    refresher-enabled="{{true}}"
+    refresher-triggered="{{homeRefresherTriggered}}"
+    bindrefresherrefresh="onHomeRefresherRefresh"
+  >
     <view wx:if="{{loading}}" class="state-box state-loading">
       搜索中...
     </view>
@@ -255,4 +262,15 @@
       </view>
     </view>
   </view>
+
+  <auth-status-toast-host
+    visible="{{authStatusToastVisible}}"
+    type="{{authStatusToastType}}"
+    title="{{authStatusToastTitle}}"
+    message="{{authStatusToastMessage}}"
+    retryable="{{authStatusToastRetryable}}"
+    closable="{{authStatusToastClosable}}"
+    bind:retry="handleAuthStatusToastRetry"
+    bind:close="handleAuthStatusToastClose"
+  ></auth-status-toast-host>
 </view>

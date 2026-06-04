@@ -95,4 +95,15 @@
       </button>
     </view>
   </view>
+
+  <auth-status-toast-host
+    visible="{{authStatusToastVisible}}"
+    type="{{authStatusToastType}}"
+    title="{{authStatusToastTitle}}"
+    message="{{authStatusToastMessage}}"
+    retryable="{{authStatusToastRetryable}}"
+    closable="{{authStatusToastClosable}}"
+    bind:retry="handleAuthStatusToastRetry"
+    bind:close="handleAuthStatusToastClose"
+  ></auth-status-toast-host>
 </view>

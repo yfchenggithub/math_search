@@ -170,6 +170,8 @@ export interface SearchViewItem {
   hotScore?: number;
   examFrequency?: number;
   examScore?: number;
+  updatedAt?: string | number;
+  createdAt?: string | number;
   searchScore: number;
   moduleLabel: string;
   difficultyLabel: string;
@@ -225,6 +227,7 @@ interface RemoteSearchItemRaw {
   id?: string;
   module?: string;
   moduleDir?: string;
+  module_dir?: string;
   title?: string;
   summary?: string;
   statement_clean?: string;
@@ -241,6 +244,16 @@ interface RemoteSearchItemRaw {
   examFrequency?: number;
   examScore?: number;
   score?: number;
+  updatedAt?: string | number;
+  updated_at?: string | number;
+  updateTime?: string | number;
+  update_time?: string | number;
+  modifiedAt?: string | number;
+  modified_at?: string | number;
+  createdAt?: string | number;
+  created_at?: string | number;
+  createdTime?: string | number;
+  created_time?: string | number;
   is_favorited?: boolean;
   isFavorited?: boolean;
 }
@@ -919,7 +932,7 @@ function adaptRemoteSearchItem(item: RemoteSearchItemRaw, index: number): Search
   const id = normalizeText(item.id) || `REMOTE_${index + 1}`;
   const title = normalizeText(item.title) || id;
   const module = normalizeText(item.module) || "inequality";
-  const moduleDir = normalizeText(item.moduleDir) || module;
+  const moduleDir = normalizeText(item.moduleDir || item.module_dir) || module;
   const moduleLabel = getModuleLabel(module);
   const tags = normalizeTags(item.tags);
 
@@ -934,6 +947,20 @@ function adaptRemoteSearchItem(item: RemoteSearchItemRaw, index: number): Search
   const searchBoost = normalizeNumber(item.searchBoost);
   const hotScore = normalizeNumber(item.hotScore);
   const score = normalizeScore(item.score ?? rank ?? searchBoost ?? hotScore ?? 0);
+  const updatedAt = normalizeText(
+    item.updatedAt
+    || item.updated_at
+    || item.updateTime
+    || item.update_time
+    || item.modifiedAt
+    || item.modified_at,
+  );
+  const createdAt = normalizeText(
+    item.createdAt
+    || item.created_at
+    || item.createdTime
+    || item.created_time,
+  );
 
   const category = normalizeText(item.category) || moduleLabel;
   const formulaPreview = buildSearchFormulaPreview(
@@ -958,6 +985,8 @@ function adaptRemoteSearchItem(item: RemoteSearchItemRaw, index: number): Search
     hotScore: hotScore ?? undefined,
     examFrequency: normalizeNumber(item.examFrequency) ?? undefined,
     examScore: normalizeNumber(item.examScore) ?? undefined,
+    updatedAt: updatedAt || undefined,
+    createdAt: createdAt || undefined,
     searchScore: score,
     moduleLabel,
     difficultyLabel: formatDifficultyLabel(difficulty),

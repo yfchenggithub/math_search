@@ -2,6 +2,8 @@
   "usingComponents": {
     "navigation-bar": "/components/navigation-bar/navigation-bar",
     "conclusion-card": "/components/conclusion-card/conclusion-card",
-    "search-box": "/components/search-box/search-box"
-  }
+    "search-box": "/components/search-box/search-box",
+    "auth-status-toast-host": "/components/auth-status-toast-host/auth-status-toast-host"
+  },
+  "enablePullDownRefresh": true
 }
