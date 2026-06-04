@@ -34,7 +34,6 @@ import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
 import { getPdfEntitlement } from "../../utils/pdf-entitlement";
 import { RequestError } from "../../utils/request";
-import { STORAGE_KEYS } from "../../utils/storage/storage-keys";
 
 type LoginSource = NonNullable<RequireAuthOptions["loginSource"]>;
 
@@ -61,30 +60,7 @@ type RefreshMineDataOptions = {
 const mineLoginLogger = createLogger("mine-login");
 const authStatusToastLogger = createLogger("auth-status-toast");
 const profileLogger = createLogger("profile");
-const SHOW_RUNTIME_LOG_ENTRY_STORAGE_KEY = STORAGE_KEYS.DEBUG_SHOW_RUNTIME_LOGS;
-
-function toStoredBoolean(value: unknown, fallback = false): boolean {
-  if (typeof value === "boolean") {
-    return value;
-  }
-
-  if (typeof value === "number") {
-    return value !== 0;
-  }
-
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === "true" || normalized === "1") {
-      return true;
-    }
-
-    if (normalized === "false" || normalized === "0") {
-      return false;
-    }
-  }
-
-  return fallback;
-}
+let runtimeLogEntryVisibleInSession = false;
 
 function resolveMineUnlockStatus(): "locked" | "unlocked" | "expired" {
   const entitlement = getPdfEntitlement();
@@ -210,19 +186,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
   },
 
   loadRuntimeLogEntryVisibility() {
-    let showRuntimeLogEntry = false;
-    try {
-      showRuntimeLogEntry = toStoredBoolean(
-        wx.getStorageSync(SHOW_RUNTIME_LOG_ENTRY_STORAGE_KEY),
-        false,
-      );
-    } catch (error) {
-      profileLogger.warn("runtime_log_entry_visibility_read_failed", {
-        error,
-      });
-      showRuntimeLogEntry = false;
-    }
-
+    const showRuntimeLogEntry = runtimeLogEntryVisibleInSession;
     if (this.data.showRuntimeLogEntry === showRuntimeLogEntry) {
       return;
     }
@@ -233,14 +197,7 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
   },
 
   persistRuntimeLogEntryVisibility(showRuntimeLogEntry: boolean) {
-    try {
-      wx.setStorageSync(SHOW_RUNTIME_LOG_ENTRY_STORAGE_KEY, showRuntimeLogEntry);
-    } catch (error) {
-      profileLogger.warn("runtime_log_entry_visibility_write_failed", {
-        showRuntimeLogEntry,
-        error,
-      });
-    }
+    runtimeLogEntryVisibleInSession = showRuntimeLogEntry;
   },
 
   shouldShowRuntimeLogEntry(): boolean {
