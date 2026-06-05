@@ -615,6 +615,24 @@ function resolveDetailApiFetcher(): (id: string) => Promise<CanonicalConclusionD
   return fetchConclusionDetailRuntime;
 }
 
+export async function refreshDetailDocumentById(id: string): Promise<DetailDocumentView | null> {
+  const normalizedId = normalizeText(id);
+
+  if (!normalizedId) {
+    return null;
+  }
+
+  if (!DETAIL_API_CONFIG.USE_REMOTE_API) {
+    const localDetail = getDetailDocument(normalizedId);
+    if (localDetail) {
+      upsertPersistedDetailDocument(localDetail);
+    }
+    return localDetail;
+  }
+
+  return fetchRemoteDetailDocumentById(normalizedId);
+}
+
 /**
  * 详情页对外的统一入口。
  *

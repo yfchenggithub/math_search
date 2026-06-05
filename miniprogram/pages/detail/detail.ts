@@ -33,7 +33,10 @@ import type {
   DetailSectionView,
   MathImageNode,
 } from "../../utils/detail-content";
-import { getDetailDocumentById } from "../../utils/detail-content";
+import {
+  getDetailDocumentById,
+  refreshDetailDocumentById,
+} from "../../utils/detail-content";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
 import {
@@ -118,6 +121,7 @@ const DEFAULT_PDF_FILENAME = "hd-pdf.pdf";
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
 const MATH_IMAGE_CACHE_STORAGE_KEY = "conclusion_math_image_cache_map_v1";
 const PDF_STATUS_AUTO_HIDE_MS = 900;
+const DETAIL_PULL_REFRESH_TOP_THRESHOLD = 2;
 const ENABLE_PDF_ENTITLEMENT_FLOW = FEATURE_FLAGS.ENABLE_PDF_ENTITLEMENT_FLOW;
 const detailPageLogger = createLogger("detail-page");
 const PDF_UNLOCK_COPY = {
@@ -343,6 +347,89 @@ Page({
 
   async resolveDetailDocument(id: string): Promise<DetailDocumentView | null> {
     return getDetailDocumentById(id);
+  },
+
+  canRefreshDetailFromPullDown(): boolean {
+    if (this.data.viewState === "loading") {
+      return false;
+    }
+
+    if (this.data.zoomActive || this.scale > 1.01) {
+      return false;
+    }
+
+    if (this.data.viewState !== "content") {
+      return true;
+    }
+
+    const scrollTop = Math.max(
+      Number(this.articleScrollTop || 0),
+      Number(this.data.articleScrollTop || 0),
+    );
+    return scrollTop <= DETAIL_PULL_REFRESH_TOP_THRESHOLD;
+  },
+
+  onPullDownRefresh() {
+    if (!this.canRefreshDetailFromPullDown()) {
+      wx.stopPullDownRefresh();
+      return;
+    }
+
+    void this.refreshCurrentDetail().finally(() => {
+      wx.stopPullDownRefresh();
+    });
+  },
+
+  async refreshCurrentDetail() {
+    const detailId = String(this.currentDetailId || this.data.id || "").trim();
+    if (!detailId) {
+      showAuthStatusToast({
+        type: "error",
+        title: "刷新失败",
+        message: "缺少结论 ID，请返回列表后重试",
+        closable: true,
+        source: "unknown",
+      });
+      return;
+    }
+
+    const refreshStartedAt = Date.now();
+
+    try {
+      const detail = await refreshDetailDocumentById(detailId);
+      if (!detail) {
+        this.applyEmptyState("未找到对应内容");
+        showAuthStatusToast({
+          type: "error",
+          title: "刷新失败",
+          message: "未找到对应内容",
+          closable: true,
+          source: "unknown",
+        });
+        return;
+      }
+
+      const loadDurationMs = Math.max(0, Date.now() - refreshStartedAt);
+      await this.applyDetailDocument(detail, loadDurationMs);
+      showAuthStatusToast({
+        type: "success",
+        title: "已经获取到最新",
+        message: "详情缓存已更新",
+        source: "unknown",
+      });
+    } catch (error) {
+      detailPageLogger.warn("detail_pull_refresh_failed", {
+        id: detailId,
+        error,
+      });
+      showAuthStatusToast({
+        type: "error",
+        title: "刷新失败",
+        message: getErrorMessage(error, "详情刷新失败，请稍后重试"),
+        closable: true,
+        source: "unknown",
+      });
+    }
   },
 
   formatLoadDurationLabel(durationMs: number): string {
