@@ -4,6 +4,7 @@ import {
   type UserAccountRecord,
   type UserAccountStatus,
 } from "../../services/api/users-api";
+import { formatBeijingDateTime } from "../../utils/beijing-time";
 import { createLogger } from "../../utils/logger/logger";
 import { getErrorMessage } from "../../utils/request";
 
@@ -80,30 +81,6 @@ const STATUS_FILTERS: StatusFilterOption[] = [
 
 const userManagementLogger = createLogger("user-management");
 
-function padNumber(value: number, size: number): string {
-  const text = String(Math.trunc(value));
-  if (text.length >= size) {
-    return text;
-  }
-
-  return `${"0".repeat(size - text.length)}${text}`;
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  const year = date.getFullYear();
-  const month = padNumber(date.getMonth() + 1, 2);
-  const day = padNumber(date.getDate(), 2);
-  const hour = padNumber(date.getHours(), 2);
-  const minute = padNumber(date.getMinutes(), 2);
-
-  return `${year}-${month}-${day} ${hour}:${minute}`;
-}
-
 function getStatusText(status: UserAccountStatus): string {
   return status === "disabled" ? "已禁用" : "正常";
 }
@@ -130,9 +107,9 @@ function mapUserToViewItem(record: UserAccountRecord): UserManagementItem {
     avatarSrc: record.avatarUrl || DEFAULT_AVATAR,
     statusText: getStatusText(record.status),
     statusClass: record.status,
-    createdAtText: formatDateTime(record.createdAt),
-    updatedAtText: formatDateTime(record.updatedAt),
-    lastLoginAtText: formatDateTime(record.lastLoginAt),
+    createdAtText: formatBeijingDateTime(record.createdAt),
+    updatedAtText: formatBeijingDateTime(record.updatedAt),
+    lastLoginAtText: formatBeijingDateTime(record.lastLoginAt),
     actionStatus: action.status,
     actionLabel: action.label,
   };

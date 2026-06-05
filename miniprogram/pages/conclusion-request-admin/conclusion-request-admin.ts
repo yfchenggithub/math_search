@@ -4,6 +4,7 @@ import {
   type ConclusionRequestRecord,
   type ConclusionRequestStatus,
 } from "../../services/api/conclusion-requests-api";
+import { formatBeijingDateTime } from "../../utils/beijing-time";
 import { createLogger } from "../../utils/logger/logger";
 import { getErrorMessage } from "../../utils/request";
 
@@ -70,27 +71,10 @@ const STATUS_FILTERS: StatusFilterOption[] = [
 
 const adminLogger = createLogger("conclusion-request-admin");
 
-function padNumber(value: number, size: number): string {
-  const text = String(Math.trunc(value));
-  if (text.length >= size) {
-    return text;
-  }
-
-  return `${"0".repeat(size - text.length)}${text}`;
-}
-
 function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  const month = padNumber(date.getMonth() + 1, 2);
-  const day = padNumber(date.getDate(), 2);
-  const hour = padNumber(date.getHours(), 2);
-  const minute = padNumber(date.getMinutes(), 2);
-
-  return `${month}-${day} ${hour}:${minute}`;
+  return formatBeijingDateTime(value, {
+    includeYear: false,
+  });
 }
 
 function getStatusText(status: ConclusionRequestStatus): string {

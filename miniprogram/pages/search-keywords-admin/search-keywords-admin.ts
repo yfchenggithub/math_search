@@ -4,6 +4,7 @@ import {
   type SearchKeywordRecord,
   type SearchKeywordResultFilter,
 } from "../../services/api/search-keywords-api";
+import { formatBeijingDateForQuery, formatBeijingDateTime } from "../../utils/beijing-time";
 import { createLogger } from "../../utils/logger/logger";
 import { RequestError, getErrorMessage } from "../../utils/request";
 
@@ -57,6 +58,7 @@ type SearchKeywordAdminData = {
 
 const PAGE_SIZE = 20;
 const LOW_RESULT_THRESHOLD = 3;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const adminLogger = createLogger("search-keywords-admin");
 const TIME_RANGE_OPTIONS: Array<Omit<FilterOption<SearchKeywordTimeRange>, "active">> = [
   { value: "all", label: "全部时间" },
@@ -78,49 +80,6 @@ type SearchKeywordFilterParams = {
   lowResultThreshold: number;
 };
 
-function padNumber(value: number, size: number): string {
-  const text = String(Math.trunc(value));
-  if (text.length >= size) {
-    return text;
-  }
-
-  return `${"0".repeat(size - text.length)}${text}`;
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  const year = date.getFullYear();
-  const month = padNumber(date.getMonth() + 1, 2);
-  const day = padNumber(date.getDate(), 2);
-  const hour = padNumber(date.getHours(), 2);
-  const minute = padNumber(date.getMinutes(), 2);
-
-  return `${year}-${month}-${day} ${hour}:${minute}`;
-}
-
-function formatDateForQuery(value: Date): string {
-  const year = value.getFullYear();
-  const month = padNumber(value.getMonth() + 1, 2);
-  const day = padNumber(value.getDate(), 2);
-
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(value: Date, offset: number): Date {
-  const next = new Date(value);
-  next.setDate(next.getDate() + offset);
-  return next;
-}
-
-function getTodayStart(): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-}
-
 function resolveTimeRange(
   value: SearchKeywordTimeRange,
 ): Pick<SearchKeywordFilterParams, "startDate" | "endDate"> {
@@ -128,8 +87,8 @@ function resolveTimeRange(
     return {};
   }
 
-  const today = getTodayStart();
-  const endDate = formatDateForQuery(today);
+  const now = new Date();
+  const endDate = formatBeijingDateForQuery(now);
 
   if (value === "today") {
     return {
@@ -140,7 +99,7 @@ function resolveTimeRange(
 
   const startOffset = value === "7d" ? -6 : -29;
   return {
-    startDate: formatDateForQuery(addDays(today, startOffset)),
+    startDate: formatBeijingDateForQuery(new Date(now.getTime() + startOffset * DAY_MS)),
     endDate,
   };
 }
@@ -156,8 +115,8 @@ function buildCountText(total: number, currentCount: number): string {
 function mapKeywordToViewItem(record: SearchKeywordRecord): SearchKeywordAdminItem {
   return {
     ...record,
-    createdAtText: formatDateTime(record.createdAt),
-    updatedAtText: formatDateTime(record.updatedAt),
+    createdAtText: formatBeijingDateTime(record.createdAt),
+    updatedAtText: formatBeijingDateTime(record.updatedAt),
     countText: `搜索 ${record.searchCount} 次`,
     resultText: record.lastHasResult
       ? `最近有结果：${record.lastResultCount} 条`

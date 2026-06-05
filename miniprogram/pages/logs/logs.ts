@@ -5,6 +5,7 @@ import {
   type RuntimeLogItem,
   type RuntimeLogLevelFilter,
 } from "../../utils/logger/log-store";
+import { formatBeijingDateTime } from "../../utils/beijing-time";
 
 type RuntimeLogFilterOption = {
   value: RuntimeLogLevelFilter;
@@ -52,29 +53,10 @@ const FILTER_OPTIONS: RuntimeLogFilterOption[] = [
 
 const MAX_SUMMARY_LENGTH = 96;
 
-function padNumber(value: number, size: number): string {
-  const text = String(Math.trunc(value));
-  if (text.length >= size) {
-    return text;
-  }
-
-  return `${"0".repeat(size - text.length)}${text}`;
-}
-
 function formatTimestamp(timestamp: number): string {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-
-  const year = date.getFullYear();
-  const month = padNumber(date.getMonth() + 1, 2);
-  const day = padNumber(date.getDate(), 2);
-  const hour = padNumber(date.getHours(), 2);
-  const minute = padNumber(date.getMinutes(), 2);
-  const second = padNumber(date.getSeconds(), 2);
-
-  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+  return formatBeijingDateTime(timestamp, {
+    includeSeconds: true,
+  });
 }
 
 function getLevelLabel(level: RuntimeLogItem["level"]): string {

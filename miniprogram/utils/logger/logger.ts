@@ -1,6 +1,7 @@
 import { readApiEnvVersion } from "../../config/runtime-env";
 import { appendLog } from "./log-store";
 import { STORAGE_KEYS } from "../storage/storage-keys";
+import { formatBeijingDateTime } from "../beijing-time";
 
 export type LogLevel = "debug" | "info" | "warn" | "error" | "off";
 
@@ -300,25 +301,10 @@ function sanitizePayload(payload: unknown): unknown {
   return trimPayloadSize(sanitized);
 }
 
-function padNumber(value: number, size: number): string {
-  const text = String(Math.trunc(value));
-  if (text.length >= size) {
-    return text;
-  }
-
-  return `${"0".repeat(size - text.length)}${text}`;
-}
-
 function formatTimestamp(date: Date = new Date()): string {
-  const year = date.getFullYear();
-  const month = padNumber(date.getMonth() + 1, 2);
-  const day = padNumber(date.getDate(), 2);
-  const hour = padNumber(date.getHours(), 2);
-  const minute = padNumber(date.getMinutes(), 2);
-  const second = padNumber(date.getSeconds(), 2);
-  const millisecond = padNumber(date.getMilliseconds(), 3);
-
-  return `${year}-${month}-${day} ${hour}:${minute}:${second},${millisecond}`;
+  return formatBeijingDateTime(date, {
+    includeMilliseconds: true,
+  });
 }
 
 function formatLevel(level: LogLevel): string {
