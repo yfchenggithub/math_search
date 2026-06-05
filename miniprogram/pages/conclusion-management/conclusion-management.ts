@@ -6,7 +6,6 @@ import type { AuthStatusToastType } from "../../services/auth/auth-types";
 import {
   listAdminConclusions,
   type AdminConclusionRecord,
-  type AdminConclusionPreviewType,
 } from "../../services/api/conclusions-admin-api";
 import type { AuthStatusToastState } from "../../utils/auth/auth-status-feedback";
 import {
@@ -15,11 +14,14 @@ import {
   showAuthStatusToast,
   subscribeAuthStatusToast,
 } from "../../utils/auth/auth-status-feedback";
+import {
+  buildConclusionCardPreview,
+  type ConclusionCardPreviewType,
+} from "../../utils/conclusion-card-preview";
 import { createLogger } from "../../utils/logger/logger";
-import { renderMath } from "../../utils/math-render";
 import { getErrorMessage } from "../../utils/request";
 
-type CardPreviewType = AdminConclusionPreviewType;
+type CardPreviewType = ConclusionCardPreviewType;
 
 type ConclusionManagementModuleFilter = {
   label: string;
@@ -136,80 +138,15 @@ function buildTags(record: AdminConclusionRecord, moduleLabel: string): string[]
   return tags;
 }
 
-function buildPreview(record: AdminConclusionRecord): Pick<
-  ConclusionManagementCard,
-  | "previewType"
-  | "previewHtml"
-  | "previewText"
-  | "previewImage"
-  | "previewImageWidth"
-  | "previewImageHeight"
-  | "previewFallbackText"
-> {
-  if (record.previewType === "image" && record.previewImage) {
-    return {
-      previewType: "image",
-      previewHtml: "",
-      previewText: "",
-      previewImage: record.previewImage,
-      previewImageWidth: record.previewImageWidth,
-      previewImageHeight: record.previewImageHeight,
-      previewFallbackText: record.previewFallbackText,
-    };
-  }
-
-  if (record.previewType === "html" && record.previewHtml) {
-    return {
-      previewType: "html",
-      previewHtml: record.previewHtml,
-      previewText: "",
-      previewImage: "",
-      previewImageWidth: 0,
-      previewImageHeight: 0,
-      previewFallbackText: record.previewFallbackText,
-    };
-  }
-
-  if (record.previewType === "text" && record.previewText) {
-    return {
-      previewType: "text",
-      previewHtml: "",
-      previewText: record.previewText,
-      previewImage: "",
-      previewImageWidth: 0,
-      previewImageHeight: 0,
-      previewFallbackText: record.previewFallbackText || record.previewText,
-    };
-  }
-
-  if (record.coreFormula) {
-    const mathResult = renderMath(record.coreFormula, true);
-    return {
-      previewType: mathResult.html ? "html" : "text",
-      previewHtml: mathResult.html,
-      previewText: mathResult.html ? "" : mathResult.source,
-      previewImage: "",
-      previewImageWidth: 0,
-      previewImageHeight: 0,
-      previewFallbackText: mathResult.source,
-    };
-  }
-
-  return {
-    previewType: "none",
-    previewHtml: "",
-    previewText: "",
-    previewImage: "",
-    previewImageWidth: 0,
-    previewImageHeight: 0,
-    previewFallbackText: "",
-  };
-}
-
 function mapRecordToCard(record: AdminConclusionRecord): ConclusionManagementCard {
   const moduleLabel = resolveModuleLabel(record.module, record.category);
   const tags = buildTags(record, moduleLabel);
   const summary = record.summary || (tags.length > 0 ? tags.join(" / ") : "暂无摘要");
+  const preview = buildConclusionCardPreview({
+    source: record.coreFormula,
+    preferred: record,
+    fallbackText: summary,
+  });
 
   return {
     id: record.id,
@@ -217,7 +154,7 @@ function mapRecordToCard(record: AdminConclusionRecord): ConclusionManagementCar
     summary,
     module: moduleLabel,
     tags,
-    ...buildPreview(record),
+    ...preview,
   };
 }
 

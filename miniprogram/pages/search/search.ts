@@ -24,7 +24,10 @@ import {
   trackSearch,
   trackShare,
 } from "../../utils/analytics";
-import { renderMath } from "../../utils/math-render";
+import {
+  buildConclusionCardPreview,
+  type ConclusionCardPreviewType,
+} from "../../utils/conclusion-card-preview";
 import {
   formatPdfRemainingTime,
   getPdfEntitlement,
@@ -190,7 +193,7 @@ type HighlightSegment = {
   highlight: boolean;
 };
 
-type CardPreviewType = "html" | "text" | "image" | "none";
+type CardPreviewType = ConclusionCardPreviewType;
 
 type HomeRecommendItem = {
   id: string;
@@ -1561,7 +1564,11 @@ Page({
       const module = this.resolveCategory(item);
       const moduleKey = String(item.module || item.moduleDir || "").trim();
       const coreFormula = String(item.coreFormula || "").trim();
-      const preview = this.buildFormulaPreview(coreFormula, item);
+      const preview = buildConclusionCardPreview({
+        source: coreFormula,
+        preferred: item,
+        fallbackText: summary,
+      });
       const rawTags = Array.isArray(item.tags)
         ? item.tags
           .map((tag) => String(tag || "").trim())
@@ -1643,96 +1650,6 @@ Page({
       previewFallbackText: seed.previewFallbackText,
       updatedAt: seed.updatedAt,
       rank: seed.rank,
-    };
-  },
-
-  buildFormulaPreview(
-    source: string,
-    preferred?: Partial<Pick<
-      HomeRecommendItem,
-      | "previewType"
-      | "previewHtml"
-      | "previewText"
-      | "previewImage"
-      | "previewImageWidth"
-      | "previewImageHeight"
-      | "previewFallbackText"
-    >>,
-  ): Pick<
-    HomeRecommendItem,
-    | "previewType"
-    | "previewHtml"
-    | "previewText"
-    | "previewImage"
-    | "previewImageWidth"
-    | "previewImageHeight"
-    | "previewFallbackText"
-  > {
-    const formulaSource = String(source || "").trim();
-    const previewImage = String(preferred?.previewImage || "").trim();
-    const previewImageWidth = this.normalizeOptionalNumber(preferred?.previewImageWidth) || 0;
-    const previewImageHeight = this.normalizeOptionalNumber(preferred?.previewImageHeight) || 0;
-    const previewHtml = String(preferred?.previewHtml || "").trim();
-    const previewText = String(preferred?.previewText || "").trim();
-    const previewFallbackText = String(preferred?.previewFallbackText || formulaSource).trim();
-
-    if (previewImage) {
-      return {
-        previewType: "image",
-        previewHtml: "",
-        previewText: "",
-        previewImage,
-        previewImageWidth,
-        previewImageHeight,
-        previewFallbackText,
-      };
-    }
-
-    if (previewHtml) {
-      return {
-        previewType: "html",
-        previewHtml,
-        previewText: "",
-        previewImage: "",
-        previewImageWidth: 0,
-        previewImageHeight: 0,
-        previewFallbackText,
-      };
-    }
-
-    if (previewText) {
-      return {
-        previewType: "text",
-        previewHtml: "",
-        previewText,
-        previewImage: "",
-        previewImageWidth: 0,
-        previewImageHeight: 0,
-        previewFallbackText: previewFallbackText || previewText,
-      };
-    }
-
-    if (!formulaSource) {
-      return {
-        previewType: "none",
-        previewHtml: "",
-        previewText: "",
-        previewImage: "",
-        previewImageWidth: 0,
-        previewImageHeight: 0,
-        previewFallbackText: "",
-      };
-    }
-
-    const mathResult = renderMath(formulaSource, true);
-    return {
-      previewType: mathResult.html ? "html" : "text",
-      previewHtml: mathResult.html,
-      previewText: mathResult.html ? "" : mathResult.source,
-      previewImage: "",
-      previewImageWidth: 0,
-      previewImageHeight: 0,
-      previewFallbackText: mathResult.source,
     };
   },
 
@@ -2001,7 +1918,11 @@ Page({
       const title = item.title || item.id;
       const summary = this.resolveSummaryText(item);
       const formulaSource = item.coreFormula || title;
-      const preview = this.buildFormulaPreview(formulaSource, item);
+      const preview = buildConclusionCardPreview({
+        source: formulaSource,
+        preferred: item,
+        fallbackText: summary,
+      });
       const formulaText = preview.previewFallbackText
         || preview.previewText
         || formulaSource;

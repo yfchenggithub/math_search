@@ -7,19 +7,13 @@ import {
   resolveConclusionCards,
   type ConclusionCardCacheItem,
 } from "../../services/conclusion-card-cache";
+import {
+  buildConclusionCardPreview,
+  type ConclusionCardPreviewFields,
+} from "../../utils/conclusion-card-preview";
 import { createLogger } from "../../utils/logger/logger";
 
-type CardPreviewType = "html" | "text" | "image" | "none";
-
-type CardPreviewFields = {
-  previewType: CardPreviewType;
-  previewHtml: string;
-  previewText: string;
-  previewImage: string;
-  previewImageWidth: number;
-  previewImageHeight: number;
-  previewFallbackText: string;
-};
+type CardPreviewFields = ConclusionCardPreviewFields;
 
 type RecentBrowseCardItem = {
   id: string;
@@ -212,59 +206,6 @@ function buildCardTags(card: ConclusionCardCacheItem | null | undefined): string
   return tags;
 }
 
-function buildEmptyPreview(): CardPreviewFields {
-  return {
-    previewType: "none",
-    previewHtml: "",
-    previewText: "",
-    previewImage: "",
-    previewImageWidth: 0,
-    previewImageHeight: 0,
-    previewFallbackText: "",
-  };
-}
-
-function buildCacheCardPreview(
-  card: ConclusionCardCacheItem | null | undefined,
-  fallbackSummary: string,
-): CardPreviewFields {
-  if (!card) {
-    return buildEmptyPreview();
-  }
-
-  const previewImage = toTrimmedString(card.previewImage);
-  const previewFallbackText = toTrimmedString(card.previewFallbackText)
-    || toTrimmedString(card.coreFormulaLatex)
-    || toTrimmedString(fallbackSummary);
-
-  if (previewImage) {
-    return {
-      previewType: "image",
-      previewHtml: "",
-      previewText: "",
-      previewImage,
-      previewImageWidth: card.previewImageWidth,
-      previewImageHeight: card.previewImageHeight,
-      previewFallbackText,
-    };
-  }
-
-  const previewText = toTrimmedString(card.previewText) || toTrimmedString(card.coreFormulaLatex);
-  if (previewText) {
-    return {
-      previewType: "text",
-      previewHtml: "",
-      previewText,
-      previewImage: "",
-      previewImageWidth: 0,
-      previewImageHeight: 0,
-      previewFallbackText: previewFallbackText || previewText,
-    };
-  }
-
-  return buildEmptyPreview();
-}
-
 function buildRecentBrowseCard(
   item: RecentBrowseItem,
   card: ConclusionCardCacheItem | null | undefined,
@@ -285,7 +226,11 @@ function buildRecentBrowseCard(
     tags,
     module,
     viewedAt: item.viewedAt,
-    ...buildCacheCardPreview(card, summary),
+    ...buildConclusionCardPreview({
+      source: card?.coreFormulaLatex,
+      preferred: card,
+      fallbackText: summary,
+    }),
   };
 }
 

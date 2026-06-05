@@ -17,6 +17,10 @@ import {
 } from "../../services/favorite-state-cache";
 import { RequestError, getErrorMessage } from "../../utils/request";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
+import {
+  buildConclusionCardPreview,
+  type ConclusionCardPreviewFields,
+} from "../../utils/conclusion-card-preview";
 import { createLogger } from "../../utils/logger/logger";
 
 type FavoritesPageStatus = "loading" | "ready" | "empty" | "error" | "guest";
@@ -27,17 +31,7 @@ type FavoriteHandoutFeedback = {
   message: string;
 };
 
-type CardPreviewType = "html" | "text" | "image" | "none";
-
-type CardPreviewFields = {
-  previewType: CardPreviewType;
-  previewHtml: string;
-  previewText: string;
-  previewImage: string;
-  previewImageWidth: number;
-  previewImageHeight: number;
-  previewFallbackText: string;
-};
+type CardPreviewFields = ConclusionCardPreviewFields;
 
 type FavoriteConclusionItem = {
   id: string;
@@ -324,59 +318,6 @@ function pickBestSummary(summaryCandidates: string[], module: string, tags: stri
   return "";
 }
 
-function buildEmptyPreview(): CardPreviewFields {
-  return {
-    previewType: "none",
-    previewHtml: "",
-    previewText: "",
-    previewImage: "",
-    previewImageWidth: 0,
-    previewImageHeight: 0,
-    previewFallbackText: "",
-  };
-}
-
-function buildCacheCardPreview(
-  card: ConclusionCardCacheItem | null | undefined,
-  fallbackSummary: string,
-): CardPreviewFields {
-  if (!card) {
-    return buildEmptyPreview();
-  }
-
-  const previewImage = normalizeText(card.previewImage);
-  const previewFallbackText = normalizeText(card.previewFallbackText)
-    || normalizeText(card.coreFormulaLatex)
-    || normalizeText(fallbackSummary);
-
-  if (previewImage) {
-    return {
-      previewType: "image",
-      previewHtml: "",
-      previewText: "",
-      previewImage,
-      previewImageWidth: card.previewImageWidth,
-      previewImageHeight: card.previewImageHeight,
-      previewFallbackText,
-    };
-  }
-
-  const previewText = normalizeText(card.previewText) || normalizeText(card.coreFormulaLatex);
-  if (previewText) {
-    return {
-      previewType: "text",
-      previewHtml: "",
-      previewText,
-      previewImage: "",
-      previewImageWidth: 0,
-      previewImageHeight: 0,
-      previewFallbackText: previewFallbackText || previewText,
-    };
-  }
-
-  return buildEmptyPreview();
-}
-
 function buildFavoriteTagsFromCache(
   card: ConclusionCardCacheItem | null | undefined,
   record: FavoriteRecord,
@@ -422,7 +363,11 @@ function mapFavoriteRecordToCard(
     module,
     tags,
   ) || (tags.length > 0 ? tags.join(" / ") : DEFAULT_SUMMARY);
-  const preview = buildCacheCardPreview(card, summary);
+  const preview = buildConclusionCardPreview({
+    source: card?.coreFormulaLatex,
+    preferred: card,
+    fallbackText: summary,
+  });
 
   return {
     id: detailId,

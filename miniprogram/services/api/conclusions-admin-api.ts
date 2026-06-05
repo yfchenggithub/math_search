@@ -1,7 +1,12 @@
 import { CONCLUSIONS_ADMIN_API_CONFIG } from "../../config/api";
+import {
+  buildConclusionCardPreview,
+  resolveConclusionCardFormulaSource,
+  type ConclusionCardPreviewType,
+} from "../../utils/conclusion-card-preview";
 import { request } from "../request/request";
 
-export type AdminConclusionPreviewType = "html" | "text" | "image" | "none";
+export type AdminConclusionPreviewType = ConclusionCardPreviewType;
 
 export interface AdminConclusionRecord {
   id: string;
@@ -74,17 +79,17 @@ function normalizeStringList(value: unknown): string[] {
   return result;
 }
 
-function normalizePreviewType(value: unknown): AdminConclusionPreviewType {
-  const text = normalizeText(value);
-  if (text === "html" || text === "text" || text === "image") {
-    return text;
-  }
-
-  return "none";
-}
-
 function normalizeRecord(raw: unknown): AdminConclusionRecord {
   const item = isPlainObject(raw) ? raw : {};
+  const coreFormula = resolveConclusionCardFormulaSource(
+    item.coreFormula || item.core_formula || item.formula,
+    item,
+  );
+  const preview = buildConclusionCardPreview({
+    source: coreFormula,
+    preferred: item,
+    fallbackText: item.summary || item.statement_clean || item.snippet,
+  });
 
   return {
     id: normalizeText(item.id),
@@ -94,14 +99,8 @@ function normalizeRecord(raw: unknown): AdminConclusionRecord {
     category: normalizeText(item.category || item.moduleLabel || item.module_label),
     tags: normalizeStringList(item.tags),
     summary: normalizeText(item.summary),
-    coreFormula: normalizeText(item.coreFormula || item.core_formula),
-    previewType: normalizePreviewType(item.previewType || item.preview_type),
-    previewHtml: normalizeText(item.previewHtml || item.preview_html),
-    previewText: normalizeText(item.previewText || item.preview_text),
-    previewImage: normalizeText(item.previewImage || item.preview_image),
-    previewImageWidth: normalizeNumber(item.previewImageWidth || item.preview_image_width) || 0,
-    previewImageHeight: normalizeNumber(item.previewImageHeight || item.preview_image_height) || 0,
-    previewFallbackText: normalizeText(item.previewFallbackText || item.preview_fallback_text),
+    coreFormula,
+    ...preview,
     difficulty: normalizeNumber(item.difficulty),
     rank: normalizeNumber(item.rank),
     hotScore: normalizeNumber(item.hotScore || item.hot_score),
