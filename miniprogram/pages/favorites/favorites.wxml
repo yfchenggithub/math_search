@@ -72,6 +72,7 @@
           module="{{item.module}}"
           entry="favorites_card"
           section="favorites"
+          updated-at="{{item.updatedAt}}"
           preview-type="{{item.previewType}}"
           preview-html="{{item.previewHtml}}"
           preview-text="{{item.previewText}}"

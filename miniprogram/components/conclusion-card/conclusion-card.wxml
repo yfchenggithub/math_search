@@ -15,6 +15,10 @@
     <block wx:else>{{title}}</block>
   </view>
 
+  <view wx:if="{{updatedAtText}}" class="conclusion-card__updated-at">
+    {{updatedAtText}}
+  </view>
+
   <view
     wx:if="{{previewType === 'html' && previewHtml}}"
     class="conclusion-card__preview conclusion-card__preview--html"

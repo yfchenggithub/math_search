@@ -55,6 +55,16 @@ export interface SearchDoc {
   hotScore?: number;
   examFrequency?: number;
   examScore?: number;
+  updatedAt?: string | number;
+  updated_at?: string | number;
+  updateTime?: string | number;
+  update_time?: string | number;
+  modifiedAt?: string | number;
+  modified_at?: string | number;
+  createdAt?: string | number;
+  created_at?: string | number;
+  createdTime?: string | number;
+  created_time?: string | number;
   isFavorited?: boolean;
 }
 
@@ -903,6 +913,20 @@ function adaptLocalSearchResult(result: SearchResult): SearchViewItem {
   const summary = resolveSummaryText(normalizeText(doc.summary), tags, doc.title);
   const difficulty = normalizeNumber(doc.difficulty);
   const formulaPreview = buildSearchFormulaPreview(doc, doc.coreFormula, summary);
+  const updatedAt = normalizeText(
+    doc.updatedAt
+    || doc.updated_at
+    || doc.updateTime
+    || doc.update_time
+    || doc.modifiedAt
+    || doc.modified_at,
+  );
+  const createdAt = normalizeText(
+    doc.createdAt
+    || doc.created_at
+    || doc.createdTime
+    || doc.created_time,
+  );
 
   return {
     id: doc.id,
@@ -920,6 +944,8 @@ function adaptLocalSearchResult(result: SearchResult): SearchViewItem {
     hotScore: normalizeNumber(doc.hotScore) ?? undefined,
     examFrequency: normalizeNumber(doc.examFrequency) ?? undefined,
     examScore: normalizeNumber(doc.examScore) ?? undefined,
+    updatedAt: updatedAt || undefined,
+    createdAt: createdAt || undefined,
     searchScore: normalizeScore(result.score),
     moduleLabel,
     difficultyLabel: formatDifficultyLabel(difficulty),

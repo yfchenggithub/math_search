@@ -38,6 +38,7 @@
             tags="{{item.tags}}"
             module="{{item.module}}"
             entry="recent_browse_card"
+            updated-at="{{item.updatedAt}}"
             preview-type="{{item.previewType}}"
             preview-html="{{item.previewHtml}}"
             preview-text="{{item.previewText}}"

@@ -72,6 +72,7 @@
           module="{{item.module}}"
           entry="conclusion_management_card"
           section="{{activeModule || 'all'}}"
+          updated-at="{{item.updatedAt}}"
           preview-type="{{item.previewType}}"
           preview-html="{{item.previewHtml}}"
           preview-text="{{item.previewText}}"

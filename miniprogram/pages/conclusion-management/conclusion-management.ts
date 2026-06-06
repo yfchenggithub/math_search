@@ -41,6 +41,7 @@ type ConclusionManagementCard = {
   previewImageWidth: number;
   previewImageHeight: number;
   previewFallbackText: string;
+  updatedAt?: string | number;
 };
 
 type SearchInputEvent = {
@@ -154,6 +155,7 @@ function mapRecordToCard(record: AdminConclusionRecord): ConclusionManagementCar
     summary,
     module: moduleLabel,
     tags,
+    updatedAt: record.updatedAt || record.createdAt,
     ...preview,
   };
 }

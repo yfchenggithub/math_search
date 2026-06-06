@@ -22,6 +22,7 @@ type RecentBrowseCardItem = {
   tags: string[];
   module: string;
   viewedAt: number;
+  updatedAt?: string | number;
 } & CardPreviewFields;
 
 type DetailTapEvent = {
@@ -226,6 +227,7 @@ function buildRecentBrowseCard(
     tags,
     module,
     viewedAt: item.viewedAt,
+    updatedAt: card?.contentUpdatedAt || undefined,
     ...buildConclusionCardPreview({
       source: card?.coreFormulaLatex,
       preferred: card,

@@ -10,6 +10,7 @@ type ConclusionCardEventDetail = {
 const DEFAULT_PREVIEW_IMAGE_WIDTH_PX = 160;
 const MAX_PREVIEW_IMAGE_WIDTH_PX = 288;
 const MAX_PREVIEW_IMAGE_HEIGHT_PX = 118;
+const UPDATED_AT_PREFIX = "\u66f4\u65b0\u65f6\u95f4\uff1a";
 
 function normalizeDimension(value: unknown): number {
   const numberValue = Number(value);
@@ -40,6 +41,57 @@ function buildPreviewImageStyle(widthValue: unknown, heightValue: unknown): stri
   }
 
   return `width: ${width}px;`;
+}
+
+function padDatePart(value: number): string {
+  return value < 10 ? `0${value}` : String(value);
+}
+
+function parseTimestamp(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value > 1e12) {
+      return Math.floor(value);
+    }
+
+    if (value > 1e9) {
+      return Math.floor(value * 1000);
+    }
+
+    return 0;
+  }
+
+  const text = String(value || "").trim();
+  if (!text) {
+    return 0;
+  }
+
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) {
+    return parseTimestamp(numeric);
+  }
+
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatUpdatedAt(value: unknown): string {
+  const timestamp = parseTimestamp(value);
+  if (timestamp <= 0) {
+    return "";
+  }
+
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = padDatePart(date.getMonth() + 1);
+  const day = padDatePart(date.getDate());
+  const hour = padDatePart(date.getHours());
+  const minute = padDatePart(date.getMinutes());
+
+  return `${UPDATED_AT_PREFIX} ${year}-${month}-${day} ${hour}:${minute}`;
 }
 
 Component({
@@ -120,11 +172,16 @@ Component({
       type: String,
       value: "",
     },
+    updatedAt: {
+      type: null,
+      value: "",
+    },
   },
 
   data: {
     previewImageLoadFailed: false,
     previewImageStyle: buildPreviewImageStyle(0, 0),
+    updatedAtText: "",
   },
 
   observers: {
@@ -141,6 +198,11 @@ Component({
           previewImageLoadFailed: false,
         });
       }
+    },
+    updatedAt(value: unknown) {
+      this.setData({
+        updatedAtText: formatUpdatedAt(value),
+      });
     },
   },
 

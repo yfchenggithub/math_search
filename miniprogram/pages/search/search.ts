@@ -303,6 +303,8 @@ interface SearchCardItem extends ResultItem {
   formulaHtml: string;
   formulaText: string;
   freq: string;
+  updatedAt?: string | number;
+  createdAt?: string | number;
 }
 
 type PdfEntitlementState = {
@@ -1374,9 +1376,15 @@ Page({
       });
     }
 
-    if (seeds.length >= 2) {
+    const recentCandidateSeeds = seeds.filter((seed) =>
+      seed.updatedAtTs > 0 || seed.createdAtTs > 0
+    );
+
+    if (recentCandidateSeeds.length > 0) {
       const recentSeeds = this.pickHomeRecommendSeeds(
-        seeds.slice().sort((left, right) => this.compareRecentRecommendSeeds(left, right)),
+        recentCandidateSeeds
+          .slice()
+          .sort((left, right) => this.compareRecentRecommendSeeds(left, right)),
         HOME_RECOMMEND_LIMIT,
         usedIds,
       );
@@ -1592,7 +1600,9 @@ Page({
         tags: this.buildRecommendTags(module, rawTags, hasPdf),
         hasPdf,
         ...preview,
-        updatedAt: updatedAtTs > 0 ? updatedAtTs : undefined,
+        updatedAt: updatedAtTs > 0
+          ? updatedAtTs
+          : (createdAtTs > 0 ? createdAtTs : undefined),
         rank: rankValue > 0 ? rankValue : undefined,
         sourceOrder: index,
         rawTags,
@@ -1952,6 +1962,8 @@ Page({
         recentScore: Math.round(item.examScore || 0),
         weight: item.searchBoost,
         usage: summary,
+        updatedAt: item.updatedAt || item.createdAt,
+        createdAt: item.createdAt,
       };
     });
   },

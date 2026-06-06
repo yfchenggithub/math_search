@@ -27,6 +27,7 @@ export interface ConclusionCardCacheItem {
   previewImageHeight: number;
   previewText: string;
   previewFallbackText: string;
+  contentUpdatedAt: string;
   updatedAt: number;
 }
 
@@ -236,6 +237,36 @@ function normalizeFinalPreviewImageDimensions(
   return normalizePreviewImageDimensions(rawWidth, rawHeight);
 }
 
+function normalizeContentUpdatedAt(raw: Record<string, unknown>): string {
+  const directValue = toTrimmedString(
+    raw.contentUpdatedAt
+    || raw.content_updated_at
+    || raw.updated_at
+    || raw.update_time
+    || raw.updateTime
+    || raw.modified_at
+    || raw.modifiedAt
+    || raw.created_at
+    || raw.createdTime
+    || raw.created_time,
+  );
+  if (directValue) {
+    return directValue;
+  }
+
+  const camelUpdatedAt = raw.updatedAt;
+  if (typeof camelUpdatedAt === "string") {
+    return camelUpdatedAt.trim();
+  }
+
+  const camelCreatedAt = raw.createdAt;
+  if (typeof camelCreatedAt === "string") {
+    return camelCreatedAt.trim();
+  }
+
+  return "";
+}
+
 function normalizeImageUrl(pathOrUrl: string): string {
   const normalized = toTrimmedString(pathOrUrl);
   return normalized ? buildAbsoluteApiUrl(normalized) : "";
@@ -320,6 +351,7 @@ function normalizeConclusionCardItemWithTimestamp(
     previewImageHeight: previewImageDimensions.height,
     previewText: previewType === "text" ? (rawPreviewText || coreFormulaLatex) : "",
     previewFallbackText: rawPreviewFallbackText || coreFormulaLatex || summary,
+    contentUpdatedAt: normalizeContentUpdatedAt(raw),
     updatedAt,
   };
 }

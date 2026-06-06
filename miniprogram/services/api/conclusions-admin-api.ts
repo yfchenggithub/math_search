@@ -28,6 +28,8 @@ export interface AdminConclusionRecord {
   rank: number | null;
   hotScore: number | null;
   examFrequency: number | null;
+  updatedAt?: string | number;
+  createdAt?: string | number;
 }
 
 export interface ListAdminConclusionsParams {
@@ -105,6 +107,20 @@ function normalizeRecord(raw: unknown): AdminConclusionRecord {
     rank: normalizeNumber(item.rank),
     hotScore: normalizeNumber(item.hotScore || item.hot_score),
     examFrequency: normalizeNumber(item.examFrequency || item.exam_frequency),
+    updatedAt: normalizeText(
+      item.updatedAt
+      || item.updated_at
+      || item.updateTime
+      || item.update_time
+      || item.modifiedAt
+      || item.modified_at,
+    ) || undefined,
+    createdAt: normalizeText(
+      item.createdAt
+      || item.created_at
+      || item.createdTime
+      || item.created_time,
+    ) || undefined,
   };
 }
 

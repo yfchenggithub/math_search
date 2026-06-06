@@ -40,6 +40,7 @@ type FavoriteConclusionItem = {
   summary: string;
   tags: string[];
   module: string;
+  updatedAt?: string | number;
 } & CardPreviewFields;
 
 type FavoritesPageData = {
@@ -376,6 +377,7 @@ function mapFavoriteRecordToCard(
     summary,
     tags,
     module,
+    updatedAt: card?.contentUpdatedAt || undefined,
     ...preview,
   };
 }
