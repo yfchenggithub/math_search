@@ -1,4 +1,8 @@
-<view class="search-box {{spacingTop ? 'search-box--spaced' : ''}}">
+<view class="search-box {{spacingTop ? 'search-box--spaced' : ''}} {{showIcon ? 'search-box--with-icon' : ''}}">
+  <view wx:if="{{showIcon}}" class="search-icon">
+    <view class="search-icon__circle"></view>
+    <view class="search-icon__handle"></view>
+  </view>
   <input
     class="search-input"
     value="{{value}}"

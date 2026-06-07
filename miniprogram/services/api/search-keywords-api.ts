@@ -9,6 +9,7 @@ export interface SearchKeywordRecord {
   keyword: string;
   normalizedKeyword: string;
   searchCount: number;
+  noResultCount: number;
   lastResultCount: number;
   lastHasResult: boolean;
   createdAt: string;
@@ -16,6 +17,7 @@ export interface SearchKeywordRecord {
 }
 
 export type SearchKeywordResultFilter = "all" | "no_result" | "low_result";
+export type SearchKeywordSortBy = "recent" | "search_count" | "no_result_count";
 
 export interface ListSearchKeywordsParams {
   keyword?: string;
@@ -23,6 +25,7 @@ export interface ListSearchKeywordsParams {
   endDate?: string;
   resultFilter?: SearchKeywordResultFilter;
   lowResultThreshold?: number;
+  sortBy?: SearchKeywordSortBy;
   page?: number;
   pageSize?: number;
 }
@@ -34,6 +37,8 @@ export type ExportSearchKeywordsCsvParams = Omit<
 
 export interface SearchKeywordListResponse {
   total: number;
+  noResultTotal: number;
+  lowResultTotal: number;
   page: number;
   pageSize: number;
   items: SearchKeywordRecord[];
@@ -67,6 +72,7 @@ function normalizeKeyword(raw: unknown): SearchKeywordRecord {
     keyword: normalizeText(item.keyword),
     normalizedKeyword: normalizeText(item.normalizedKeyword || item.normalized_keyword),
     searchCount: normalizeNumber(item.searchCount ?? item.search_count),
+    noResultCount: normalizeNumber(item.noResultCount ?? item.no_result_count),
     lastResultCount: normalizeNumber(item.lastResultCount ?? item.last_result_count),
     lastHasResult: Boolean(item.lastHasResult ?? item.last_has_result),
     createdAt: normalizeText(item.createdAt || item.created_at),
@@ -80,6 +86,8 @@ function normalizeListResponse(raw: unknown): SearchKeywordListResponse {
 
   return {
     total: normalizeNumber(payload.total, rawItems.length),
+    noResultTotal: normalizeNumber(payload.noResultTotal ?? payload.no_result_total),
+    lowResultTotal: normalizeNumber(payload.lowResultTotal ?? payload.low_result_total),
     page: normalizeNumber(payload.page, 1),
     pageSize: normalizeNumber(payload.pageSize ?? payload.page_size, rawItems.length),
     items: rawItems.map((item) => normalizeKeyword(item)),
@@ -96,6 +104,7 @@ function buildSearchKeywordsQuery(
     end_date: params.endDate,
     result_filter: params.resultFilter,
     low_result_threshold: params.lowResultThreshold,
+    sort_by: params.sortBy,
     page: includePagination ? params.page : undefined,
     page_size: includePagination ? params.pageSize : undefined,
   };

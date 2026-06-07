@@ -10,8 +10,9 @@
     <view class="search-keywords-toolbar">
       <search-box
         value="{{searchInput}}"
-        placeholder="搜索关键词"
+        placeholder="筛选搜索词"
         show-clear="{{searchInput !== '' || keyword !== ''}}"
+        show-icon="{{true}}"
         bind:input="handleKeywordInput"
         bind:confirm="handleSearchConfirm"
         bind:clear="handleClearSearchTap"
@@ -47,8 +48,36 @@
         </view>
       </view>
 
+      <view class="search-keywords-filter search-keywords-filter--sort">
+        <text class="search-keywords-filter__label">排序</text>
+        <view class="search-keywords-sort">
+          <button
+            wx:for="{{sortOptions}}"
+            wx:key="value"
+            class="search-keywords-sort__item {{item.active ? 'is-active' : ''}}"
+            data-value="{{item.value}}"
+            bindtap="handleSortTap"
+          >
+            {{item.label}}
+          </button>
+        </view>
+      </view>
+
       <view class="search-keywords-toolbar__meta">
         <text class="search-keywords-toolbar__count">{{countText}}</text>
+        <view class="search-keywords-toolbar__summary">
+          <text>无结果词 </text>
+          <text class="search-keywords-toolbar__summary-number search-keywords-toolbar__summary-number--danger">
+            {{noResultTotal}}
+          </text>
+          <text> 个</text>
+          <text class="search-keywords-toolbar__summary-divider">|</text>
+          <text>低结果词 </text>
+          <text class="search-keywords-toolbar__summary-number search-keywords-toolbar__summary-number--warning">
+            {{lowResultTotal}}
+          </text>
+          <text> 个</text>
+        </view>
         <view class="search-keywords-toolbar__actions">
           <button
             class="search-keywords-toolbar__export"
@@ -56,7 +85,7 @@
             bindtap="handleExportCsvTap"
             disabled="{{loading || loadingMore || exportingCsv}}"
           >
-            导出 CSV
+            导出当前结果
           </button>
           <button
             class="search-keywords-toolbar__refresh"
@@ -90,12 +119,37 @@
       <block wx:for="{{items}}" wx:key="id" wx:for-item="item">
         <view class="search-keywords-card">
           <view class="search-keywords-card__head">
-            <text class="search-keywords-card__keyword">{{item.keyword || '-'}}</text>
-            <text class="search-keywords-card__count">{{item.countText}}</text>
+            <view class="search-keywords-card__title">
+              <text class="search-keywords-card__keyword">{{item.keyword || '-'}}</text>
+              <view
+                wx:if="{{item.showTitleNoResultBadge}}"
+                class="search-keywords-card__title-badge"
+              >
+                无结果
+              </view>
+            </view>
+
+            <view class="search-keywords-card__stats">
+              <view
+                wx:if="{{item.showLatestResultBadge}}"
+                class="search-keywords-card__latest-result"
+              >
+                {{item.resultText}}
+              </view>
+              <view wx:else class="search-keywords-card__latest-result search-keywords-card__latest-result--muted">
+                最近无结果
+              </view>
+
+              <view class="search-keywords-card__counts">
+                <view class="search-keywords-card__count">{{item.countText}}</view>
+                <view class="search-keywords-card__no-result-count">
+                  {{item.noResultCountText}}
+                </view>
+              </view>
+            </view>
           </view>
 
           <view class="search-keywords-card__meta">
-            <text>{{item.resultText}}</text>
             <text>最近：{{item.updatedAtText}}</text>
             <text>首次：{{item.createdAtText}}</text>
           </view>

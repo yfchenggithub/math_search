@@ -8,6 +8,36 @@
   position: relative;
 }
 
+.search-icon {
+  flex: 0 0 auto;
+  width: 36rpx;
+  height: 36rpx;
+  margin-right: 14rpx;
+  position: relative;
+}
+
+.search-icon__circle {
+  position: absolute;
+  left: 4rpx;
+  top: 4rpx;
+  width: 20rpx;
+  height: 20rpx;
+  border: 4rpx solid #64748b;
+  border-radius: 50%;
+}
+
+.search-icon__handle {
+  position: absolute;
+  left: 24rpx;
+  top: 26rpx;
+  width: 14rpx;
+  height: 4rpx;
+  border-radius: 999rpx;
+  background: #64748b;
+  transform: rotate(45deg);
+  transform-origin: left center;
+}
+
 .search-box--spaced {
   margin-top: 16rpx;
 }

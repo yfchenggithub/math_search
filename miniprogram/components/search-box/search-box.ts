@@ -26,6 +26,10 @@ Component({
       type: Boolean,
       value: false,
     },
+    showIcon: {
+      type: Boolean,
+      value: false,
+    },
     spacingTop: {
       type: Boolean,
       value: false,

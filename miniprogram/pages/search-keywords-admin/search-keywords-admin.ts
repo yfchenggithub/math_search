@@ -3,6 +3,7 @@ import {
   listSearchKeywords,
   type SearchKeywordRecord,
   type SearchKeywordResultFilter,
+  type SearchKeywordSortBy,
 } from "../../services/api/search-keywords-api";
 import { formatBeijingDateForQuery, formatBeijingDateTime } from "../../utils/beijing-time";
 import { createLogger } from "../../utils/logger/logger";
@@ -21,6 +22,9 @@ type SearchKeywordAdminItem = SearchKeywordRecord & {
   updatedAtText: string;
   countText: string;
   resultText: string;
+  noResultCountText: string;
+  showLatestResultBadge: boolean;
+  showTitleNoResultBadge: boolean;
 };
 
 type SearchInputEvent = {
@@ -42,10 +46,14 @@ type SearchKeywordAdminData = {
   keyword: string;
   timeRangeOptions: Array<FilterOption<SearchKeywordTimeRange>>;
   resultFilterOptions: Array<FilterOption<SearchKeywordResultFilter>>;
+  sortOptions: Array<FilterOption<SearchKeywordSortBy>>;
   activeTimeRange: SearchKeywordTimeRange;
   activeResultFilter: SearchKeywordResultFilter;
+  activeSortBy: SearchKeywordSortBy;
   items: SearchKeywordAdminItem[];
   total: number;
+  noResultTotal: number;
+  lowResultTotal: number;
   page: number;
   pageSize: number;
   loading: boolean;
@@ -68,8 +76,13 @@ const TIME_RANGE_OPTIONS: Array<Omit<FilterOption<SearchKeywordTimeRange>, "acti
 ];
 const RESULT_FILTER_OPTIONS: Array<Omit<FilterOption<SearchKeywordResultFilter>, "active">> = [
   { value: "all", label: "全部结果" },
-  { value: "no_result", label: "无结果" },
-  { value: "low_result", label: "低结果" },
+  { value: "no_result", label: "无结果词" },
+  { value: "low_result", label: "低结果词" },
+];
+const SORT_OPTIONS: Array<Omit<FilterOption<SearchKeywordSortBy>, "active">> = [
+  { value: "recent", label: "最近搜索" },
+  { value: "search_count", label: "搜索次数" },
+  { value: "no_result_count", label: "无结果次数" },
 ];
 
 type SearchKeywordFilterParams = {
@@ -78,6 +91,7 @@ type SearchKeywordFilterParams = {
   endDate?: string;
   resultFilter: SearchKeywordResultFilter;
   lowResultThreshold: number;
+  sortBy: SearchKeywordSortBy;
 };
 
 function resolveTimeRange(
@@ -113,14 +127,20 @@ function buildCountText(total: number, currentCount: number): string {
 }
 
 function mapKeywordToViewItem(record: SearchKeywordRecord): SearchKeywordAdminItem {
+  const noResultCount = Math.max(0, Math.round(record.noResultCount || 0));
+  const lastHasResult = Boolean(record.lastHasResult && record.lastResultCount > 0);
+
   return {
     ...record,
     createdAtText: formatBeijingDateTime(record.createdAt),
     updatedAtText: formatBeijingDateTime(record.updatedAt),
     countText: `搜索 ${record.searchCount} 次`,
-    resultText: record.lastHasResult
+    resultText: lastHasResult
       ? `最近有结果：${record.lastResultCount} 条`
-      : "最近无结果",
+      : "无结果",
+    noResultCountText: `无结果 ${noResultCount} 次`,
+    showLatestResultBadge: lastHasResult,
+    showTitleNoResultBadge: !lastHasResult,
   };
 }
 
@@ -142,12 +162,17 @@ function isResultFilterValue(value: unknown): value is SearchKeywordResultFilter
   return RESULT_FILTER_OPTIONS.some((option) => option.value === value);
 }
 
+function isSortValue(value: unknown): value is SearchKeywordSortBy {
+  return SORT_OPTIONS.some((option) => option.value === value);
+}
+
 function buildFilterParams(data: SearchKeywordAdminData): SearchKeywordFilterParams {
   return {
     keyword: data.keyword,
     ...resolveTimeRange(data.activeTimeRange),
     resultFilter: data.activeResultFilter,
     lowResultThreshold: LOW_RESULT_THRESHOLD,
+    sortBy: data.activeSortBy,
   };
 }
 
@@ -174,10 +199,14 @@ Page<SearchKeywordAdminData, WechatMiniprogram.IAnyObject>({
     keyword: "",
     timeRangeOptions: buildFilterOptions(TIME_RANGE_OPTIONS, "all"),
     resultFilterOptions: buildFilterOptions(RESULT_FILTER_OPTIONS, "all"),
+    sortOptions: buildFilterOptions(SORT_OPTIONS, "recent"),
     activeTimeRange: "all",
     activeResultFilter: "all",
+    activeSortBy: "recent",
     items: [],
     total: 0,
+    noResultTotal: 0,
+    lowResultTotal: 0,
     page: 1,
     pageSize: PAGE_SIZE,
     loading: false,
@@ -262,6 +291,19 @@ Page<SearchKeywordAdminData, WechatMiniprogram.IAnyObject>({
     void this.refreshKeywords();
   },
 
+  handleSortTap(event: FilterTapEvent) {
+    const value = event.currentTarget.dataset.value;
+    if (!isSortValue(value) || value === this.data.activeSortBy) {
+      return;
+    }
+
+    this.setData({
+      activeSortBy: value,
+      sortOptions: buildFilterOptions(SORT_OPTIONS, value),
+    });
+    void this.refreshKeywords();
+  },
+
   handleLoadMoreTap() {
     if (this.data.loading || this.data.loadingMore || !this.data.hasMore) {
       return;
@@ -335,6 +377,8 @@ Page<SearchKeywordAdminData, WechatMiniprogram.IAnyObject>({
         errorMessage: "",
         items: [],
         total: 0,
+        noResultTotal: 0,
+        lowResultTotal: 0,
         page: 1,
         hasMore: false,
         countText: "暂无搜索词",
@@ -355,6 +399,8 @@ Page<SearchKeywordAdminData, WechatMiniprogram.IAnyObject>({
       this.setData({
         items: nextItems,
         total,
+        noResultTotal: response.noResultTotal,
+        lowResultTotal: response.lowResultTotal,
         page: response.page,
         hasMore: nextItems.length < total,
         countText: buildCountText(total, nextItems.length),
