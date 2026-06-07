@@ -33,6 +33,7 @@ import {
   getPdfEntitlement,
   isPdfEntitlementActive,
 } from "../../utils/pdf-entitlement";
+import { formatBeijingDateTime } from "../../utils/beijing-time";
 import { unlockPdfEntitlement } from "../../utils/pdf-entitlement-unlock";
 import { getErrorMessage } from "../../utils/request";
 import { createLogger } from "../../utils/logger/logger";
@@ -95,6 +96,47 @@ const HOME_COPY = {
   noResultTitle: "暂未找到相关内容",
   noResultSubtitle: "可以换个关键词试试，例如：均值、导数、圆锥曲线",
 } as const;
+
+type HomeCopy = Record<keyof typeof HOME_COPY, string>;
+const DEFAULT_HOME_COPY: HomeCopy = HOME_COPY;
+
+function normalizeHomeMetaTotal(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+
+  return Math.round(parsed);
+}
+
+function buildHomeMetaSubtitle(total: unknown, generatedAt: unknown): string {
+  const totalCount = normalizeHomeMetaTotal(total);
+  const updatedAtText = formatBeijingDateTime(
+    generatedAt as string | number | Date | null | undefined,
+    { fallback: "" },
+  );
+
+  if (totalCount > 0 && updatedAtText) {
+    return `收录${totalCount}条，最近更新时间: ${updatedAtText}`;
+  }
+
+  if (totalCount > 0) {
+    return `收录${totalCount}条`;
+  }
+
+  if (updatedAtText) {
+    return `最近更新时间: ${updatedAtText}`;
+  }
+
+  return HOME_COPY.subtitle;
+}
+
+function buildHomeCopyWithMeta(total: unknown, generatedAt: unknown): HomeCopy {
+  return {
+    ...HOME_COPY,
+    subtitle: buildHomeMetaSubtitle(total, generatedAt),
+  };
+}
 
 const CONCLUSION_REQUEST_QUERY_MAX_LENGTH = 40;
 const CONCLUSION_REQUEST_NOTE_MAX_LENGTH = 100;
@@ -317,7 +359,7 @@ let timer: number | null = null;
 
 Page({
   data: {
-    homeCopy: HOME_COPY,
+    homeCopy: DEFAULT_HOME_COPY,
     query: "",
     focus: false,
     loading: false,
@@ -1298,6 +1340,7 @@ Page({
       );
 
       this.setData({
+        homeCopy: buildHomeCopyWithMeta(response.total, response.generatedAt),
         homeRecommendSections: recommendState.sections,
         noResultRecommendItems: recommendState.noResultItems,
       });
