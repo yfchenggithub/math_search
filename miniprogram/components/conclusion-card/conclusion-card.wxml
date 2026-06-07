@@ -15,8 +15,18 @@
     <block wx:else>{{title}}</block>
   </view>
 
-  <view wx:if="{{updatedAtText}}" class="conclusion-card__updated-at">
-    {{updatedAtText}}
+  <view wx:if="{{updatedAtText}}" class="conclusion-card__meta-row">
+    <view class="conclusion-card__updated-at">{{updatedAtText}}</view>
+    <view class="conclusion-card__stats">
+      <view class="conclusion-card__stat">
+        <text class="conclusion-card__stat-icon">{{favoriteIconText}}</text>
+        <text>{{favoriteCountText}}</text>
+      </view>
+      <view class="conclusion-card__stat">
+        <text class="conclusion-card__stat-icon">{{viewIconText}}</text>
+        <text>{{viewCountPrefix}} {{viewCountText}}</text>
+      </view>
+    </view>
   </view>
 
   <view

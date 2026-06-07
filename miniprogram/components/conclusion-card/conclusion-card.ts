@@ -11,6 +11,9 @@ const DEFAULT_PREVIEW_IMAGE_WIDTH_PX = 160;
 const MAX_PREVIEW_IMAGE_WIDTH_PX = 288;
 const MAX_PREVIEW_IMAGE_HEIGHT_PX = 118;
 const UPDATED_AT_PREFIX = "\u66f4\u65b0\u65f6\u95f4\uff1a";
+const FAVORITE_ICON_TEXT = "\u2661";
+const VIEW_ICON_TEXT = "\u25ce";
+const VIEW_COUNT_PREFIX = "\u6d4f\u89c8\uff1a";
 
 function normalizeDimension(value: unknown): number {
   const numberValue = Number(value);
@@ -92,6 +95,32 @@ function formatUpdatedAt(value: unknown): string {
   const minute = padDatePart(date.getMinutes());
 
   return `${UPDATED_AT_PREFIX} ${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+function normalizeCount(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round(parsed));
+}
+
+function trimCompactCount(value: number): string {
+  return value.toFixed(1).replace(/\.0$/, "");
+}
+
+function formatCount(value: unknown): string {
+  const count = normalizeCount(value);
+  if (count < 1000) {
+    return String(count);
+  }
+
+  if (count < 1000000) {
+    return `${trimCompactCount(count / 1000)}k`;
+  }
+
+  return `${trimCompactCount(count / 1000000)}m`;
 }
 
 Component({
@@ -176,12 +205,25 @@ Component({
       type: null,
       value: "",
     },
+    favoriteCount: {
+      type: Number,
+      value: 0,
+    },
+    viewCount: {
+      type: Number,
+      value: 0,
+    },
   },
 
   data: {
     previewImageLoadFailed: false,
     previewImageStyle: buildPreviewImageStyle(0, 0),
     updatedAtText: "",
+    favoriteIconText: FAVORITE_ICON_TEXT,
+    viewIconText: VIEW_ICON_TEXT,
+    viewCountPrefix: VIEW_COUNT_PREFIX,
+    favoriteCountText: "0",
+    viewCountText: "0",
   },
 
   observers: {
@@ -202,6 +244,12 @@ Component({
     updatedAt(value: unknown) {
       this.setData({
         updatedAtText: formatUpdatedAt(value),
+      });
+    },
+    "favoriteCount, viewCount"() {
+      this.setData({
+        favoriteCountText: formatCount(this.data.favoriteCount),
+        viewCountText: formatCount(this.data.viewCount),
       });
     },
   },

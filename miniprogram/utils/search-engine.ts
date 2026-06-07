@@ -66,6 +66,10 @@ export interface SearchDoc {
   createdTime?: string | number;
   created_time?: string | number;
   isFavorited?: boolean;
+  favoriteCount?: number;
+  favorite_count?: number;
+  viewCount?: number;
+  view_count?: number;
 }
 
 interface SearchBundle {
@@ -187,6 +191,8 @@ export interface SearchViewItem {
   difficultyLabel: string;
   badgeList: string[];
   isFavorited: boolean;
+  favoriteCount: number;
+  viewCount: number;
 }
 
 type SearchFormulaPreview = Pick<
@@ -266,6 +272,10 @@ interface RemoteSearchItemRaw {
   created_time?: string | number;
   is_favorited?: boolean;
   isFavorited?: boolean;
+  favorite_count?: number;
+  favoriteCount?: number;
+  view_count?: number;
+  viewCount?: number;
 }
 
 interface RemoteSearchDataRaw {
@@ -951,6 +961,8 @@ function adaptLocalSearchResult(result: SearchResult): SearchViewItem {
     difficultyLabel: formatDifficultyLabel(difficulty),
     badgeList: buildBadgeList(category, difficulty),
     isFavorited: Boolean(doc.isFavorited),
+    favoriteCount: normalizeCount(doc.favoriteCount ?? doc.favorite_count),
+    viewCount: normalizeCount(doc.viewCount ?? doc.view_count),
   };
 }
 
@@ -1018,6 +1030,8 @@ function adaptRemoteSearchItem(item: RemoteSearchItemRaw, index: number): Search
     difficultyLabel: formatDifficultyLabel(difficulty),
     badgeList: buildBadgeList(category, difficulty),
     isFavorited: Boolean(item.is_favorited ?? item.isFavorited),
+    favoriteCount: normalizeCount(item.favorite_count ?? item.favoriteCount),
+    viewCount: normalizeCount(item.view_count ?? item.viewCount),
   };
 }
 
@@ -1283,6 +1297,15 @@ function normalizeInteger(value: unknown, minimum: number): number | undefined {
   }
 
   return Math.max(minimum, Math.round(value));
+}
+
+function normalizeCount(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round(parsed));
 }
 
 function normalizeScore(value: unknown): number {

@@ -25,11 +25,42 @@
   color: #dc2626;
 }
 
-.conclusion-card__updated-at {
+.conclusion-card__meta-row {
   margin-top: 6rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
   color: #7c8aa5;
   font-size: 22rpx;
   line-height: 1.35;
+}
+
+.conclusion-card__updated-at {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conclusion-card__stats {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 18rpx;
+}
+
+.conclusion-card__stat {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  white-space: nowrap;
+}
+
+.conclusion-card__stat-icon {
+  font-size: 28rpx;
+  line-height: 1;
 }
 
 .conclusion-card__preview {

@@ -252,6 +252,8 @@ type HomeRecommendItem = {
   previewImageHeight: number;
   previewFallbackText: string;
   updatedAt?: string | number;
+  favoriteCount: number;
+  viewCount: number;
   rank?: number;
 };
 
@@ -347,6 +349,8 @@ interface SearchCardItem extends ResultItem {
   freq: string;
   updatedAt?: string | number;
   createdAt?: string | number;
+  favoriteCount: number;
+  viewCount: number;
 }
 
 type PdfEntitlementState = {
@@ -1646,6 +1650,8 @@ Page({
         updatedAt: updatedAtTs > 0
           ? updatedAtTs
           : (createdAtTs > 0 ? createdAtTs : undefined),
+        favoriteCount: this.normalizeCount(item.favoriteCount),
+        viewCount: this.normalizeCount(item.viewCount),
         rank: rankValue > 0 ? rankValue : undefined,
         sourceOrder: index,
         rawTags,
@@ -1702,6 +1708,8 @@ Page({
       previewImageHeight: seed.previewImageHeight,
       previewFallbackText: seed.previewFallbackText,
       updatedAt: seed.updatedAt,
+      favoriteCount: seed.favoriteCount,
+      viewCount: seed.viewCount,
       rank: seed.rank,
     };
   },
@@ -1963,6 +1971,15 @@ Page({
     return parsed;
   },
 
+  normalizeCount(value: unknown): number {
+    const parsed = this.normalizeOptionalNumber(value);
+    if (parsed === null) {
+      return 0;
+    }
+
+    return Math.max(0, Math.round(parsed));
+  },
+
   buildSearchCards(
     items: SearchViewItem[],
     highlightQuery: string,
@@ -2007,6 +2024,8 @@ Page({
         usage: summary,
         updatedAt: item.updatedAt || item.createdAt,
         createdAt: item.createdAt,
+        favoriteCount: this.normalizeCount(item.favoriteCount),
+        viewCount: this.normalizeCount(item.viewCount),
       };
     });
   },

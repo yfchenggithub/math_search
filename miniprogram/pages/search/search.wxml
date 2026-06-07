@@ -133,6 +133,8 @@
                 preview-image-width="{{recommend.previewImageWidth}}"
                 preview-image-height="{{recommend.previewImageHeight}}"
                 preview-fallback-text="{{recommend.previewFallbackText}}"
+                favorite-count="{{recommend.favoriteCount}}"
+                view-count="{{recommend.viewCount}}"
                 bind:cardtap="onDetailTap"
               ></conclusion-card>
             </block>
@@ -174,6 +176,8 @@
           preview-image-width="{{recommend.previewImageWidth}}"
           preview-image-height="{{recommend.previewImageHeight}}"
           preview-fallback-text="{{recommend.previewFallbackText}}"
+          favorite-count="{{recommend.favoriteCount}}"
+          view-count="{{recommend.viewCount}}"
           bind:cardtap="onDetailTap"
         ></conclusion-card>
       </block>
@@ -198,6 +202,8 @@
       preview-image-width="{{item.previewImageWidth}}"
       preview-image-height="{{item.previewImageHeight}}"
       preview-fallback-text="{{item.previewFallbackText || item.formulaText || item.summary}}"
+      favorite-count="{{item.favoriteCount}}"
+      view-count="{{item.viewCount}}"
       action-text="查看详情"
       bind:cardtap="onDetailTap"
     ></conclusion-card>
