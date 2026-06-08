@@ -1,9 +1,16 @@
 import {
   DEFAULT_SETTINGS,
+  FORMULA_IMAGE_SCALE_DEFAULT,
+  FORMULA_IMAGE_SCALE_MAX,
+  FORMULA_IMAGE_SCALE_MIN,
+  FORMULA_IMAGE_SCALE_PRESETS,
   getFontSizeText,
+  getFormulaImageScaleText,
   getSettings,
+  normalizeFormulaImageScale,
   updateSettings,
   type AppSettings,
+  type FormulaImageScalePreset,
   type SettingsFontSize,
 } from "../../services/settings";
 import {
@@ -22,9 +29,60 @@ type SettingsPageData = {
   saveSearchHistory: boolean;
   wifiOnlyDownload: boolean;
   localCacheSizeText: string;
+  formulaImageScale: number;
+  formulaImageScaleLabel: string;
+  formulaImageScalePanelVisible: boolean;
+  formulaImageScaleDraft: number;
+  formulaImageScaleDraftPercent: number;
+  formulaImageScaleDraftLabel: string;
+  formulaImageScaleMinPercent: number;
+  formulaImageScaleMaxPercent: number;
+  formulaImageScalePresetViews: FormulaImageScalePresetView[];
+  formulaImageScalePreviewWidthRpx: number;
+  formulaImageScalePreviewFontSizeRpx: number;
 };
 
 const settingsPageLogger = createLogger("settings-page");
+const FORMULA_IMAGE_SCALE_PREVIEW_BASE_WIDTH_RPX = 360;
+const FORMULA_IMAGE_SCALE_PREVIEW_BASE_FONT_RPX = 30;
+
+type FormulaImageScalePresetView = FormulaImageScalePreset & {
+  active: boolean;
+};
+
+function toScalePercent(scale: number): number {
+  return Math.round(normalizeFormulaImageScale(scale) * 100);
+}
+
+function toScaleFromPercent(percent: unknown): number {
+  const parsed = Number(percent);
+  return normalizeFormulaImageScale(Number.isFinite(parsed) ? parsed / 100 : FORMULA_IMAGE_SCALE_DEFAULT);
+}
+
+function buildFormulaImageScalePresetViews(scale: number): FormulaImageScalePresetView[] {
+  const normalizedScale = normalizeFormulaImageScale(scale);
+  return FORMULA_IMAGE_SCALE_PRESETS.map((preset) => ({
+    ...preset,
+    active: Math.abs(normalizeFormulaImageScale(preset.value) - normalizedScale) < 0.001,
+  }));
+}
+
+function buildFormulaImageScaleDraftData(scale: number) {
+  const normalizedScale = normalizeFormulaImageScale(scale);
+
+  return {
+    formulaImageScaleDraft: normalizedScale,
+    formulaImageScaleDraftPercent: toScalePercent(normalizedScale),
+    formulaImageScaleDraftLabel: getFormulaImageScaleText(normalizedScale),
+    formulaImageScalePresetViews: buildFormulaImageScalePresetViews(normalizedScale),
+    formulaImageScalePreviewWidthRpx: Math.round(
+      FORMULA_IMAGE_SCALE_PREVIEW_BASE_WIDTH_RPX * normalizedScale,
+    ),
+    formulaImageScalePreviewFontSizeRpx: Math.round(
+      FORMULA_IMAGE_SCALE_PREVIEW_BASE_FONT_RPX * normalizedScale,
+    ),
+  };
+}
 
 Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
   data: {
@@ -32,6 +90,12 @@ Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
     fontSizeLabel: getFontSizeText(DEFAULT_SETTINGS.fontSize),
     saveSearchHistory: DEFAULT_SETTINGS.saveSearchHistory,
     wifiOnlyDownload: DEFAULT_SETTINGS.wifiOnlyDownload,
+    formulaImageScale: DEFAULT_SETTINGS.formulaImageScale,
+    formulaImageScaleLabel: getFormulaImageScaleText(DEFAULT_SETTINGS.formulaImageScale),
+    formulaImageScalePanelVisible: false,
+    ...buildFormulaImageScaleDraftData(DEFAULT_SETTINGS.formulaImageScale),
+    formulaImageScaleMinPercent: toScalePercent(FORMULA_IMAGE_SCALE_MIN),
+    formulaImageScaleMaxPercent: toScalePercent(FORMULA_IMAGE_SCALE_MAX),
     localCacheSizeText: "计算中",
   },
 
@@ -62,10 +126,12 @@ Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
       fontSizeLabel: getFontSizeText(settings.fontSize),
       saveSearchHistory: settings.saveSearchHistory,
       wifiOnlyDownload: settings.wifiOnlyDownload,
+      formulaImageScale: settings.formulaImageScale,
+      formulaImageScaleLabel: getFormulaImageScaleText(settings.formulaImageScale),
     });
   },
 
-  persistSettingsPatch(patch: Partial<AppSettings>) {
+  persistSettingsPatch(patch: Partial<AppSettings>): boolean {
     const previousSettings: AppSettings = {
       ...this.currentSettings,
     };
@@ -83,6 +149,7 @@ Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
         title: "已保存",
         icon: "none",
       });
+      return true;
     } catch (error) {
       settingsPageLogger.warn("update_settings_failed", {
         fields: Object.keys(patch),
@@ -94,6 +161,7 @@ Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
         title: "保存失败，请稍后重试",
         icon: "none",
       });
+      return false;
     }
   },
 
@@ -122,6 +190,63 @@ Page<SettingsPageData, WechatMiniprogram.IAnyObject>({
       wifiOnlyDownload: nextValue,
     });
   },
+
+  applyFormulaImageScaleDraft(scale: number) {
+    this.setData(buildFormulaImageScaleDraftData(scale));
+  },
+
+  handleFormulaImageScaleTap() {
+    this.setData({
+      formulaImageScalePanelVisible: true,
+      ...buildFormulaImageScaleDraftData(this.currentSettings.formulaImageScale),
+    });
+  },
+
+  handleFormulaImageScaleCancel() {
+    this.setData({
+      formulaImageScalePanelVisible: false,
+      ...buildFormulaImageScaleDraftData(this.currentSettings.formulaImageScale),
+    });
+  },
+
+  handleFormulaImageScaleReset() {
+    this.applyFormulaImageScaleDraft(FORMULA_IMAGE_SCALE_DEFAULT);
+  },
+
+  handleFormulaImageScalePresetTap(event: WechatMiniprogram.BaseEvent) {
+    const scale = normalizeFormulaImageScale(event.currentTarget.dataset.scale);
+    this.applyFormulaImageScaleDraft(scale);
+  },
+
+  handleFormulaImageScaleChanging(
+    event: WechatMiniprogram.CustomEvent<{ value: number }>,
+  ) {
+    this.applyFormulaImageScaleDraft(toScaleFromPercent(event.detail.value));
+  },
+
+  handleFormulaImageScaleChange(
+    event: WechatMiniprogram.CustomEvent<{ value: number }>,
+  ) {
+    this.applyFormulaImageScaleDraft(toScaleFromPercent(event.detail.value));
+  },
+
+  handleFormulaImageScaleDone() {
+    const nextScale = normalizeFormulaImageScale(this.data.formulaImageScaleDraft);
+    const succeeded = Math.abs(nextScale - this.currentSettings.formulaImageScale) < 0.001
+      || this.persistSettingsPatch({
+        formulaImageScale: nextScale,
+      });
+
+    if (!succeeded) {
+      return;
+    }
+
+    this.setData({
+      formulaImageScalePanelVisible: false,
+    });
+  },
+
+  noop() {},
 
   handleFontSizeTap() {
     const itemList = ["标准", "较大"];

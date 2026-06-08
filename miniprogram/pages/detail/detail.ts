@@ -884,6 +884,79 @@ Page({
     };
   },
 
+  refreshMathImageNodeDisplayScale(node: MathImageNode | null): MathImageNode | null {
+    if (!node) {
+      return null;
+    }
+
+    return {
+      ...node,
+      displayWidthRpx: resolveMathImageDisplayWidthRpx(node),
+    };
+  },
+
+  refreshSectionMathImageDisplayScale(
+    sections: DetailSectionView[],
+  ): DetailSectionView[] {
+    if (!Array.isArray(sections) || sections.length === 0) {
+      return [];
+    }
+
+    return sections.map((section) => ({
+      ...section,
+      blocks: Array.isArray(section.blocks)
+        ? section.blocks.map((block) => {
+            if (block.kind === "math_image") {
+              return {
+                ...block,
+                displayWidthRpx: resolveMathImageDisplayWidthRpx(block),
+              };
+            }
+
+            if (block.kind !== "theorem") {
+              return block;
+            }
+
+            const descParts = Array.isArray(block.descParts)
+              ? block.descParts.map((part) => {
+                  if (part.kind !== "math_image" || !part.image) {
+                    return part;
+                  }
+
+                  return {
+                    ...part,
+                    image: this.refreshMathImageNodeDisplayScale(part.image) || part.image,
+                  };
+                })
+              : block.descParts;
+
+            const formulaImages = Array.isArray(block.formulaImages)
+              ? block.formulaImages.map((node) =>
+                  this.refreshMathImageNodeDisplayScale(node) || node
+                )
+              : block.formulaImages;
+
+            return {
+              ...block,
+              descParts,
+              formulaImages,
+            };
+          })
+        : [],
+    }));
+  },
+
+  refreshMathImageDisplayScale() {
+    if (this.data.viewState !== "content") {
+      return;
+    }
+
+    this.setData({
+      coreFormulaImage: this.refreshMathImageNodeDisplayScale(this.data.coreFormulaImage),
+      sections: this.refreshSectionMathImageDisplayScale(this.data.sections || []),
+    });
+  },
+
   applyEmptyState(message: string) {
     this.resetTransform(false);
     this.clearPdfStatusTimer();
@@ -1125,6 +1198,7 @@ Page({
   onShow() {
     this.ensureShareMenu();
     this.syncNavigationButtons();
+    this.refreshMathImageDisplayScale();
   },
 
   onUnload() {

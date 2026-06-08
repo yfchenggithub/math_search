@@ -77,8 +77,91 @@
       </view>
     </view>
 
+    <view class="settings-section">
+      <view class="settings-section__header">
+        <text class="settings-section__title">显示与阅读</text>
+      </view>
+
+      <view class="settings-list">
+        <view class="settings-list-item" bindtap="handleFormulaImageScaleTap">
+          <view class="settings-list-item__left">
+            <text class="settings-list-item__label">公式图片显示比例大小</text>
+          </view>
+          <view class="settings-list-item__right">
+            <text class="settings-list-item__value">{{formulaImageScaleLabel}}</text>
+            <text class="settings-list-item__arrow">></text>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <view class="settings-footer">
       <text class="settings-footer__version">版本 1.0.0</text>
+    </view>
+  </view>
+
+  <view
+    wx:if="{{formulaImageScalePanelVisible}}"
+    class="formula-scale-layer"
+    catchtouchmove="noop"
+    bindtap="handleFormulaImageScaleCancel"
+  >
+    <view class="formula-scale-panel" catchtap="noop">
+      <view class="formula-scale-panel__header">
+        <button class="formula-scale-panel__text-btn" bindtap="handleFormulaImageScaleCancel">
+          取消
+        </button>
+        <view class="formula-scale-panel__title">公式图片显示比例</view>
+        <button class="formula-scale-panel__text-btn formula-scale-panel__text-btn--primary" bindtap="handleFormulaImageScaleDone">
+          完成
+        </button>
+      </view>
+
+      <view class="formula-scale-preview">
+        <view class="formula-scale-preview__stage">
+          <view
+            class="formula-scale-preview__image"
+            style="width: {{formulaImageScalePreviewWidthRpx}}rpx; font-size: {{formulaImageScalePreviewFontSizeRpx}}rpx;"
+          >
+            <text>∑ aᵢ² / bᵢ ≥ (∑ aᵢ)² / ∑ bᵢ</text>
+          </view>
+        </view>
+        <view class="formula-scale-preview__value">{{formulaImageScaleDraftLabel}}</view>
+      </view>
+
+      <view class="formula-scale-presets">
+        <view
+          wx:for="{{formulaImageScalePresetViews}}"
+          wx:key="value"
+          class="formula-scale-preset {{item.active ? 'formula-scale-preset--active' : ''}}"
+          data-scale="{{item.value}}"
+          bindtap="handleFormulaImageScalePresetTap"
+        >
+          {{item.label}}
+        </view>
+      </view>
+
+      <view class="formula-scale-slider-row">
+        <text class="formula-scale-slider-row__label">{{formulaImageScaleMinPercent}}%</text>
+        <slider
+          class="formula-scale-slider"
+          min="{{formulaImageScaleMinPercent}}"
+          max="{{formulaImageScaleMaxPercent}}"
+          step="5"
+          value="{{formulaImageScaleDraftPercent}}"
+          activeColor="#2563eb"
+          backgroundColor="#dbe5ff"
+          block-color="#ffffff"
+          block-size="24"
+          bindchanging="handleFormulaImageScaleChanging"
+          bindchange="handleFormulaImageScaleChange"
+        />
+        <text class="formula-scale-slider-row__label">{{formulaImageScaleMaxPercent}}%</text>
+      </view>
+
+      <button class="formula-scale-reset" bindtap="handleFormulaImageScaleReset">
+        恢复标准
+      </button>
     </view>
   </view>
 </view>

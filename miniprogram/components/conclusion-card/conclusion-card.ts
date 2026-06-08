@@ -1,3 +1,5 @@
+import { getFormulaImageScale } from "../../services/settings";
+
 type ConclusionCardEventDetail = {
   id: string;
   entry: string;
@@ -44,7 +46,7 @@ function buildPreviewImageStyle(widthValue: unknown, heightValue: unknown): stri
     width = Math.max(1, Math.round(width * scale));
   }
 
-  return `width: ${Math.max(1, Math.round(width * DESIGN_RPX_PER_PX))}rpx;`;
+  return `width: ${Math.max(1, Math.round(width * DESIGN_RPX_PER_PX * getFormulaImageScale()))}rpx;`;
 }
 
 function padDatePart(value: number): string {
@@ -229,12 +231,7 @@ Component({
 
   observers: {
     "previewType, previewImage, previewImageWidth, previewImageHeight"() {
-      this.setData({
-        previewImageStyle: buildPreviewImageStyle(
-          this.data.previewImageWidth,
-          this.data.previewImageHeight,
-        ),
-      });
+      this.syncPreviewImageStyle();
 
       if (this.data.previewImageLoadFailed) {
         this.setData({
@@ -255,7 +252,22 @@ Component({
     },
   },
 
+  pageLifetimes: {
+    show() {
+      this.syncPreviewImageStyle();
+    },
+  },
+
   methods: {
+    syncPreviewImageStyle() {
+      this.setData({
+        previewImageStyle: buildPreviewImageStyle(
+          this.data.previewImageWidth,
+          this.data.previewImageHeight,
+        ),
+      });
+    },
+
     onCardTap() {
       this.emitCardTap();
     },

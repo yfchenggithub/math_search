@@ -4,18 +4,36 @@ import { STORAGE_KEYS } from "../utils/storage/storage-keys";
 export type SettingsFontSize = "standard" | "large";
 export type SettingsDisplayDensity = "comfortable" | "compact";
 
+export type FormulaImageScalePreset = {
+  label: string;
+  value: number;
+};
+
 export type AppSettings = {
   fontSize: SettingsFontSize;
   displayDensity: SettingsDisplayDensity;
   saveSearchHistory: boolean;
   wifiOnlyDownload: boolean;
+  formulaImageScale: number;
 };
+
+export const FORMULA_IMAGE_SCALE_MIN = 0.75;
+export const FORMULA_IMAGE_SCALE_MAX = 1.8;
+export const FORMULA_IMAGE_SCALE_DEFAULT = 1;
+export const FORMULA_IMAGE_SCALE_STEP = 0.05;
+export const FORMULA_IMAGE_SCALE_PRESETS: FormulaImageScalePreset[] = [
+  { label: "小", value: 0.85 },
+  { label: "标准", value: 1 },
+  { label: "大", value: 1.2 },
+  { label: "特大", value: 1.4 },
+];
 
 export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: "standard",
   displayDensity: "comfortable",
   saveSearchHistory: true,
   wifiOnlyDownload: true,
+  formulaImageScale: FORMULA_IMAGE_SCALE_DEFAULT,
 };
 
 export function getFontSizeText(fontSize: SettingsFontSize): string {
@@ -68,6 +86,33 @@ function normalizeDisplayDensity(value: unknown): SettingsDisplayDensity {
   return value === "compact" ? "compact" : "comfortable";
 }
 
+export function normalizeFormulaImageScale(value: unknown): number {
+  const parsed = typeof value === "number"
+    ? value
+    : typeof value === "string"
+      ? Number(value.trim())
+      : Number.NaN;
+
+  if (!Number.isFinite(parsed)) {
+    return FORMULA_IMAGE_SCALE_DEFAULT;
+  }
+
+  const clamped = Math.min(
+    FORMULA_IMAGE_SCALE_MAX,
+    Math.max(FORMULA_IMAGE_SCALE_MIN, parsed),
+  );
+  return Number((Math.round(clamped / FORMULA_IMAGE_SCALE_STEP) * FORMULA_IMAGE_SCALE_STEP).toFixed(2));
+}
+
+export function getFormulaImageScaleText(value: unknown): string {
+  const scale = normalizeFormulaImageScale(value);
+  if (Math.abs(scale - FORMULA_IMAGE_SCALE_DEFAULT) < 0.001) {
+    return "标准";
+  }
+
+  return `${Math.round(scale * 100)}%`;
+}
+
 function tryParseRawSettings(raw: unknown): unknown {
   if (typeof raw !== "string") {
     return raw;
@@ -104,6 +149,7 @@ function normalizeSettings(raw: unknown): {
     displayDensity: normalizeDisplayDensity(raw.displayDensity),
     saveSearchHistory: toBoolean(raw.saveSearchHistory, DEFAULT_SETTINGS.saveSearchHistory),
     wifiOnlyDownload: toBoolean(raw.wifiOnlyDownload, DEFAULT_SETTINGS.wifiOnlyDownload),
+    formulaImageScale: normalizeFormulaImageScale(raw.formulaImageScale),
   };
 
   const shouldPersist = (
@@ -111,6 +157,7 @@ function normalizeSettings(raw: unknown): {
     || raw.displayDensity !== settings.displayDensity
     || raw.saveSearchHistory !== settings.saveSearchHistory
     || raw.wifiOnlyDownload !== settings.wifiOnlyDownload
+    || raw.formulaImageScale !== settings.formulaImageScale
   );
 
   return {
@@ -172,6 +219,7 @@ export function updateSettings(partialSettings: Partial<AppSettings>): AppSettin
     displayDensity: partialSettings.displayDensity ?? current.displayDensity,
     saveSearchHistory: partialSettings.saveSearchHistory ?? current.saveSearchHistory,
     wifiOnlyDownload: partialSettings.wifiOnlyDownload ?? current.wifiOnlyDownload,
+    formulaImageScale: partialSettings.formulaImageScale ?? current.formulaImageScale,
   };
 
   const nextSettings = normalizeSettings(merged).settings;
@@ -190,4 +238,8 @@ export function resetSettings(): AppSettings {
   }
 
   return { ...DEFAULT_SETTINGS };
+}
+
+export function getFormulaImageScale(): number {
+  return getSettings().formulaImageScale;
 }

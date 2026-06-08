@@ -32,6 +32,7 @@ import {
 } from "./math-render";
 import { buildAbsoluteApiUrl } from "./api-url";
 import { DETAIL_API_CONFIG } from "../config/api";
+import { getFormulaImageScale } from "../services/settings";
 import type {
   CanonicalMathImageAsset,
   CanonicalMathImageBlock,
@@ -2239,7 +2240,11 @@ function getMathImageDisplayWidth(node: MathImageNode): number {
 function getMathImageDisplayWidthRpx(node: Partial<MathImageNode>): number {
   return Math.max(
     1,
-    Math.round(getMathImageBaseDisplayWidth(node) * MATH_IMAGE_DESIGN_RPX_PER_PX),
+    Math.round(
+      getMathImageBaseDisplayWidth(node)
+        * MATH_IMAGE_DESIGN_RPX_PER_PX
+        * getFormulaImageScale(),
+    ),
   );
 }
 
