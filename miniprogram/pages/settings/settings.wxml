@@ -111,7 +111,6 @@
         <button class="formula-scale-panel__text-btn" bindtap="handleFormulaImageScaleCancel">
           取消
         </button>
-        <view class="formula-scale-panel__title">公式图片显示比例</view>
         <button class="formula-scale-panel__text-btn formula-scale-panel__text-btn--primary" bindtap="handleFormulaImageScaleDone">
           完成
         </button>

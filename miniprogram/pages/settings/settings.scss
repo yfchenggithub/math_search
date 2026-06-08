@@ -137,19 +137,10 @@ page {
   gap: 20rpx;
 }
 
-.formula-scale-panel__title {
-  min-width: 0;
-  flex: 1;
-  text-align: center;
-  font-size: 30rpx;
-  line-height: 1.35;
-  font-weight: 600;
-  color: #111111;
-}
-
 .formula-scale-panel__text-btn {
-  flex: 0 0 auto;
-  min-width: 96rpx;
+  flex: 0 0 112rpx;
+  width: 112rpx;
+  min-width: 112rpx;
   height: 64rpx;
   margin: 0;
   padding: 0 14rpx;
