@@ -10,6 +10,7 @@ type ConclusionCardEventDetail = {
 const DEFAULT_PREVIEW_IMAGE_WIDTH_PX = 160;
 const MAX_PREVIEW_IMAGE_WIDTH_PX = 288;
 const MAX_PREVIEW_IMAGE_HEIGHT_PX = 118;
+const DESIGN_RPX_PER_PX = 2;
 const UPDATED_AT_PREFIX = "\u66f4\u65b0\u65f6\u95f4\uff1a";
 const FAVORITE_ICON_TEXT = "\u2661";
 const VIEW_ICON_TEXT = "\u25ce";
@@ -43,7 +44,7 @@ function buildPreviewImageStyle(widthValue: unknown, heightValue: unknown): stri
     width = Math.max(1, Math.round(width * scale));
   }
 
-  return `width: ${width}px;`;
+  return `width: ${Math.max(1, Math.round(width * DESIGN_RPX_PER_PX))}rpx;`;
 }
 
 function padDatePart(value: number): string {

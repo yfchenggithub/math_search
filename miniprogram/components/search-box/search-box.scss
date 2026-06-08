@@ -1,5 +1,7 @@
 .search-box {
   padding: 14rpx 20rpx;
+  min-height: 72rpx;
+  box-sizing: border-box;
   border-radius: 24rpx;
   border: 2rpx solid #dbe5ff;
   background: #f8fbff;
@@ -45,6 +47,9 @@
 .search-input {
   flex: 1;
   min-width: 0;
+  height: 44rpx;
+  line-height: 44rpx;
+  box-sizing: border-box;
   padding-right: 56rpx;
   font-size: 28rpx;
   color: #111827;

@@ -120,6 +120,7 @@ export interface MathImageNode {
   asset?: DetailMathImageAsset;
   imageUrl?: string;
   displayWidth?: number;
+  displayWidthRpx?: number;
   imageLoadFailed?: boolean;
   __path?: string;
 }
@@ -268,6 +269,7 @@ export interface DetailBlockView {
   asset?: DetailMathImageAsset;
   imageUrl?: string;
   displayWidth?: number;
+  displayWidthRpx?: number;
   imageLoadFailed?: boolean;
   __path?: string;
 }
@@ -1993,6 +1995,7 @@ const ENABLE_DEV_MATH_IMAGE_NODE = false;
 const MATH_IMAGE_DIRECT_MIN_WIDTH_PX = 16;
 const MATH_IMAGE_DERIVED_MIN_WIDTH_PX = 80;
 const MATH_IMAGE_DEFAULT_WIDTH_PX = 280;
+const MATH_IMAGE_DESIGN_RPX_PER_PX = 2;
 const DEV_DEMO_MATH_IMAGE_NODE: MathImageNode = {
   type: "math_image",
   latex:
@@ -2034,6 +2037,7 @@ function normalizeMathImageNode(node: MathImageNode, nodePath: string): MathImag
     asset: normalizeMathImageAsset(node.asset),
     imageUrl: getMathImageUrl(node),
     displayWidth: getMathImageDisplayWidth(node),
+    displayWidthRpx: getMathImageDisplayWidthRpx(node),
     imageLoadFailed: false,
   };
 
@@ -2199,7 +2203,7 @@ function getMathImageUrl(node: MathImageNode): string {
   return buildAbsoluteApiUrl(selectedPath);
 }
 
-function getMathImageDisplayWidth(node: MathImageNode): number {
+function getMathImageBaseDisplayWidth(node: Partial<MathImageNode>): number {
   const asset = node.asset;
   const directWidth = asset?.display_width_px;
 
@@ -2217,7 +2221,26 @@ function getMathImageDisplayWidth(node: MathImageNode): number {
     return Math.max(MATH_IMAGE_DERIVED_MIN_WIDTH_PX, Math.round(asset.width_px / asset.scale));
   }
 
+  if (typeof node.displayWidth === "number" && node.displayWidth > 0) {
+    return Math.max(MATH_IMAGE_DIRECT_MIN_WIDTH_PX, Math.round(node.displayWidth));
+  }
+
   return MATH_IMAGE_DEFAULT_WIDTH_PX;
+}
+
+export function resolveMathImageDisplayWidthRpx(node: Partial<MathImageNode>): number {
+  return getMathImageDisplayWidthRpx(node);
+}
+
+function getMathImageDisplayWidth(node: MathImageNode): number {
+  return getMathImageBaseDisplayWidth(node);
+}
+
+function getMathImageDisplayWidthRpx(node: Partial<MathImageNode>): number {
+  return Math.max(
+    1,
+    Math.round(getMathImageBaseDisplayWidth(node) * MATH_IMAGE_DESIGN_RPX_PER_PX),
+  );
 }
 
 /**

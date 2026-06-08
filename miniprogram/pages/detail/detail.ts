@@ -36,6 +36,7 @@ import type {
 import {
   getDetailDocumentById,
   refreshDetailDocumentById,
+  resolveMathImageDisplayWidthRpx,
 } from "../../utils/detail-content";
 import { requireAuthAndRun } from "../../utils/guards/require-auth-and-run";
 import { createLogger } from "../../utils/logger/logger";
@@ -746,6 +747,7 @@ Page({
     const cacheKey = this.buildMathImageCacheKey(normalizedLatex, sourceUrl);
     const normalizedNode: MathImageNode = {
       ...node,
+      displayWidthRpx: resolveMathImageDisplayWidthRpx(node),
     };
 
     if (!sourceUrl || !cacheKey) {
