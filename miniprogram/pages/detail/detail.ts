@@ -410,12 +410,14 @@ Page({
         return;
       }
 
+      await this.invalidatePdfCacheForDetailRefresh(detailId, detail);
+
       const loadDurationMs = Math.max(0, Date.now() - refreshStartedAt);
       await this.applyDetailDocument(detail, loadDurationMs);
       showAuthStatusToast({
         type: "success",
         title: "已经获取到最新",
-        message: "详情缓存已更新",
+        message: "详情缓存已更新，PDF 缓存已清除",
         source: "unknown",
       });
     } catch (error) {
@@ -1929,6 +1931,10 @@ Page({
     const conclusionId = String(
       this.data.id || this.currentDetailId || "",
     ).trim();
+    return this.buildPdfCacheKeyFor(conclusionId, rawPdfUrl);
+  },
+
+  buildPdfCacheKeyFor(conclusionId: string, rawPdfUrl: string): string {
     const normalizedPdfUrl = String(rawPdfUrl || "").trim();
     if (!conclusionId || !normalizedPdfUrl) {
       return "";
@@ -2034,6 +2040,115 @@ Page({
         error,
       });
     }
+  },
+
+  isFileNotFoundError(error: unknown): boolean {
+    const errMsg = String(
+      (error as { errMsg?: string } | undefined)?.errMsg || "",
+    ).toLowerCase();
+
+    return (
+      errMsg.includes("file not exist") ||
+      errMsg.includes("no such file") ||
+      errMsg.includes("not found")
+    );
+  },
+
+  removeSavedPdfFile(savedFilePath: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const normalizedPath = String(savedFilePath || "").trim();
+      if (!normalizedPath) {
+        resolve(true);
+        return;
+      }
+
+      wx.removeSavedFile({
+        filePath: normalizedPath,
+        success: () => {
+          resolve(true);
+        },
+        fail: (error) => {
+          if (this.isFileNotFoundError(error)) {
+            resolve(true);
+            return;
+          }
+
+          detailPageLogger.warn("remove_saved_pdf_file_failed", {
+            filePath: normalizedPath,
+            error,
+          });
+          resolve(false);
+        },
+      });
+    });
+  },
+
+  isPdfSavedFileStillReferenced(savedFilePath: string): boolean {
+    const normalizedPath = String(savedFilePath || "").trim();
+    if (!normalizedPath) {
+      return false;
+    }
+
+    const cacheMap = this.getPdfCacheMap();
+    return Object.keys(cacheMap).some((cacheKey) => {
+      return cacheMap[cacheKey] === normalizedPath;
+    });
+  },
+
+  async invalidateCachedPdfFile(cacheKey: string): Promise<void> {
+    if (!cacheKey) {
+      return;
+    }
+
+    const cachedFilePath = this.getCachedPdfFilePath(cacheKey);
+    this.removeCachedPdfFilePath(cacheKey);
+
+    if (!cachedFilePath || this.isPdfSavedFileStillReferenced(cachedFilePath)) {
+      return;
+    }
+
+    await this.removeSavedPdfFile(cachedFilePath);
+  },
+
+  async invalidatePdfCacheForDetailRefresh(
+    detailId: string,
+    refreshedDetail: DetailDocumentView,
+  ): Promise<void> {
+    const idCandidates = [
+      detailId,
+      this.currentDetailId,
+      this.data.id,
+      refreshedDetail.id,
+    ]
+      .map((id) => String(id || "").trim())
+      .filter((id, index, list) => Boolean(id) && list.indexOf(id) === index);
+
+    const pdfUrlCandidates = [
+      this.data.pdfUrl,
+      refreshedDetail.pdfUrl,
+    ]
+      .map((pdfUrl) => String(pdfUrl || "").trim())
+      .filter((pdfUrl, index, list) => {
+        return Boolean(pdfUrl) && list.indexOf(pdfUrl) === index;
+      });
+
+    if (idCandidates.length <= 0 || pdfUrlCandidates.length <= 0) {
+      return;
+    }
+
+    const cacheKeys: string[] = [];
+    idCandidates.forEach((id) => {
+      pdfUrlCandidates.forEach((pdfUrl) => {
+        const cacheKey = this.buildPdfCacheKeyFor(id, pdfUrl);
+        if (cacheKey && cacheKeys.indexOf(cacheKey) < 0) {
+          cacheKeys.push(cacheKey);
+        }
+      });
+    });
+
+    await Promise.all(
+      cacheKeys.map((cacheKey) => this.invalidateCachedPdfFile(cacheKey)),
+    );
   },
 
   isSavedFilePathAvailable(savedFilePath: string): Promise<boolean> {
