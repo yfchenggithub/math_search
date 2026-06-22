@@ -1935,12 +1935,13 @@ Page({
   },
 
   buildPdfCacheKeyFor(conclusionId: string, rawPdfUrl: string): string {
+    const normalizedId = String(conclusionId || "").trim();
     const normalizedPdfUrl = String(rawPdfUrl || "").trim();
-    if (!conclusionId || !normalizedPdfUrl) {
+    if (!normalizedId || !normalizedPdfUrl) {
       return "";
     }
 
-    return `${conclusionId}::${normalizedPdfUrl}`;
+    return `${normalizedId}::${normalizedPdfUrl}`;
   },
 
   resolvePdfOpenContext(): PdfOpenContext {
