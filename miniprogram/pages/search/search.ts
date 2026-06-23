@@ -114,11 +114,11 @@ function buildHomeMetaSubtitle(total: unknown, generatedAt: unknown): string {
   const totalCount = normalizeHomeMetaTotal(total);
   const updatedAtText = formatBeijingDateTime(
     generatedAt as string | number | Date | null | undefined,
-    { fallback: "" },
+    { fallback: "", includeYear: false },
   );
 
   if (totalCount > 0 && updatedAtText) {
-    return `收录${totalCount}条，最近更新时间: ${updatedAtText}`;
+    return `收录${totalCount}条 · 更新于 ${updatedAtText}`;
   }
 
   if (totalCount > 0) {
@@ -126,7 +126,7 @@ function buildHomeMetaSubtitle(total: unknown, generatedAt: unknown): string {
   }
 
   if (updatedAtText) {
-    return `最近更新时间: ${updatedAtText}`;
+    return `更新于 ${updatedAtText}`;
   }
 
   return HOME_COPY.subtitle;

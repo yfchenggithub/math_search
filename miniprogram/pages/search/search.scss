@@ -24,14 +24,14 @@
 }
 
 .header {
-  padding: 24rpx 24rpx 12rpx;
+  padding: 18rpx 24rpx 8rpx;
 }
 
 .header-main {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 18rpx;
+  gap: 12rpx;
 }
 
 .header-copy {
@@ -41,32 +41,47 @@
 
 .title {
   font-size: 50rpx;
-  line-height: 1.2;
+  line-height: 1.12;
   font-weight: 700;
   color: #0f172a;
 }
 
 .sub {
-  margin-top: 10rpx;
-  font-size: 26rpx;
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  line-height: 1.25;
   color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .weekly-subscribe-btn {
-  margin: 14rpx 0 0;
+  margin: 0;
   min-width: 0;
-  height: 58rpx;
-  line-height: 58rpx;
-  padding: 0 22rpx;
+  width: 156rpx;
+  max-width: 156rpx;
+  height: 56rpx;
+  line-height: 1;
+  padding: 0;
   border-radius: 999rpx;
-  border: 2rpx solid #8fb3ff;
-  background: rgba(255, 255, 255, 0.72);
+  border: 2rpx solid #9bbcff;
+  background: rgba(255, 255, 255, 0.56);
   color: #2563eb;
   font-size: 24rpx;
   font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
-  box-shadow: 0 8rpx 22rpx rgba(37, 99, 235, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  box-shadow: none;
+}
+
+.weekly-subscribe-btn__text {
+  line-height: 1;
+  transform: translateY(-1rpx);
 }
 
 .weekly-subscribe-btn::after {
