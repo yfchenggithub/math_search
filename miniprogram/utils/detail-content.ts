@@ -49,9 +49,11 @@ import { STORAGE_KEYS } from "./storage/storage-keys";
 
 const detailContentLogger = createLogger("detail-content");
 const DETAIL_DOCUMENT_CACHE_STORAGE_KEY = STORAGE_KEYS.DETAIL_DOCUMENT_CACHE;
+const DETAIL_DOCUMENT_CACHE_DOC_STORAGE_PREFIX = STORAGE_KEYS.DETAIL_DOCUMENT_CACHE_DOC_PREFIX;
 const DETAIL_DOCUMENT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DETAIL_DOCUMENT_CACHE_MAX_STALE_MS = 30 * 24 * 60 * 60 * 1000;
 const DETAIL_DOCUMENT_CACHE_MAX_COUNT = 100;
+const DETAIL_DOCUMENT_CACHE_CHUNK_BYTES = 512 * 1024;
 
 const READING_ITEM_TITLE_COLOR = "#0f172a";
 const READING_INDEX_MARKER_PATTERN = /[一二三四五六七八九十百千万两\d]+/;
@@ -332,6 +334,18 @@ type PersistedDetailDocumentRecord = {
 };
 
 type PersistedDetailDocumentMap = Record<string, PersistedDetailDocumentRecord>;
+type PersistedDetailDocumentEntry = {
+  id: string;
+  record: PersistedDetailDocumentRecord;
+};
+type PersistedDetailDocumentIndexRecord = {
+  updatedAt: number;
+  lastAccessAt: number;
+  chunkCount: number;
+  bytes: number;
+  storageId: string;
+};
+type PersistedDetailDocumentIndexMap = Record<string, PersistedDetailDocumentIndexRecord>;
 
 let detailContentCache: RawDetailMap | null = null;
 let fetchConclusionDetailRuntime:
@@ -359,6 +373,15 @@ function toPositiveTimestamp(value: unknown, fallback: number): number {
     if (Number.isFinite(parsed) && parsed > 0) {
       return Math.floor(parsed);
     }
+  }
+
+  return fallback;
+}
+
+function toPositiveInteger(value: unknown, fallback: number): number {
+  const parsed = typeof value === "string" ? Number(value.trim()) : value;
+  if (typeof parsed === "number" && Number.isFinite(parsed) && parsed > 0) {
+    return Math.floor(parsed);
   }
 
   return fallback;
@@ -398,6 +421,46 @@ function looksLikeDetailDocumentView(value: unknown): value is DetailDocumentVie
   );
 }
 
+function normalizePersistedDetailDocumentRecord(
+  raw: unknown,
+  fallbackId: string,
+  fallbackUpdatedAt: number,
+  fallbackLastAccessAt: number,
+): PersistedDetailDocumentEntry | null {
+  const now = Date.now();
+  const normalizedFallbackId = normalizeText(fallbackId);
+  let detail: DetailDocumentView | null = null;
+  let updatedAt = fallbackUpdatedAt;
+  let lastAccessAt = fallbackLastAccessAt;
+
+  if (looksLikeDetailDocumentView(raw)) {
+    detail = raw;
+  } else if (isPlainObject(raw) && looksLikeDetailDocumentView(raw.detail)) {
+    detail = raw.detail;
+    updatedAt = toPositiveTimestamp(raw.updatedAt, fallbackUpdatedAt);
+    lastAccessAt = toPositiveTimestamp(raw.lastAccessAt, updatedAt);
+  }
+
+  if (!detail) {
+    return null;
+  }
+
+  const detailId = normalizeText(detail.id) || normalizedFallbackId;
+  if (!detailId) {
+    return null;
+  }
+
+  const normalizedUpdatedAt = toPositiveTimestamp(updatedAt, now);
+  return {
+    id: detailId,
+    record: {
+      detail,
+      updatedAt: normalizedUpdatedAt,
+      lastAccessAt: toPositiveTimestamp(lastAccessAt, normalizedUpdatedAt),
+    },
+  };
+}
+
 function normalizePersistedDetailDocumentMap(raw: unknown): PersistedDetailDocumentMap {
   if (!isPlainObject(raw)) {
     return {};
@@ -408,44 +471,199 @@ function normalizePersistedDetailDocumentMap(raw: unknown): PersistedDetailDocum
   const entries = raw as Record<string, unknown>;
 
   Object.keys(entries).forEach((rawId) => {
+    const entry = normalizePersistedDetailDocumentRecord(
+      entries[rawId],
+      rawId,
+      now,
+      now,
+    );
+    if (!entry) {
+      return;
+    }
+
+    normalized[entry.id] = entry.record;
+  });
+
+  return normalized;
+}
+
+function getUtf8CharSize(text: string, index: number): { bytes: number; width: number } {
+  const codePoint = text.charCodeAt(index);
+
+  if (codePoint <= 0x7f) {
+    return { bytes: 1, width: 1 };
+  }
+
+  if (codePoint <= 0x7ff) {
+    return { bytes: 2, width: 1 };
+  }
+
+  if (
+    codePoint >= 0xd800
+    && codePoint <= 0xdbff
+    && index + 1 < text.length
+  ) {
+    return { bytes: 4, width: 2 };
+  }
+
+  return { bytes: 3, width: 1 };
+}
+
+function getUtf8ByteLength(text: string): number {
+  let bytes = 0;
+  let index = 0;
+
+  while (index < text.length) {
+    const charSize = getUtf8CharSize(text, index);
+    bytes += charSize.bytes;
+    index += charSize.width;
+  }
+
+  return bytes;
+}
+
+function splitTextIntoUtf8Chunks(text: string, maxBytes: number): string[] {
+  if (!text) {
+    return [""];
+  }
+
+  const chunks: string[] = [];
+  let chunkStart = 0;
+  let chunkBytes = 0;
+  let index = 0;
+
+  while (index < text.length) {
+    const charSize = getUtf8CharSize(text, index);
+
+    if (chunkBytes > 0 && chunkBytes + charSize.bytes > maxBytes) {
+      chunks.push(text.slice(chunkStart, index));
+      chunkStart = index;
+      chunkBytes = 0;
+    }
+
+    chunkBytes += charSize.bytes;
+    index += charSize.width;
+  }
+
+  chunks.push(text.slice(chunkStart));
+  return chunks;
+}
+
+function getPersistedDetailDocumentStorageId(id: string, updatedAt: number): string {
+  return `${encodeURIComponent(id)}:${updatedAt}`;
+}
+
+function getPersistedDetailDocumentChunkStorageKey(
+  storageId: string,
+  chunkIndex: number,
+): string {
+  return `${DETAIL_DOCUMENT_CACHE_DOC_STORAGE_PREFIX}${storageId}:${chunkIndex}`;
+}
+
+function normalizePersistedDetailDocumentIndexMap(
+  raw: unknown,
+): PersistedDetailDocumentIndexMap {
+  if (!isPlainObject(raw)) {
+    return {};
+  }
+
+  const now = Date.now();
+  const normalized: PersistedDetailDocumentIndexMap = {};
+  const entries = raw as Record<string, unknown>;
+
+  Object.keys(entries).forEach((rawId) => {
     const normalizedId = normalizeText(rawId);
     const candidate = entries[rawId];
-    let detail: DetailDocumentView | null = null;
-    let updatedAt = now;
-    let lastAccessAt = now;
-
-    if (looksLikeDetailDocumentView(candidate)) {
-      detail = candidate;
-    } else if (isPlainObject(candidate) && looksLikeDetailDocumentView(candidate.detail)) {
-      detail = candidate.detail;
-      updatedAt = toPositiveTimestamp(candidate.updatedAt, now);
-      lastAccessAt = toPositiveTimestamp(candidate.lastAccessAt, updatedAt);
-    }
-
-    if (!detail) {
+    if (!normalizedId || !isPlainObject(candidate)) {
       return;
     }
 
-    const detailId = normalizeText(detail.id) || normalizedId;
-    if (!detailId) {
+    const updatedAt = toPositiveTimestamp(candidate.updatedAt, now);
+    const chunkCount = toPositiveInteger(candidate.chunkCount, 0);
+    if (chunkCount <= 0) {
       return;
     }
 
-    normalized[detailId] = {
-      detail,
-      updatedAt: toPositiveTimestamp(updatedAt, now),
-      lastAccessAt: toPositiveTimestamp(lastAccessAt, updatedAt),
+    const storageId = typeof candidate.storageId === "string" && candidate.storageId
+      ? candidate.storageId
+      : getPersistedDetailDocumentStorageId(normalizedId, updatedAt);
+
+    normalized[normalizedId] = {
+      updatedAt,
+      lastAccessAt: toPositiveTimestamp(candidate.lastAccessAt, updatedAt),
+      chunkCount,
+      bytes: toPositiveInteger(candidate.bytes, 0),
+      storageId,
     };
   });
 
   return normalized;
 }
 
-function prunePersistedDetailDocumentCache(
+function readPersistedDetailDocumentRecordFromChunkStorage(
+  id: string,
+  indexRecord: PersistedDetailDocumentIndexRecord,
+): PersistedDetailDocumentEntry | null {
+  try {
+    const chunks: string[] = [];
+    for (let index = 0; index < indexRecord.chunkCount; index += 1) {
+      const chunk = wx.getStorageSync(
+        getPersistedDetailDocumentChunkStorageKey(indexRecord.storageId, index),
+      );
+      if (typeof chunk !== "string") {
+        detailContentLogger.warn("read_detail_document_cache_chunk_missing", {
+          id,
+          chunkIndex: index,
+          chunkCount: indexRecord.chunkCount,
+        });
+        return null;
+      }
+
+      chunks.push(chunk);
+    }
+
+    const parsed = JSON.parse(chunks.join("")) as unknown;
+    return normalizePersistedDetailDocumentRecord(
+      parsed,
+      id,
+      indexRecord.updatedAt,
+      indexRecord.lastAccessAt,
+    );
+  } catch (error) {
+    detailContentLogger.warn("read_detail_document_cache_chunk_failed", {
+      id,
+      chunkCount: indexRecord.chunkCount,
+      error,
+    });
+    return null;
+  }
+}
+
+function readPersistedDetailDocumentChunkCacheFromStorage(
+  indexMap: PersistedDetailDocumentIndexMap,
+): PersistedDetailDocumentMap {
+  const cacheMap: PersistedDetailDocumentMap = {};
+
+  Object.keys(indexMap).forEach((id) => {
+    const entry = readPersistedDetailDocumentRecordFromChunkStorage(
+      id,
+      indexMap[id],
+    );
+    if (!entry) {
+      return;
+    }
+
+    cacheMap[entry.id] = entry.record;
+  });
+
+  return cacheMap;
+}
+
+function collectValidPersistedDetailDocumentEntries(
   cacheMap: PersistedDetailDocumentMap,
   now: number = Date.now(),
-): PersistedDetailDocumentMap {
-  const validEntries = Object.keys(cacheMap)
+): PersistedDetailDocumentEntry[] {
+  return Object.keys(cacheMap)
     .map((id) => {
       const record = cacheMap[id];
       if (!record || !looksLikeDetailDocumentView(record.detail)) {
@@ -476,7 +694,7 @@ function prunePersistedDetailDocumentCache(
     .filter(
       (
         item,
-      ): item is { id: string; record: PersistedDetailDocumentRecord } => Boolean(item),
+      ): item is PersistedDetailDocumentEntry => Boolean(item),
     )
     .sort((left, right) => {
       if (right.record.lastAccessAt !== left.record.lastAccessAt) {
@@ -484,21 +702,38 @@ function prunePersistedDetailDocumentCache(
       }
 
       return right.record.updatedAt - left.record.updatedAt;
-    })
-    .slice(0, DETAIL_DOCUMENT_CACHE_MAX_COUNT);
+    });
+}
 
+function buildPersistedDetailDocumentMap(
+  entries: PersistedDetailDocumentEntry[],
+): PersistedDetailDocumentMap {
   const pruned: PersistedDetailDocumentMap = {};
-  validEntries.forEach((entry) => {
+  entries.forEach((entry) => {
     pruned[entry.id] = entry.record;
   });
   return pruned;
 }
 
+function prunePersistedDetailDocumentCache(
+  cacheMap: PersistedDetailDocumentMap,
+  now: number = Date.now(),
+): PersistedDetailDocumentMap {
+  return buildPersistedDetailDocumentMap(
+    collectValidPersistedDetailDocumentEntries(cacheMap, now)
+      .slice(0, DETAIL_DOCUMENT_CACHE_MAX_COUNT),
+  );
+}
+
 function readPersistedDetailDocumentCacheFromStorage(): PersistedDetailDocumentMap {
   try {
-    return normalizePersistedDetailDocumentMap(
-      wx.getStorageSync(DETAIL_DOCUMENT_CACHE_STORAGE_KEY),
-    );
+    const rawIndexOrLegacyCache = wx.getStorageSync(DETAIL_DOCUMENT_CACHE_STORAGE_KEY);
+    const indexMap = normalizePersistedDetailDocumentIndexMap(rawIndexOrLegacyCache);
+    if (Object.keys(indexMap).length > 0) {
+      return readPersistedDetailDocumentChunkCacheFromStorage(indexMap);
+    }
+
+    return normalizePersistedDetailDocumentMap(rawIndexOrLegacyCache);
   } catch (error) {
     detailContentLogger.warn("read_detail_document_cache_failed", {
       error,
@@ -507,15 +742,149 @@ function readPersistedDetailDocumentCacheFromStorage(): PersistedDetailDocumentM
   }
 }
 
-function writePersistedDetailDocumentCacheToStorage(cacheMap: PersistedDetailDocumentMap): void {
+function readPersistedDetailDocumentIndexFromStorage(): PersistedDetailDocumentIndexMap {
   try {
-    wx.setStorageSync(DETAIL_DOCUMENT_CACHE_STORAGE_KEY, cacheMap);
+    return normalizePersistedDetailDocumentIndexMap(
+      wx.getStorageSync(DETAIL_DOCUMENT_CACHE_STORAGE_KEY),
+    );
   } catch (error) {
-    detailContentLogger.warn("write_detail_document_cache_failed", {
-      size: Object.keys(cacheMap).length,
+    detailContentLogger.warn("read_detail_document_cache_index_failed", {
+      error,
+    });
+    return {};
+  }
+}
+
+function removePersistedDetailDocumentChunks(
+  storageId: string,
+  chunkCount: number,
+): void {
+  for (let index = 0; index < chunkCount; index += 1) {
+    try {
+      wx.removeStorageSync(getPersistedDetailDocumentChunkStorageKey(storageId, index));
+    } catch (error) {
+      detailContentLogger.warn("remove_detail_document_cache_chunk_failed", {
+        storageId,
+        chunkIndex: index,
+        error,
+      });
+    }
+  }
+}
+
+function writePersistedDetailDocumentEntryToChunkStorage(
+  entry: PersistedDetailDocumentEntry,
+  previousIndexRecord?: PersistedDetailDocumentIndexRecord,
+): PersistedDetailDocumentIndexRecord | null {
+  if (
+    previousIndexRecord
+    && previousIndexRecord.updatedAt === entry.record.updatedAt
+    && previousIndexRecord.chunkCount > 0
+    && previousIndexRecord.storageId
+  ) {
+    return {
+      ...previousIndexRecord,
+      lastAccessAt: entry.record.lastAccessAt,
+    };
+  }
+
+  let serializedDetail = "";
+  try {
+    serializedDetail = JSON.stringify(entry.record.detail) || "";
+  } catch (error) {
+    detailContentLogger.warn("serialize_detail_document_cache_entry_failed", {
+      id: entry.id,
+      error,
+    });
+    return null;
+  }
+
+  const storageId = getPersistedDetailDocumentStorageId(
+    entry.id,
+    entry.record.updatedAt,
+  );
+  const chunks = splitTextIntoUtf8Chunks(
+    serializedDetail,
+    DETAIL_DOCUMENT_CACHE_CHUNK_BYTES,
+  );
+
+  try {
+    chunks.forEach((chunk, index) => {
+      wx.setStorageSync(
+        getPersistedDetailDocumentChunkStorageKey(storageId, index),
+        chunk,
+      );
+    });
+  } catch (error) {
+    removePersistedDetailDocumentChunks(storageId, chunks.length);
+    detailContentLogger.warn("write_detail_document_cache_entry_failed", {
+      id: entry.id,
+      chunkCount: chunks.length,
+      bytes: getUtf8ByteLength(serializedDetail),
+      error,
+    });
+    return null;
+  }
+
+  return {
+    updatedAt: entry.record.updatedAt,
+    lastAccessAt: entry.record.lastAccessAt,
+    chunkCount: chunks.length,
+    bytes: getUtf8ByteLength(serializedDetail),
+    storageId,
+  };
+}
+
+function removeObsoletePersistedDetailDocumentChunks(
+  previousIndexMap: PersistedDetailDocumentIndexMap,
+  nextIndexMap: PersistedDetailDocumentIndexMap,
+): void {
+  Object.keys(previousIndexMap).forEach((id) => {
+    const previousRecord = previousIndexMap[id];
+    const nextRecord = nextIndexMap[id];
+
+    if (!nextRecord || nextRecord.storageId !== previousRecord.storageId) {
+      removePersistedDetailDocumentChunks(
+        previousRecord.storageId,
+        previousRecord.chunkCount,
+      );
+    }
+  });
+}
+
+function writePersistedDetailDocumentCacheToStorage(
+  cacheMap: PersistedDetailDocumentMap,
+): PersistedDetailDocumentMap {
+  const entries = collectValidPersistedDetailDocumentEntries(cacheMap)
+    .slice(0, DETAIL_DOCUMENT_CACHE_MAX_COUNT);
+  const previousIndexMap = readPersistedDetailDocumentIndexFromStorage();
+  const nextIndexMap: PersistedDetailDocumentIndexMap = {};
+  const persistedEntries: PersistedDetailDocumentEntry[] = [];
+
+  entries.forEach((entry) => {
+    const indexRecord = writePersistedDetailDocumentEntryToChunkStorage(
+      entry,
+      previousIndexMap[entry.id],
+    );
+    if (!indexRecord) {
+      return;
+    }
+
+    nextIndexMap[entry.id] = indexRecord;
+    persistedEntries.push(entry);
+  });
+
+  try {
+    wx.setStorageSync(DETAIL_DOCUMENT_CACHE_STORAGE_KEY, nextIndexMap);
+    removeObsoletePersistedDetailDocumentChunks(previousIndexMap, nextIndexMap);
+  } catch (error) {
+    detailContentLogger.warn("write_detail_document_cache_index_failed", {
+      size: Object.keys(nextIndexMap).length,
       error,
     });
   }
+
+  return buildPersistedDetailDocumentMap(persistedEntries);
 }
 
 function getPersistedDetailDocumentCache(): PersistedDetailDocumentMap {
@@ -545,7 +914,7 @@ function readPersistedDetailDocument(id: string): PersistedDetailDocumentRead | 
   const ageMs = now - updatedAt;
   if (ageMs > DETAIL_DOCUMENT_CACHE_MAX_STALE_MS) {
     delete cacheMap[normalizedId];
-    writePersistedDetailDocumentCacheToStorage(cacheMap);
+    persistedDetailDocumentCache = writePersistedDetailDocumentCacheToStorage(cacheMap);
     return null;
   }
 
@@ -570,8 +939,9 @@ function upsertPersistedDetailDocument(detail: DetailDocumentView, updatedAt = D
     lastAccessAt: now,
   };
 
-  persistedDetailDocumentCache = prunePersistedDetailDocumentCache(cacheMap, now);
-  writePersistedDetailDocumentCacheToStorage(persistedDetailDocumentCache);
+  persistedDetailDocumentCache = writePersistedDetailDocumentCacheToStorage(
+    prunePersistedDetailDocumentCache(cacheMap, now),
+  );
 }
 
 async function fetchRemoteDetailDocumentById(id: string): Promise<DetailDocumentView> {

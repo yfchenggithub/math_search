@@ -1,0 +1,74 @@
+<view class="weekly-page">
+  <navigation-bar
+    title="本周更新"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="weekly-container">
+    <view class="weekly-hero">
+      <view class="weekly-hero__copy">
+        <view class="weekly-hero__eyebrow">每周整理</view>
+        <view class="weekly-hero__title">新二级结论更新</view>
+        <view class="weekly-hero__desc">
+          本页汇总最近加入和更新的数学结论。订阅后，下周有新内容时会给你发一次提醒。
+        </view>
+      </view>
+      <button
+        class="weekly-hero__action"
+        bindtap="onSubscribeTap"
+        loading="{{subscribeActionBusy}}"
+        disabled="{{subscribeActionBusy}}"
+      >
+        {{subscribeActionBusy ? '处理中...' : '继续订阅下周提醒'}}
+      </button>
+    </view>
+
+    <view class="weekly-section">
+      <view class="weekly-section__header">
+        <view>
+          <view class="weekly-section__title">最近更新</view>
+          <view class="weekly-section__subtitle">共 {{updateCount}} 条</view>
+        </view>
+      </view>
+
+      <view wx:if="{{pageStatus === 'loading'}}" class="weekly-state-card">
+        正在加载本周更新...
+      </view>
+
+      <view wx:elif="{{pageStatus === 'error'}}" class="weekly-state-card weekly-state-card--error">
+        <view>{{errorMessage}}</view>
+        <button class="weekly-state-card__action" bindtap="onRetryTap">重试</button>
+      </view>
+
+      <view wx:elif="{{pageStatus === 'empty'}}" class="weekly-state-card">
+        暂时没有可展示的更新
+      </view>
+
+      <view wx:else class="weekly-list">
+        <conclusion-card
+          wx:for="{{updateItems}}"
+          wx:key="id"
+          item-id="{{item.id}}"
+          title="{{item.title}}"
+          summary="{{item.summary}}"
+          tags="{{item.tags}}"
+          module="{{item.module}}"
+          entry="weekly_update_card"
+          section="weekly_updates"
+          updated-at="{{item.updatedAt}}"
+          preview-type="{{item.previewType}}"
+          preview-text="{{item.previewText}}"
+          preview-image="{{item.previewImage}}"
+          preview-image-width="{{item.previewImageWidth}}"
+          preview-image-height="{{item.previewImageHeight}}"
+          preview-fallback-text="{{item.previewFallbackText}}"
+          favorite-count="{{item.favoriteCount}}"
+          view-count="{{item.viewCount}}"
+          bind:cardtap="onCardTap"
+        ></conclusion-card>
+      </view>
+    </view>
+  </view>
+</view>

@@ -5,6 +5,7 @@ export const STORAGE_KEYS = {
   APP_SETTINGS: "app_settings_v1",
   FAVORITE_STATE_CACHE: "favorite_conclusion_state_cache_v1",
   DETAIL_DOCUMENT_CACHE: "conclusion_detail_document_cache_v1",
+  DETAIL_DOCUMENT_CACHE_DOC_PREFIX: "conclusion_detail_document_cache_v1:doc:",
   CONCLUSION_CARD_CACHE: "conclusion_card_cache_v3",
   SEARCH_HISTORY: "search_history_v1",
   RECENT_BROWSE: "recent_browse_v1",

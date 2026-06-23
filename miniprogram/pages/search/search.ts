@@ -11,6 +11,7 @@ import {
   submitConclusionRequest,
   type SubmitConclusionRequestPayload,
 } from "../../services/api/conclusion-requests-api";
+import { promptWeeklyUpdateSubscription } from "../../services/weekly-update-subscription";
 import type { AuthStatusToastState } from "../../utils/auth/auth-status-feedback";
 import {
   hideAuthStatusToast,
@@ -611,6 +612,13 @@ Page({
   },
 
   noop() {},
+
+  onWeeklyUpdateSubscribeTap() {
+    void promptWeeklyUpdateSubscription({
+      source: "home_weekly_entry",
+      force: true,
+    });
+  },
 
   handleAuthStatusToastRetry() {
     const retried = retryAuthStatusToast();

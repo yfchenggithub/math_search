@@ -11,8 +11,15 @@
   </navigation-bar>
 
   <view class="header">
-    <view class="title">{{homeCopy.title}}</view>
-    <view class="sub">{{homeCopy.subtitle}}</view>
+    <view class="header-main">
+      <view class="header-copy">
+        <view class="title">{{homeCopy.title}}</view>
+        <view class="sub">{{homeCopy.subtitle}}</view>
+      </view>
+      <button class="weekly-subscribe-btn" bindtap="onWeeklyUpdateSubscribeTap">
+        <text>订阅每周更新</text>
+      </button>
+    </view>
   </view>
 
   <view class="search-card">

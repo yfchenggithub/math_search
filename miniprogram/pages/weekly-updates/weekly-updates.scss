@@ -1,0 +1,132 @@
+page {
+  background: #f5f7fb;
+  color: #111827;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica,
+    Arial, sans-serif;
+}
+
+.weekly-page {
+  min-height: 100vh;
+  background: #f5f7fb;
+}
+
+.weekly-container {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 24rpx 24rpx 56rpx;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 56rpx);
+}
+
+.weekly-hero {
+  padding: 28rpx 26rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  border: 1rpx solid #e8edf6;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+}
+
+.weekly-hero__copy {
+  min-width: 0;
+}
+
+.weekly-hero__eyebrow {
+  font-size: 23rpx;
+  line-height: 1.3;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.weekly-hero__title {
+  margin-top: 8rpx;
+  font-size: 38rpx;
+  line-height: 1.25;
+  color: #111827;
+  font-weight: 700;
+}
+
+.weekly-hero__desc {
+  margin-top: 12rpx;
+  font-size: 25rpx;
+  line-height: 1.6;
+  color: #6b7280;
+}
+
+.weekly-hero__action {
+  margin: 0;
+  width: 100%;
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 999rpx;
+  border: 0;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 25rpx;
+  font-weight: 650;
+}
+
+.weekly-hero__action::after,
+.weekly-state-card__action::after {
+  border: 0;
+}
+
+.weekly-section {
+  margin-top: 26rpx;
+}
+
+.weekly-section__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 14rpx;
+}
+
+.weekly-section__title {
+  font-size: 30rpx;
+  line-height: 1.35;
+  color: #111827;
+  font-weight: 680;
+}
+
+.weekly-section__subtitle {
+  margin-top: 4rpx;
+  font-size: 23rpx;
+  color: #8a94a6;
+}
+
+.weekly-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.weekly-state-card {
+  padding: 32rpx 24rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  border: 1rpx solid #edf1f7;
+  color: #64748b;
+  font-size: 25rpx;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.weekly-state-card--error {
+  color: #b42318;
+  background: #fff5f5;
+  border-color: #f4c7c7;
+}
+
+.weekly-state-card__action {
+  margin: 18rpx auto 0;
+  width: 160rpx;
+  height: 62rpx;
+  line-height: 62rpx;
+  border-radius: 999rpx;
+  background: #111827;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 600;
+}

@@ -6,6 +6,7 @@ import {
   type FavoriteRecord,
 } from "../../services/api/favorites-api";
 import { authService } from "../../services/auth/auth-service";
+import { promptWeeklyUpdateSubscription } from "../../services/weekly-update-subscription";
 import {
   resolveConclusionCards,
   type ConclusionCardCacheItem,
@@ -507,6 +508,11 @@ Page<FavoritesPageData, WechatMiniprogram.IAnyObject>({
       this.setFavoriteHandoutStatus("loading", HANDOUT_DOWNLOADING_STATUS_MESSAGE);
       await downloadFavoriteHandoutPdf(pdfUrl, handout.filename || undefined);
       this.setFavoriteHandoutStatus("success", HANDOUT_OPEN_SUCCESS_MESSAGE);
+      setTimeout(() => {
+        void promptWeeklyUpdateSubscription({
+          source: "handout_success",
+        });
+      }, 600);
     } catch (error) {
       if (this.isAuthRequiredError(error)) {
         this.clearFavoriteHandoutStatus();

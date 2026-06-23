@@ -14,6 +14,7 @@ export type ClearAppCacheResult = {
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
 const MATH_IMAGE_CACHE_STORAGE_KEY = "conclusion_math_image_cache_map_v1";
 const DETAIL_DOCUMENT_CACHE_STORAGE_KEY = STORAGE_KEYS.DETAIL_DOCUMENT_CACHE;
+const DETAIL_DOCUMENT_CACHE_DOC_STORAGE_PREFIX = STORAGE_KEYS.DETAIL_DOCUMENT_CACHE_DOC_PREFIX;
 const CONCLUSION_CARD_CACHE_STORAGE_KEY = STORAGE_KEYS.CONCLUSION_CARD_CACHE;
 const KNOWN_CACHE_STORAGE_KEYS = [
   PDF_CACHE_STORAGE_KEY,
@@ -110,6 +111,49 @@ function getStorageValueSize(value: unknown): number {
     });
     return 0;
   }
+}
+
+function getStorageKeysByPrefix(prefix: string): string[] {
+  try {
+    return wx.getStorageInfoSync().keys.filter((key) => key.indexOf(prefix) === 0);
+  } catch (error) {
+    cacheServiceLogger.warn("get_storage_keys_by_prefix_failed", {
+      prefix,
+      error,
+    });
+    return [];
+  }
+}
+
+function getKnownCacheStorageKeys(): string[] {
+  const cacheKeys = KNOWN_CACHE_STORAGE_KEYS.slice() as string[];
+  getStorageKeysByPrefix(DETAIL_DOCUMENT_CACHE_DOC_STORAGE_PREFIX)
+    .forEach((storageKey) => {
+      if (cacheKeys.indexOf(storageKey) < 0) {
+        cacheKeys.push(storageKey);
+      }
+    });
+
+  return cacheKeys;
+}
+
+function readStorageValueSafe(storageKey: string): unknown {
+  try {
+    return wx.getStorageSync(storageKey);
+  } catch (error) {
+    cacheServiceLogger.warn("read_cache_storage_value_failed", {
+      storageKey,
+      error,
+    });
+    return undefined;
+  }
+}
+
+function getKnownCacheStorageBytes(): number {
+  return getKnownCacheStorageKeys()
+    .reduce((totalBytes, storageKey) => (
+      totalBytes + getStorageValueSize(readStorageValueSafe(storageKey))
+    ), 0);
 }
 
 function normalizeSavedFileCacheMap(raw: unknown): SavedFileCacheMap {
@@ -277,7 +321,7 @@ function removeSavedFileSafe(filePath: string): Promise<boolean> {
 function clearKnownCacheStorageKeys(): boolean {
   let success = true;
 
-  KNOWN_CACHE_STORAGE_KEYS.forEach((storageKey) => {
+  getKnownCacheStorageKeys().forEach((storageKey) => {
     try {
       wx.removeStorageSync(storageKey);
     } catch (error) {
@@ -303,9 +347,7 @@ export async function getCacheSize(): Promise<CacheSizeResult> {
       mathImageCacheMap,
     ]);
     const fileBytes = await getPdfCacheFileSize(filePaths);
-    const storageBytes =
-      getStorageValueSize(pdfCacheMapRaw) +
-      getStorageValueSize(mathImageCacheMapRaw);
+    const storageBytes = getKnownCacheStorageBytes();
     const totalBytes = fileBytes + storageBytes;
 
     return {

@@ -8,6 +8,7 @@ import {
   setCachedFavoriteState,
 } from "../../services/favorite-state-cache";
 import { recordRecentBrowse } from "../../services/history";
+import { promptWeeklyUpdateSubscription } from "../../services/weekly-update-subscription";
 import { getSettings } from "../../services/settings";
 import {
   trackDetailView,
@@ -1151,6 +1152,14 @@ Page({
         message: nextFavoriteState ? "收藏状态已同步" : "该条目已从收藏中移除",
         source: "unknown",
       });
+
+      if (nextFavoriteState) {
+        setTimeout(() => {
+          void promptWeeklyUpdateSubscription({
+            source: "favorite_success",
+          });
+        }, 500);
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error, "收藏操作失败，请稍后重试");
       detailPageLogger.warn("favorite_toggle_failed", {

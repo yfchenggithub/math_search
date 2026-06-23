@@ -27,6 +27,18 @@
   padding: 24rpx 24rpx 12rpx;
 }
 
+.header-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.header-copy {
+  min-width: 0;
+  flex: 1;
+}
+
 .title {
   font-size: 50rpx;
   line-height: 1.2;
@@ -38,6 +50,27 @@
   margin-top: 10rpx;
   font-size: 26rpx;
   color: #6b7280;
+}
+
+.weekly-subscribe-btn {
+  margin: 14rpx 0 0;
+  min-width: 0;
+  height: 58rpx;
+  line-height: 58rpx;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid #8fb3ff;
+  background: rgba(255, 255, 255, 0.72);
+  color: #2563eb;
+  font-size: 24rpx;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 8rpx 22rpx rgba(37, 99, 235, 0.08);
+}
+
+.weekly-subscribe-btn::after {
+  border: 0;
 }
 
 .search-card {
