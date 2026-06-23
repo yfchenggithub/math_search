@@ -54,17 +54,34 @@ page {
   color: #6b7280;
 }
 
+.weekly-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  flex-wrap: wrap;
+}
+
 .weekly-hero__action {
   margin: 0;
-  width: 100%;
+  min-width: 0;
+  flex: 1 1 220rpx;
   height: 72rpx;
   line-height: 72rpx;
   border-radius: 999rpx;
   border: 0;
-  background: #2563eb;
-  color: #ffffff;
   font-size: 25rpx;
   font-weight: 650;
+}
+
+.weekly-hero__action--primary {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.weekly-hero__action--secondary {
+  border: 2rpx solid #d8e2f2;
+  background: #ffffff;
+  color: #334155;
 }
 
 .weekly-hero__action::after,

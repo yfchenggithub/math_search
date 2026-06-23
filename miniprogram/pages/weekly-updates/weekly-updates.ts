@@ -185,6 +185,20 @@ Page({
     void this.loadWeeklyUpdates();
   },
 
+  onGoHomeTap() {
+    wx.switchTab({
+      url: "/pages/search/search",
+      fail: (error) => {
+        weeklyUpdatesLogger.warn("go_home_switch_tab_failed", {
+          error,
+        });
+        wx.reLaunch({
+          url: "/pages/search/search",
+        });
+      },
+    });
+  },
+
   onCardTap(event: WeeklyUpdateCardTapEvent) {
     const id = normalizeText(event.detail?.id);
     if (!id) {

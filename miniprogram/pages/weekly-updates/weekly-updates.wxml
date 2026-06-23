@@ -15,14 +15,22 @@
           本页汇总最近加入和更新的数学结论。订阅后，下周有新内容时会给你发一次提醒。
         </view>
       </view>
-      <button
-        class="weekly-hero__action"
-        bindtap="onSubscribeTap"
-        loading="{{subscribeActionBusy}}"
-        disabled="{{subscribeActionBusy}}"
-      >
-        {{subscribeActionBusy ? '处理中...' : '继续订阅下周提醒'}}
-      </button>
+      <view class="weekly-hero__actions">
+        <button
+          class="weekly-hero__action weekly-hero__action--primary"
+          bindtap="onSubscribeTap"
+          loading="{{subscribeActionBusy}}"
+          disabled="{{subscribeActionBusy}}"
+        >
+          {{subscribeActionBusy ? '处理中...' : '继续订阅下周提醒'}}
+        </button>
+        <button
+          class="weekly-hero__action weekly-hero__action--secondary"
+          bindtap="onGoHomeTap"
+        >
+          回到首页
+        </button>
+      </view>
     </view>
 
     <view class="weekly-section">
