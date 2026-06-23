@@ -1,7 +1,8 @@
 <view class="weekly-page">
   <navigation-bar
     title="本周更新"
-    back="{{true}}"
+    back="{{false}}"
+    homeButton="{{true}}"
     fixed="{{true}}"
     placeholder="{{true}}"
   ></navigation-bar>
@@ -22,13 +23,15 @@
           loading="{{subscribeActionBusy}}"
           disabled="{{subscribeActionBusy}}"
         >
-          {{subscribeActionBusy ? '处理中...' : '继续订阅下周提醒'}}
+          <text class="weekly-hero__btn-text">
+            {{subscribeActionBusy ? '处理中...' : '继续订阅下周提醒'}}
+          </text>
         </button>
         <button
           class="weekly-hero__action weekly-hero__action--secondary"
           bindtap="onGoHomeTap"
         >
-          回到首页
+          <text class="weekly-hero__btn-text">回到首页</text>
         </button>
       </view>
     </view>

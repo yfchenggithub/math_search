@@ -57,31 +57,42 @@ page {
 .weekly-hero__actions {
   display: flex;
   align-items: center;
-  gap: 14rpx;
+  gap: 16rpx;
   flex-wrap: wrap;
 }
 
 .weekly-hero__action {
   margin: 0;
   min-width: 0;
-  flex: 1 1 220rpx;
-  height: 72rpx;
-  line-height: 72rpx;
+  height: 64rpx;
+  line-height: 1;
+  padding: 0 24rpx;
+  box-sizing: border-box;
   border-radius: 999rpx;
   border: 0;
-  font-size: 25rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
   font-weight: 650;
 }
 
 .weekly-hero__action--primary {
+  flex: 1 1 270rpx;
   background: #2563eb;
   color: #ffffff;
 }
 
 .weekly-hero__action--secondary {
+  flex: 0 0 176rpx;
   border: 2rpx solid #d8e2f2;
   background: #ffffff;
   color: #334155;
+}
+
+.weekly-hero__btn-text {
+  line-height: 1;
+  transform: translateY(-1rpx);
 }
 
 .weekly-hero__action::after,
