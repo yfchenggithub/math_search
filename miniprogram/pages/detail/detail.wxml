@@ -8,11 +8,22 @@
 
   <view class="toolbar">
     <view class="toolbar-main">
-      <view
-        class="toolbar-title copyable-text"
-        data-copy-text="{{title}}"
-        bindlongpress="onTextLongPress"
-      >{{title}}</view>
+      <view class="toolbar-title-row">
+        <view
+          class="toolbar-title copyable-text"
+          data-copy-text="{{title}}"
+          bindlongpress="onTextLongPress"
+        >{{title}}</view>
+        <view
+          wx:if="{{viewState === 'content'}}"
+          class="correction-entry-btn"
+          hover-class="correction-entry-btn--hover"
+          bindtap="onCorrectionEntryTap"
+        >
+          <text class="correction-entry-icon">!</text>
+          <text>纠错</text>
+        </view>
+      </view>
       <view class="toolbar-sub">
         <text>{{category}}</text>
         <view class="toolbar-chip toolbar-id">ID {{id}}</view>
@@ -277,6 +288,80 @@
         disabled="{{pdfActionBusy || isDownloadingPdf || isUnlockingPdfEntitlement}}"
       >
         {{pdfActionBusy ? pdfActionLabel : '查看高清 PDF'}}
+      </button>
+    </view>
+  </view>
+
+  <view
+    wx:if="{{correctionPanelVisible}}"
+    class="correction-layer"
+    bindtap="onCorrectionCancelTap"
+    catchtouchmove="noop"
+  >
+    <view class="correction-panel" catchtap="noop">
+      <view class="correction-drag"></view>
+      <view class="correction-head">
+        <view class="correction-title">勘误反馈</view>
+        <view class="correction-close" bindtap="onCorrectionCancelTap">×</view>
+      </view>
+
+      <view class="correction-context">
+        <view class="correction-context-row">
+          <text class="correction-context-label">结论ID</text>
+          <text class="correction-context-value">{{id}}</text>
+        </view>
+        <view class="correction-context-row">
+          <text class="correction-context-label">结论标题</text>
+          <text class="correction-context-value">{{title}}</text>
+        </view>
+      </view>
+
+      <view class="correction-field">
+        <view class="correction-label">错误位置</view>
+        <view class="correction-selector" bindtap="onCorrectionLocationSelectorTap">
+          <text>{{correctionLocationLabel}}</text>
+          <text class="correction-selector-arrow">></text>
+        </view>
+      </view>
+
+      <view class="correction-field">
+        <view class="correction-label">错误类型</view>
+        <view class="correction-type-list">
+          <view
+            wx:for="{{correctionTypeOptions}}"
+            wx:key="value"
+            wx:for-item="option"
+            class="correction-type-chip {{correctionType === option.value ? 'is-active' : ''}}"
+            data-value="{{option.value}}"
+            bindtap="onCorrectionTypeTap"
+          >
+            {{option.label}}
+          </view>
+        </view>
+      </view>
+
+      <view class="correction-field">
+        <view class="correction-label">问题描述</view>
+        <textarea
+          class="correction-textarea"
+          value="{{correctionDescription}}"
+          maxlength="{{correctionDescriptionMaxLength}}"
+          placeholder="请简要说明你发现的问题..."
+          cursor-spacing="24"
+          bindinput="onCorrectionDescriptionInput"
+        ></textarea>
+        <view class="correction-counter">
+          {{correctionDescriptionLength}}/{{correctionDescriptionMaxLength}}
+        </view>
+      </view>
+
+      <button
+        class="correction-submit"
+        loading="{{correctionSubmitting}}"
+        disabled="{{correctionSubmitting}}"
+        bindtap="onCorrectionSubmitTap"
+      >
+        {{correctionSubmitting ? '提交中...' : '提交反馈'}}
       </button>
     </view>
   </view>

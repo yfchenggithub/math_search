@@ -1,0 +1,89 @@
+<view class="correction-admin-page">
+  <navigation-bar
+    title="纠错管理"
+    back="{{true}}"
+    fixed="{{true}}"
+    placeholder="{{true}}"
+  ></navigation-bar>
+
+  <view class="correction-admin-page__container">
+    <view class="correction-admin-toolbar">
+      <scroll-view class="correction-admin-filter" scroll-x="{{true}}" show-scrollbar="{{false}}">
+        <view class="correction-admin-filter__inner">
+          <block wx:for="{{filters}}" wx:key="value" wx:for-item="filter">
+            <view
+              class="correction-admin-filter__chip {{activeStatus === filter.value ? 'is-active' : ''}}"
+              data-status="{{filter.value}}"
+              bindtap="handleFilterTap"
+            >
+              {{filter.label}}
+            </view>
+          </block>
+        </view>
+      </scroll-view>
+
+      <view class="correction-admin-toolbar__meta">
+        <text class="correction-admin-toolbar__count">{{countText}}</text>
+        <button
+          class="correction-admin-toolbar__refresh"
+          bindtap="handleRefreshTap"
+          disabled="{{loading || loadingMore}}"
+        >
+          刷新
+        </button>
+      </view>
+    </view>
+
+    <view wx:if="{{loading && items.length === 0}}" class="correction-admin-state">
+      <text class="correction-admin-state__title">正在加载记录...</text>
+    </view>
+
+    <view wx:elif="{{errorMessage && items.length === 0}}" class="correction-admin-state">
+      <text class="correction-admin-state__title">加载失败</text>
+      <text class="correction-admin-state__desc">{{errorMessage}}</text>
+      <button class="correction-admin-state__action" bindtap="handleRetryTap">
+        重新加载
+      </button>
+    </view>
+
+    <view wx:elif="{{items.length === 0}}" class="correction-admin-state">
+      <text class="correction-admin-state__title">暂无纠错记录</text>
+      <text class="correction-admin-state__desc">用户提交后会出现在这里</text>
+    </view>
+
+    <view wx:else class="correction-admin-list">
+      <block wx:for="{{items}}" wx:key="id" wx:for-item="item">
+        <view class="correction-admin-card">
+          <view class="correction-admin-card__head">
+            <view class="correction-admin-card__title-wrap">
+              <text class="correction-admin-card__id">{{item.conclusionId}}</text>
+              <text class="correction-admin-card__title">{{item.conclusionTitle}}</text>
+            </view>
+            <text class="correction-admin-card__status correction-admin-card__status--{{item.statusClass}}">
+              {{item.statusText}}
+            </text>
+          </view>
+
+          <text class="correction-admin-card__description">{{item.description}}</text>
+
+          <view class="correction-admin-card__meta">
+            <text>{{item.locationText}}</text>
+            <text>{{item.typeText}}</text>
+            <text>{{item.createdAtText}}</text>
+            <text>{{item.userText}}</text>
+          </view>
+        </view>
+      </block>
+
+      <button
+        wx:if="{{hasMore}}"
+        class="correction-admin-load-more"
+        loading="{{loadingMore}}"
+        disabled="{{loadingMore}}"
+        bindtap="handleLoadMoreTap"
+      >
+        加载更多
+      </button>
+    </view>
+  </view>
+</view>

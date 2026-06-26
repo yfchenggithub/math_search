@@ -1,0 +1,221 @@
+page {
+  min-height: 100vh;
+  background: #f5f5f7;
+}
+
+.correction-admin-page {
+  min-height: 100vh;
+  background: #f5f5f7;
+}
+
+.correction-admin-page__container {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 24rpx 24rpx calc(36rpx + constant(safe-area-inset-bottom));
+  padding: 24rpx 24rpx calc(36rpx + env(safe-area-inset-bottom));
+}
+
+.correction-admin-toolbar {
+  border-radius: 24rpx;
+  padding: 22rpx;
+  background: #ffffff;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.05);
+}
+
+.correction-admin-filter {
+  white-space: nowrap;
+}
+
+.correction-admin-filter__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.correction-admin-filter__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 104rpx;
+  height: 56rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  color: #556070;
+  background: #f2f4f7;
+  box-sizing: border-box;
+}
+
+.correction-admin-filter__chip.is-active {
+  color: #ffffff;
+  background: #111827;
+}
+
+.correction-admin-toolbar__meta {
+  margin-top: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.correction-admin-toolbar__count {
+  flex: 1;
+  min-width: 0;
+  font-size: 23rpx;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.correction-admin-toolbar__refresh {
+  margin: 0;
+  min-width: 112rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  background: #f4f4f5;
+  color: #374151;
+  font-size: 22rpx;
+  font-weight: 500;
+}
+
+.correction-admin-toolbar__refresh[disabled] {
+  color: #9ca3af;
+  background: #f3f4f6;
+}
+
+.correction-admin-list {
+  margin-top: 18rpx;
+}
+
+.correction-admin-card {
+  margin-bottom: 16rpx;
+  padding: 22rpx;
+  border-radius: 22rpx;
+  background: #ffffff;
+  box-shadow: 0 6rpx 18rpx rgba(15, 23, 42, 0.04);
+}
+
+.correction-admin-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.correction-admin-card__title-wrap {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.correction-admin-card__id {
+  display: block;
+  font-size: 22rpx;
+  line-height: 1.3;
+  color: #2563eb;
+  font-weight: 700;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.correction-admin-card__title {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 30rpx;
+  line-height: 1.4;
+  font-weight: 650;
+  color: #111827;
+  word-break: break-all;
+}
+
+.correction-admin-card__status {
+  flex-shrink: 0;
+  height: 42rpx;
+  line-height: 42rpx;
+  padding: 0 14rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 600;
+}
+
+.correction-admin-card__status--pending {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.correction-admin-card__status--reviewed {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.correction-admin-card__status--ignored {
+  color: #64748b;
+  background: #e2e8f0;
+}
+
+.correction-admin-card__description {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 25rpx;
+  line-height: 1.65;
+  color: #374151;
+  word-break: break-all;
+}
+
+.correction-admin-card__meta {
+  margin-top: 14rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.correction-admin-card__meta text {
+  padding: 7rpx 12rpx;
+  border-radius: 999rpx;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-size: 21rpx;
+  line-height: 1.2;
+}
+
+.correction-admin-load-more,
+.correction-admin-state__action {
+  margin: 16rpx auto 0;
+  min-width: 168rpx;
+  height: 62rpx;
+  line-height: 62rpx;
+  padding: 0 24rpx;
+  border-radius: 999rpx;
+  background: #111827;
+  color: #ffffff;
+  font-size: 23rpx;
+  font-weight: 600;
+}
+
+.correction-admin-state {
+  margin-top: 18rpx;
+  padding: 72rpx 32rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.05);
+  text-align: center;
+}
+
+.correction-admin-state__title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #111827;
+}
+
+.correction-admin-state__desc {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 24rpx;
+  color: #6b7280;
+  line-height: 1.7;
+}
+
+button::after {
+  border: none;
+}

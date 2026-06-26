@@ -1,4 +1,9 @@
 ﻿import { FEATURE_FLAGS } from "../../config/feature-flags";
+import {
+  submitCorrectionReport,
+  type CorrectionReportLocation,
+  type CorrectionReportType,
+} from "../../services/api/correction-reports-api";
 import { addFavorite, removeFavorite } from "../../services/api/favorites-api";
 import { authService } from "../../services/auth/auth-service";
 import type { AuthStatusToastType } from "../../services/auth/auth-types";
@@ -102,6 +107,19 @@ type PdfErrorPresentation = {
   stageLabel: string;
 };
 
+type CorrectionOption<T extends string> = {
+  value: T;
+  label: string;
+};
+
+type CorrectionOptionTapEvent = {
+  currentTarget: {
+    dataset: {
+      value?: string;
+    };
+  };
+};
+
 type PdfUnlockStatus = "locked" | "unlocked" | "expired";
 
 class PdfOperationError extends Error {
@@ -128,6 +146,21 @@ const COPY_FEEDBACK_AUTO_HIDE_MS = 1600;
 const DETAIL_PULL_REFRESH_TOP_THRESHOLD = 2;
 const DETAIL_ID_PATTERN = /^([A-Za-z])(\d{3})$/;
 const DETAIL_ID_NUMBER_WIDTH = 3;
+const CORRECTION_DESCRIPTION_MAX_LENGTH = 200;
+const CORRECTION_LOCATION_OPTIONS: CorrectionOption<CorrectionReportLocation>[] = [
+  { value: "title", label: "标题" },
+  { value: "summary", label: "简介" },
+  { value: "core_formula", label: "核心公式" },
+  { value: "body", label: "正文内容" },
+  { value: "pdf", label: "高清 PDF" },
+  { value: "other", label: "其他" },
+];
+const CORRECTION_TYPE_OPTIONS: CorrectionOption<CorrectionReportType>[] = [
+  { value: "formula", label: "公式错误" },
+  { value: "text", label: "文字错误" },
+  { value: "layout", label: "排版问题" },
+  { value: "other", label: "其他" },
+];
 const ENABLE_PDF_ENTITLEMENT_FLOW = FEATURE_FLAGS.ENABLE_PDF_ENTITLEMENT_FLOW;
 const detailPageLogger = createLogger("detail-page");
 const PDF_UNLOCK_COPY = {
@@ -154,6 +187,15 @@ function createIdlePdfStatus(): PdfStatusView {
 
 function normalizeString(value: unknown): string {
   return String(value || "").trim();
+}
+
+function getCorrectionLocationLabel(location: CorrectionReportLocation): string {
+  const matched = CORRECTION_LOCATION_OPTIONS.find((option) => option.value === location);
+  return matched?.label || "正文内容";
+}
+
+function isCorrectionReportType(value: string): value is CorrectionReportType {
+  return CORRECTION_TYPE_OPTIONS.some((option) => option.value === value);
 }
 
 function stripCopyHtml(value: string): string {
@@ -271,6 +313,15 @@ Page({
     textCopyOriginalText: "",
     textCopyDraftText: "",
     longPressHintVisible: false,
+    correctionPanelVisible: false,
+    correctionLocation: "body" as CorrectionReportLocation,
+    correctionLocationLabel: getCorrectionLocationLabel("body"),
+    correctionType: "text" as CorrectionReportType,
+    correctionTypeOptions: CORRECTION_TYPE_OPTIONS,
+    correctionDescription: "",
+    correctionDescriptionLength: 0,
+    correctionDescriptionMaxLength: CORRECTION_DESCRIPTION_MAX_LENGTH,
+    correctionSubmitting: false,
     detailNavigationBusy: false,
     detailNavigationDirection: "" as "" | DetailNavigationDirection,
   },
@@ -666,6 +717,13 @@ Page({
         transformStyle: this.buildTransformStyle(),
         zoomActive: false,
         scaleLabel: "100%",
+        correctionPanelVisible: false,
+        correctionLocation: "body",
+        correctionLocationLabel: getCorrectionLocationLabel("body"),
+        correctionType: "text",
+        correctionDescription: "",
+        correctionDescriptionLength: 0,
+        correctionSubmitting: false,
       },
       () => {
         this.scheduleMeasure();
@@ -1169,6 +1227,13 @@ Page({
       transformStyle: this.buildTransformStyle(),
       zoomActive: false,
       scaleLabel: "100%",
+      correctionPanelVisible: false,
+      correctionLocation: "body",
+      correctionLocationLabel: getCorrectionLocationLabel("body"),
+      correctionType: "text",
+      correctionDescription: "",
+      correctionDescriptionLength: 0,
+      correctionSubmitting: false,
     });
   },
 
@@ -1212,6 +1277,13 @@ Page({
       transformStyle: this.buildTransformStyle(),
       zoomActive: false,
       scaleLabel: "100%",
+      correctionPanelVisible: false,
+      correctionLocation: "body",
+      correctionLocationLabel: getCorrectionLocationLabel("body"),
+      correctionType: "text",
+      correctionDescription: "",
+      correctionDescriptionLength: 0,
+      correctionSubmitting: false,
     });
   },
 
@@ -1599,6 +1671,193 @@ Page({
       wx.showToast({
         title: SHARE_COPY.copyFailedToast,
         icon: "none",
+      });
+    }
+  },
+
+  resetCorrectionForm() {
+    this.setData({
+      correctionLocation: "body",
+      correctionLocationLabel: getCorrectionLocationLabel("body"),
+      correctionType: "text",
+      correctionDescription: "",
+      correctionDescriptionLength: 0,
+      correctionSubmitting: false,
+    });
+  },
+
+  openCorrectionPanel() {
+    const conclusionId = normalizeString(this.data.id || this.currentDetailId);
+    const conclusionTitle = normalizeString(this.data.title);
+
+    if (this.data.viewState !== "content" || !conclusionId || !conclusionTitle) {
+      wx.showToast({
+        title: "当前内容不可纠错",
+        icon: "none",
+      });
+      return;
+    }
+
+    this.closeTextCopyPanel();
+    this.setData({
+      correctionPanelVisible: true,
+      correctionLocation: "body",
+      correctionLocationLabel: getCorrectionLocationLabel("body"),
+      correctionType: "text",
+      correctionDescription: "",
+      correctionDescriptionLength: 0,
+      correctionSubmitting: false,
+    });
+
+    trackEvent("correction_report_entry_click", {
+      item_id: conclusionId,
+      module: String(this.data.category || ""),
+      source: "detail",
+      page: "detail",
+      entry: "title_button",
+    });
+  },
+
+  closeCorrectionPanel() {
+    if (this.data.correctionSubmitting) {
+      return;
+    }
+
+    this.setData({
+      correctionPanelVisible: false,
+    });
+    this.resetCorrectionForm();
+  },
+
+  onCorrectionEntryTap() {
+    this.openCorrectionPanel();
+  },
+
+  onCorrectionCancelTap() {
+    this.closeCorrectionPanel();
+  },
+
+  onCorrectionLocationSelectorTap() {
+    if (this.data.correctionSubmitting) {
+      return;
+    }
+
+    wx.showActionSheet({
+      itemList: CORRECTION_LOCATION_OPTIONS.map((option) => option.label),
+      success: (res) => {
+        const option = CORRECTION_LOCATION_OPTIONS[Number(res.tapIndex || 0)];
+        if (!option) {
+          return;
+        }
+
+        this.setData({
+          correctionLocation: option.value,
+          correctionLocationLabel: option.label,
+        });
+      },
+    });
+  },
+
+  onCorrectionTypeTap(event: CorrectionOptionTapEvent) {
+    if (this.data.correctionSubmitting) {
+      return;
+    }
+
+    const value = normalizeString(event.currentTarget.dataset.value);
+    if (!isCorrectionReportType(value)) {
+      return;
+    }
+
+    this.setData({
+      correctionType: value,
+    });
+  },
+
+  onCorrectionDescriptionInput(e: WechatMiniprogram.Input) {
+    const description = String(e.detail.value || "").slice(
+      0,
+      CORRECTION_DESCRIPTION_MAX_LENGTH,
+    );
+
+    this.setData({
+      correctionDescription: description,
+      correctionDescriptionLength: description.length,
+    });
+  },
+
+  async onCorrectionSubmitTap() {
+    if (this.data.correctionSubmitting) {
+      return;
+    }
+
+    const conclusionId = normalizeString(this.data.id || this.currentDetailId);
+    const conclusionTitle = normalizeString(this.data.title);
+    const description = normalizeString(this.data.correctionDescription);
+
+    if (!description) {
+      wx.showToast({
+        title: "请填写问题描述",
+        icon: "none",
+      });
+      return;
+    }
+
+    if (!conclusionId || !conclusionTitle) {
+      wx.showToast({
+        title: "当前内容不可纠错",
+        icon: "none",
+      });
+      return;
+    }
+
+    this.setData({
+      correctionSubmitting: true,
+    });
+
+    try {
+      await submitCorrectionReport({
+        conclusion_id: conclusionId,
+        conclusion_title: conclusionTitle,
+        error_location: this.data.correctionLocation,
+        error_type: this.data.correctionType,
+        description,
+      });
+
+      trackEvent("correction_report_submit_success", {
+        item_id: conclusionId,
+        module: String(this.data.category || ""),
+        source: "detail",
+        page: "detail",
+        error_location: this.data.correctionLocation,
+        error_type: this.data.correctionType,
+      });
+
+      this.setData({
+        correctionSubmitting: false,
+      });
+      this.closeCorrectionPanel();
+      wx.showToast({
+        title: "已提交纠错",
+        icon: "success",
+      });
+    } catch (error) {
+      detailPageLogger.warn("correction_report_submit_failed", {
+        itemId: conclusionId,
+        error,
+      });
+      trackEvent("correction_report_submit_fail", {
+        item_id: conclusionId,
+        module: String(this.data.category || ""),
+        source: "detail",
+        page: "detail",
+        error_type: "request_failed",
+      });
+      wx.showToast({
+        title: getErrorMessage(error, "提交失败，请稍后再试"),
+        icon: "none",
+      });
+      this.setData({
+        correctionSubmitting: false,
       });
     }
   },

@@ -12,6 +12,7 @@
     "pages/conclusion-management/conclusion-management",
     "pages/search-keywords-admin/search-keywords-admin",
     "pages/conclusion-request-admin/conclusion-request-admin",
+    "pages/correction-report-admin/correction-report-admin",
     "pages/settings/settings",
     "pages/recent-browse/recent-browse"
   ],

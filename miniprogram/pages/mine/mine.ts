@@ -933,6 +933,20 @@ Page<MinePageData, WechatMiniprogram.IAnyObject>({
     });
   },
 
+  handleCorrectionReportAdminTap() {
+    profileLogger.info("click_correction_report_admin");
+
+    wx.navigateTo({
+      url: "/pages/correction-report-admin/correction-report-admin",
+      fail: () => {
+        wx.showToast({
+          title: "纠错管理页打开失败",
+          icon: "none",
+        });
+      },
+    });
+  },
+
   handleSettingsTap() {
     profileLogger.info("click_settings");
 
