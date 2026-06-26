@@ -152,6 +152,23 @@ function normalizeString(value: unknown): string {
   return String(value || "").trim();
 }
 
+function stripCopyHtml(value: string): string {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, "\"")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeCopyPlainText(value: unknown): string {
+  return stripCopyHtml(String(value || ""));
+}
+
 function isRemoteUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
@@ -209,7 +226,11 @@ Page({
     showBackButton: true,
     showHomeButton: false,
     copyToastVisible: false,
+    copyToastTitle: "已复制",
     copyToastText: "",
+    textCopyPanelVisible: false,
+    textCopyOriginalText: "",
+    textCopyDraftText: "",
   },
   scale: 1,
   lastScale: 1,
@@ -1287,38 +1308,117 @@ Page({
     this.copyFeedbackTimer = 0;
   },
 
-  showCopyFeedback(text: string) {
+  showCopyFeedback(text: string, title = "已复制") {
     this.clearCopyFeedbackTimer();
     this.setData({
       copyToastVisible: true,
+      copyToastTitle: title,
       copyToastText: text,
     });
 
     this.copyFeedbackTimer = setTimeout(() => {
       this.setData({
         copyToastVisible: false,
+        copyToastTitle: "已复制",
         copyToastText: "",
       });
       this.copyFeedbackTimer = 0;
     }, COPY_FEEDBACK_AUTO_HIDE_MS);
   },
 
-  async onTitleLongPress() {
-    const title = normalizeString(this.data.title);
+  showClipboardCopiedFeedback() {
+    this.showCopyFeedback("", "已复制到剪贴板");
+  },
 
-    if (!title) {
+  getLongPressCopyText(e: WechatMiniprogram.BaseEvent): string {
+    const detailText = (e as WechatMiniprogram.CustomEvent<{ text?: string }>).detail?.text;
+    const datasetText = e.currentTarget?.dataset?.copyText;
+    return normalizeCopyPlainText(detailText || datasetText);
+  },
+
+  openTextCopyPanel(text: string) {
+    this.setData({
+      textCopyPanelVisible: true,
+      textCopyOriginalText: text,
+      textCopyDraftText: text,
+    });
+  },
+
+  closeTextCopyPanel() {
+    this.setData({
+      textCopyPanelVisible: false,
+      textCopyOriginalText: "",
+      textCopyDraftText: "",
+    });
+  },
+
+  async onTextLongPress(e: WechatMiniprogram.BaseEvent) {
+    const text = this.getLongPressCopyText(e);
+
+    if (!text) {
       wx.showToast({
-        title: "无可复制标题",
+        title: "无可复制内容",
+        icon: "none",
+      });
+      return;
+    }
+
+    this.openTextCopyPanel(text);
+  },
+
+  onTextCopyDraftInput(e: WechatMiniprogram.Input) {
+    this.setData({
+      textCopyDraftText: String(e.detail.value || ""),
+    });
+  },
+
+  onTextCopyResetTap() {
+    this.setData({
+      textCopyDraftText: this.data.textCopyOriginalText || "",
+    });
+  },
+
+  onTextCopyClearTap() {
+    this.setData({
+      textCopyDraftText: "",
+    });
+  },
+
+  onTextCopyReselectTap() {
+    this.closeTextCopyPanel();
+  },
+
+  onTextSelectionSelectAllTap() {
+    this.setData({
+      textCopyDraftText: this.data.textCopyOriginalText || "",
+    });
+  },
+
+  async onTextSelectionCopyTap() {
+    await this.copyTextCopyDraft();
+  },
+
+  async onTextCopyPanelCopyTap() {
+    await this.copyTextCopyDraft();
+  },
+
+  async copyTextCopyDraft() {
+    const text = normalizeCopyPlainText(this.data.textCopyDraftText);
+
+    if (!text) {
+      wx.showToast({
+        title: "无可复制内容",
         icon: "none",
       });
       return;
     }
 
     try {
-      await this.copyPlainText(title);
-      this.showCopyFeedback(title);
+      await this.copyPlainText(text);
+      this.showClipboardCopiedFeedback();
+      this.closeTextCopyPanel();
     } catch (error) {
-      detailPageLogger.warn("copy_title_failed", {
+      detailPageLogger.warn("copy_text_panel_failed", {
         itemId: normalizeString(this.data.id || this.currentDetailId),
         error,
       });

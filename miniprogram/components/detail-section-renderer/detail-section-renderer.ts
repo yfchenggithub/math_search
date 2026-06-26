@@ -19,6 +19,23 @@ function buildSectionRootClass(section: Record<string, unknown> | null) {
   return classes.join(" ");
 }
 
+function stripCopyHtml(value: string): string {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, "\"")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeCopyText(value: unknown): string {
+  return stripCopyHtml(String(value || ""));
+}
+
 // The page consumes one normalized section view model and leaves schema branching
 // inside the adapter. display_version=2 is already structured, so this renderer
 // should honor each block/segment as-is instead of rebuilding plain text first.
@@ -47,6 +64,18 @@ Component({
   },
 
   methods: {
+    onTextLongPress(e: WechatMiniprogram.BaseEvent) {
+      const text = normalizeCopyText(e.currentTarget.dataset.copyText);
+
+      if (!text) {
+        return;
+      }
+
+      this.triggerEvent("textlongpress", {
+        text,
+      });
+    },
+
     onMathImageLongPress(e: WechatMiniprogram.BaseEvent) {
       const imageUrl = String(e.currentTarget.dataset.url || "").trim();
 

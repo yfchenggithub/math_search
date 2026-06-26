@@ -445,6 +445,11 @@
   white-space: pre-wrap;
 }
 
+.copyable-text {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .zoom-hint {
   position: absolute;
   right: 24rpx;
@@ -460,29 +465,52 @@
 
 .copy-feedback {
   position: fixed;
-  left: 32rpx;
-  right: 32rpx;
-  bottom: 180rpx;
-  bottom: calc(constant(safe-area-inset-bottom) + 180rpx);
-  bottom: calc(env(safe-area-inset-bottom) + 180rpx);
-  z-index: 45;
+  left: 50%;
+  top: 132rpx;
+  z-index: 55;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 12rpx;
-  padding: 14rpx 16rpx;
+  max-width: 640rpx;
+  padding: 16rpx 22rpx;
   border-radius: 18rpx;
-  background: rgba(15, 23, 42, 0.92);
-  box-shadow: 0 18rpx 46rpx rgba(15, 23, 42, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1rpx solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 18rpx 46rpx rgba(15, 23, 42, 0.14);
+  transform: translate3d(-50%, 0, 0);
   animation: copy-feedback-in 160ms ease-out;
+}
+
+.copy-feedback::before {
+  content: "";
+  width: 36rpx;
+  height: 36rpx;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #22c55e;
+  position: relative;
+}
+
+.copy-feedback::after {
+  content: "";
+  position: absolute;
+  left: 36rpx;
+  top: 28rpx;
+  width: 16rpx;
+  height: 9rpx;
+  border-left: 4rpx solid #ffffff;
+  border-bottom: 4rpx solid #ffffff;
+  transform: rotate(-45deg);
 }
 
 .copy-feedback-label {
   flex: 0 0 auto;
-  font-size: 24rpx;
+  font-size: 28rpx;
   line-height: 1.4;
-  font-weight: 700;
-  color: #ffffff;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
 }
 
 .copy-feedback-text {
@@ -498,6 +526,150 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.text-selection-toolbar {
+  position: fixed;
+  right: 40rpx;
+  top: 194rpx;
+  z-index: 49;
+  display: flex;
+  align-items: center;
+  min-height: 64rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1rpx solid rgba(37, 99, 235, 0.18);
+  box-shadow: 0 12rpx 34rpx rgba(15, 23, 42, 0.12);
+}
+
+.text-selection-action {
+  padding: 0 14rpx;
+  font-size: 25rpx;
+  line-height: 64rpx;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.text-selection-divider {
+  width: 1rpx;
+  height: 30rpx;
+  background: rgba(148, 163, 184, 0.26);
+}
+
+.text-copy-dismiss-layer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 47;
+  background: transparent;
+}
+
+.text-copy-panel {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: 126rpx;
+  bottom: calc(constant(safe-area-inset-bottom) + 126rpx);
+  bottom: calc(env(safe-area-inset-bottom) + 126rpx);
+  z-index: 48;
+  box-sizing: border-box;
+  padding: 24rpx 24rpx 22rpx;
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1rpx solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 24rpx 58rpx rgba(15, 23, 42, 0.16);
+}
+
+.text-copy-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.text-copy-title-row {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.text-copy-title {
+  flex: 0 0 auto;
+  font-size: 30rpx;
+  line-height: 1.35;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.text-copy-restore {
+  flex: 0 0 auto;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.text-copy-hint {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.text-copy-editor {
+  margin-top: 18rpx;
+  width: 100%;
+  min-height: 136rpx;
+  max-height: 260rpx;
+  box-sizing: border-box;
+  padding: 22rpx 22rpx;
+  border-radius: 18rpx;
+  border: 1rpx solid rgba(37, 99, 235, 0.22);
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 28rpx;
+  line-height: 1.7;
+}
+
+.text-copy-actions {
+  margin-top: 20rpx;
+  display: flex;
+  gap: 16rpx;
+}
+
+.text-copy-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 999rpx;
+  padding: 0 18rpx;
+  font-size: 25rpx;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-copy-btn::after {
+  border: 0;
+}
+
+.text-copy-btn-ghost {
+  background: #f8fafc;
+  color: #334155;
+  border: 1rpx solid rgba(148, 163, 184, 0.22);
+}
+
+.text-copy-btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+  border: 1rpx solid #2563eb;
 }
 
 .bottom-action-shell {

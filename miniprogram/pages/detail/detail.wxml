@@ -8,7 +8,11 @@
 
   <view class="toolbar">
     <view class="toolbar-main">
-      <view class="toolbar-title" bindlongpress="onTitleLongPress">{{title}}</view>
+      <view
+        class="toolbar-title copyable-text"
+        data-copy-text="{{title}}"
+        bindlongpress="onTextLongPress"
+      >{{title}}</view>
       <view class="toolbar-sub">
         <text>{{category}}</text>
         <view class="toolbar-chip toolbar-id">ID {{id}}</view>
@@ -67,11 +71,25 @@
             <view class="article-header">
               <view class="article-eyebrow">{{category}}</view>
               <view class="article-id">条目 ID: {{id}}</view>
-              <view class="article-title" bindlongpress="onTitleLongPress">{{title}}</view>
-              <view wx:if="{{summaryHtml}}" class="article-summary rich-copy">
+              <view
+                class="article-title copyable-text"
+                data-copy-text="{{title}}"
+                bindlongpress="onTextLongPress"
+              >{{title}}</view>
+              <view
+                wx:if="{{summaryHtml}}"
+                class="article-summary rich-copy copyable-text"
+                data-copy-text="{{summary}}"
+                bindlongpress="onTextLongPress"
+              >
                 <rich-text nodes="{{summaryHtml}}"></rich-text>
               </view>
-              <view wx:elif="{{summary}}" class="article-summary">
+              <view
+                wx:elif="{{summary}}"
+                class="article-summary copyable-text"
+                data-copy-text="{{summary}}"
+                bindlongpress="onTextLongPress"
+              >
                 {{summary}}
               </view>
 
@@ -95,7 +113,12 @@
                 </view>
               </view>
 
-              <view wx:if="{{aliasesDisplay}}" class="article-alias">
+              <view
+                wx:if="{{aliasesDisplay}}"
+                class="article-alias copyable-text"
+                data-copy-text="{{aliasesDisplay}}"
+                bindlongpress="onTextLongPress"
+              >
                 别名：{{aliasesDisplay}}
               </view>
             </view>
@@ -146,6 +169,7 @@
               section="{{section}}"
               zoomActive="{{zoomActive}}"
               bind:mathimagelongpress="onSectionMathImageLongPress"
+              bind:textlongpress="onTextLongPress"
             ></detail-section-renderer>
           </view>
         </view>
@@ -158,8 +182,53 @@
   </view>
 
   <view wx:if="{{copyToastVisible}}" class="copy-feedback" catchtap="noop">
-    <view class="copy-feedback-label">已复制</view>
-    <view class="copy-feedback-text">{{copyToastText}}</view>
+    <view class="copy-feedback-label">{{copyToastTitle}}</view>
+    <view wx:if="{{copyToastText}}" class="copy-feedback-text">{{copyToastText}}</view>
+  </view>
+
+  <view wx:if="{{textCopyPanelVisible}}" class="text-selection-toolbar">
+    <view class="text-selection-action" bindtap="onTextSelectionCopyTap">复制</view>
+    <view class="text-selection-divider"></view>
+    <view class="text-selection-action" bindtap="onTextSelectionSelectAllTap">全选</view>
+  </view>
+
+  <view
+    wx:if="{{textCopyPanelVisible}}"
+    class="text-copy-dismiss-layer"
+    bindtap="onTextCopyReselectTap"
+  ></view>
+
+  <view
+    wx:if="{{textCopyPanelVisible}}"
+    class="text-copy-panel"
+    catchtap="noop"
+  >
+    <view class="text-copy-panel-head">
+      <view class="text-copy-title-row">
+        <view class="text-copy-title">编辑后复制</view>
+      </view>
+      <view class="text-copy-restore" bindtap="onTextCopyResetTap">恢复原文</view>
+    </view>
+    <view class="text-copy-hint">可修改选中文本，再点击复制</view>
+    <textarea
+      class="text-copy-editor"
+      value="{{textCopyDraftText}}"
+      maxlength="-1"
+      auto-height="{{true}}"
+      cursor-spacing="24"
+      bindinput="onTextCopyDraftInput"
+    ></textarea>
+    <view class="text-copy-actions">
+      <button class="text-copy-btn text-copy-btn-ghost" bindtap="onTextCopyReselectTap">
+        重新选择
+      </button>
+      <button class="text-copy-btn text-copy-btn-ghost" bindtap="onTextCopyClearTap">
+        清空
+      </button>
+      <button class="text-copy-btn text-copy-btn-primary" bindtap="onTextCopyPanelCopyTap">
+        复制
+      </button>
+    </view>
   </view>
 
   <view wx:if="{{viewState === 'content'}}" class="bottom-action-shell">

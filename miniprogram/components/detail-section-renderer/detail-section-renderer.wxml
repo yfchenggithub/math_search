@@ -1,18 +1,32 @@
 <view wx:if="{{section}}" class="{{rootClass}}">
   <view class="section-shell">
     <view class="section-header">
-      <view class="section-title">{{section.title}}</view>
+      <view
+        class="section-title copyable-text"
+        data-copy-text="{{section.title}}"
+        bindlongpress="onTextLongPress"
+      >{{section.title}}</view>
     </view>
 
     <view class="section-body">
       <block wx:for="{{section.blocks}}" wx:key="id" wx:for-item="block">
-        <view wx:if="{{block.kind === 'text'}}" class="section-text">
+        <view
+          wx:if="{{block.kind === 'text'}}"
+          class="section-text copyable-text"
+          data-copy-text="{{block.text || block.html}}"
+          bindlongpress="onTextLongPress"
+        >
           <view class="rich-copy">
             <rich-text nodes="{{block.html || block.text}}"></rich-text>
           </view>
         </view>
 
-        <view wx:if="{{block.kind === 'mixed'}}" class="section-text">
+        <view
+          wx:if="{{block.kind === 'mixed'}}"
+          class="section-text copyable-text"
+          data-copy-text="{{block.text || block.html}}"
+          bindlongpress="onTextLongPress"
+        >
           <mixed-content-renderer
             html="{{block.html || ''}}"
             segments="{{block.segments || []}}"
@@ -21,7 +35,11 @@
 
         <view wx:if="{{block.kind === 'bullet'}}" class="section-bullet">
           <view class="bullet-dot"></view>
-          <view class="bullet-text">
+          <view
+            class="bullet-text copyable-text"
+            data-copy-text="{{block.text || block.html}}"
+            bindlongpress="onTextLongPress"
+          >
             <mixed-content-renderer
               wx:if="{{block.segments && block.segments.length}}"
               html="{{block.html || ''}}"
@@ -73,18 +91,33 @@
         </view>
 
         <view wx:if="{{block.kind === 'theorem'}}" class="theorem-card">
-          <view wx:if="{{block.titleHtml}}" class="theorem-title">
+          <view
+            wx:if="{{block.titleHtml}}"
+            class="theorem-title copyable-text"
+            data-copy-text="{{block.title || block.titleHtml}}"
+            bindlongpress="onTextLongPress"
+          >
             <view class="rich-copy">
               <rich-text nodes="{{block.titleHtml}}"></rich-text>
             </view>
           </view>
-          <view wx:elif="{{block.title}}" class="theorem-title">
+          <view
+            wx:elif="{{block.title}}"
+            class="theorem-title copyable-text"
+            data-copy-text="{{block.title}}"
+            bindlongpress="onTextLongPress"
+          >
             {{block.title}}
           </view>
 
           <block wx:if="{{block.descParts && block.descParts.length}}">
             <block wx:for="{{block.descParts}}" wx:key="index" wx:for-item="part">
-              <view wx:if="{{part.kind === 'html'}}" class="theorem-desc">
+              <view
+                wx:if="{{part.kind === 'html'}}"
+                class="theorem-desc copyable-text"
+                data-copy-text="{{part.html}}"
+                bindlongpress="onTextLongPress"
+              >
                 <view class="rich-copy">
                   <rich-text nodes="{{part.html}}"></rich-text>
                 </view>
@@ -122,12 +155,22 @@
             </block>
           </block>
 
-          <view wx:elif="{{block.descLeadHtml || block.descHtml}}" class="theorem-desc">
+          <view
+            wx:elif="{{block.descLeadHtml || block.descHtml}}"
+            class="theorem-desc copyable-text"
+            data-copy-text="{{block.desc || block.descLeadHtml || block.descHtml}}"
+            bindlongpress="onTextLongPress"
+          >
             <view class="rich-copy">
               <rich-text nodes="{{block.descLeadHtml || block.descHtml}}"></rich-text>
             </view>
           </view>
-          <view wx:elif="{{block.desc && !block.descTailHtml && !block.descLeadHtml}}" class="theorem-desc">
+          <view
+            wx:elif="{{block.desc && !block.descTailHtml && !block.descLeadHtml}}"
+            class="theorem-desc copyable-text"
+            data-copy-text="{{block.desc}}"
+            bindlongpress="onTextLongPress"
+          >
             {{block.desc}}
           </view>
           <view wx:if="{{block.formulaImages && block.formulaImages.length}}" class="theorem-math-image-list">
@@ -176,7 +219,12 @@
               </view>
             </scroll-view>
           </view>
-          <view wx:if="{{block.descTailHtml}}" class="theorem-desc">
+          <view
+            wx:if="{{block.descTailHtml}}"
+            class="theorem-desc copyable-text"
+            data-copy-text="{{block.descTailHtml}}"
+            bindlongpress="onTextLongPress"
+          >
             <view class="rich-copy">
               <rich-text nodes="{{block.descTailHtml}}"></rich-text>
             </view>
