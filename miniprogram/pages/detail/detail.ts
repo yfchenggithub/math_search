@@ -63,6 +63,7 @@ type TouchPoint = {
   pageY: number;
 };
 
+type DetailNavigationDirection = "prev" | "next";
 type PdfOperationStage = "validate" | "cache" | "download" | "save" | "open";
 type PdfStatusStage =
   | "idle"
@@ -125,6 +126,8 @@ const MATH_IMAGE_CACHE_STORAGE_KEY = "conclusion_math_image_cache_map_v1";
 const PDF_STATUS_AUTO_HIDE_MS = 900;
 const COPY_FEEDBACK_AUTO_HIDE_MS = 1600;
 const DETAIL_PULL_REFRESH_TOP_THRESHOLD = 2;
+const DETAIL_ID_PATTERN = /^([A-Za-z])(\d{3})$/;
+const DETAIL_ID_NUMBER_WIDTH = 3;
 const ENABLE_PDF_ENTITLEMENT_FLOW = FEATURE_FLAGS.ENABLE_PDF_ENTITLEMENT_FLOW;
 const detailPageLogger = createLogger("detail-page");
 const PDF_UNLOCK_COPY = {
@@ -180,6 +183,41 @@ function isCancelError(error: unknown): boolean {
     .includes("cancel");
 }
 
+function hasRenderableDetailContent(detail: DetailDocumentView | null): detail is DetailDocumentView {
+  return Boolean(
+    detail
+      && (
+        detail.title
+        || detail.summary
+        || detail.coreFormulaImage
+        || detail.coreFormulaHtml
+        || (Array.isArray(detail.sections) && detail.sections.length > 0)
+      ),
+  );
+}
+
+function resolveAdjacentDetailId(
+  currentId: string,
+  direction: DetailNavigationDirection,
+): string {
+  const matched = String(currentId || "").trim().match(DETAIL_ID_PATTERN);
+  if (!matched) {
+    return "";
+  }
+
+  const prefix = matched[1];
+  const currentNumber = Number(matched[2]);
+  const targetNumber = direction === "prev"
+    ? currentNumber - 1
+    : currentNumber + 1;
+
+  if (targetNumber < 1 || targetNumber > 999) {
+    return "";
+  }
+
+  return `${prefix}${String(targetNumber).padStart(DETAIL_ID_NUMBER_WIDTH, "0")}`;
+}
+
 Page({
   data: {
     id: "",
@@ -233,6 +271,8 @@ Page({
     textCopyOriginalText: "",
     textCopyDraftText: "",
     longPressHintVisible: false,
+    detailNavigationBusy: false,
+    detailNavigationDirection: "" as "" | DetailNavigationDirection,
   },
   scale: 1,
   lastScale: 1,
@@ -367,15 +407,7 @@ Page({
         return;
       }
 
-      const hasContent = Boolean(
-        detail.title ||
-        detail.summary ||
-        detail.coreFormulaImage ||
-        detail.coreFormulaHtml ||
-        (Array.isArray(detail.sections) && detail.sections.length > 0),
-      );
-
-      if (!hasContent) {
+      if (!hasRenderableDetailContent(detail)) {
         this.applyEmptyState("当前结论暂无可展示内容");
         return;
       }
@@ -391,8 +423,104 @@ Page({
     return getDetailDocumentById(id);
   },
 
+  showAdjacentDetailBoundaryToast(direction: DetailNavigationDirection, missingTarget = false) {
+    const title = missingTarget
+      ? (direction === "prev" ? "已经没有上一篇了" : "已经没有下一篇了")
+      : (direction === "prev" ? "已经到了本模块第一条" : "已经到了本模块最后一条");
+
+    wx.showToast({
+      title,
+      icon: "none",
+    });
+  },
+
+  async resolveAdjacentDetailDocument(
+    targetId: string,
+    direction: DetailNavigationDirection,
+  ): Promise<DetailDocumentView | null> {
+    try {
+      const detail = await this.resolveDetailDocument(targetId);
+      return hasRenderableDetailContent(detail) ? detail : null;
+    } catch (error) {
+      detailPageLogger.warn("detail_navigation_target_unavailable", {
+        id: targetId,
+        direction,
+        error,
+      });
+      return null;
+    }
+  },
+
+  async navigateAdjacentDetail(direction: DetailNavigationDirection) {
+    if (this.data.detailNavigationBusy || this.data.viewState === "loading") {
+      return;
+    }
+
+    const currentId = String(this.currentDetailId || this.data.id || "").trim();
+    const matched = currentId.match(DETAIL_ID_PATTERN);
+
+    if (!matched) {
+      wx.showToast({
+        title: "当前 ID 格式暂不支持切换",
+        icon: "none",
+      });
+      return;
+    }
+
+    const currentNumber = Number(matched[2]);
+    if (direction === "prev" && currentNumber <= 1) {
+      this.showAdjacentDetailBoundaryToast(direction);
+      return;
+    }
+
+    const targetId = resolveAdjacentDetailId(currentId, direction);
+    if (!targetId) {
+      this.showAdjacentDetailBoundaryToast(direction);
+      return;
+    }
+
+    const navigationStartedAt = Date.now();
+    this.setData({
+      detailNavigationBusy: true,
+      detailNavigationDirection: direction,
+    });
+
+    try {
+      const detail = await this.resolveAdjacentDetailDocument(targetId, direction);
+      if (!detail) {
+        this.showAdjacentDetailBoundaryToast(direction, true);
+        return;
+      }
+
+      this.currentDetailId = normalizeString(detail.id) || targetId;
+      this.routeSource = "detail_navigation";
+      this.routeEntry = direction === "prev" ? "previous_detail" : "next_detail";
+      this.detailViewTracked = false;
+
+      const loadDurationMs = Math.max(0, Date.now() - navigationStartedAt);
+      await this.applyDetailDocument(detail, loadDurationMs);
+    } finally {
+      this.setData({
+        detailNavigationBusy: false,
+        detailNavigationDirection: "",
+      });
+    }
+  },
+
+  onPreviousDetailTap() {
+    void this.navigateAdjacentDetail("prev");
+  },
+
+  onNextDetailTap() {
+    void this.navigateAdjacentDetail("next");
+  },
+
   canRefreshDetailFromPullDown(): boolean {
     if (this.data.viewState === "loading") {
+      return false;
+    }
+
+    if (this.data.detailNavigationBusy) {
       return false;
     }
 

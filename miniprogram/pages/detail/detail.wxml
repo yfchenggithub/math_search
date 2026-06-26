@@ -239,6 +239,25 @@
   </view>
 
   <view wx:if="{{viewState === 'content'}}" class="bottom-action-shell">
+    <view class="bottom-navigation-row">
+      <button
+        bindtap="onPreviousDetailTap"
+        class="bottom-action-btn bottom-navigation-btn bottom-navigation-prev"
+        loading="{{detailNavigationBusy && detailNavigationDirection === 'prev'}}"
+        disabled="{{detailNavigationBusy}}"
+      >
+        上一篇
+      </button>
+      <button
+        bindtap="onNextDetailTap"
+        class="bottom-action-btn bottom-navigation-btn bottom-navigation-next"
+        loading="{{detailNavigationBusy && detailNavigationDirection === 'next'}}"
+        disabled="{{detailNavigationBusy}}"
+      >
+        下一篇
+      </button>
+    </view>
+
     <view class="bottom-action-row">
       <button
         bindtap="handleFavoriteToggleTap"
