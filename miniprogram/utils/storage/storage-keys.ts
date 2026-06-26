@@ -9,6 +9,7 @@ export const STORAGE_KEYS = {
   CONCLUSION_CARD_CACHE: "conclusion_card_cache_v3",
   SEARCH_HISTORY: "search_history_v1",
   RECENT_BROWSE: "recent_browse_v1",
+  DETAIL_LONG_PRESS_HINT_SHOWN: "detail_long_press_hint_shown_v2",
   PDF_UNLOCK_EXPIRE_AT: "pdf_unlock_expire_at",
   DEBUG_SHOW_RUNTIME_LOGS: "debug_show_runtime_logs",
   DEBUG_LOG_LEVEL: "__debug_log_level__",

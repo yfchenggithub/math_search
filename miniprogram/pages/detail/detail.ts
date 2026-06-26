@@ -56,6 +56,7 @@ import {
   buildDetailTimelinePayload,
   showShareMenuSafely,
 } from "../../utils/share";
+import { STORAGE_KEYS } from "../../utils/storage/storage-keys";
 
 type TouchPoint = {
   pageX: number;
@@ -231,6 +232,7 @@ Page({
     textCopyPanelVisible: false,
     textCopyOriginalText: "",
     textCopyDraftText: "",
+    longPressHintVisible: false,
   },
   scale: 1,
   lastScale: 1,
@@ -539,6 +541,7 @@ Page({
       },
       () => {
         this.scheduleMeasure();
+        this.maybeShowLongPressHint();
         if (!this.detailViewTracked) {
           this.detailViewTracked = true;
           trackDetailView(
@@ -1308,6 +1311,48 @@ Page({
     this.copyFeedbackTimer = 0;
   },
 
+  hasShownLongPressHint(): boolean {
+    try {
+      return Boolean(wx.getStorageSync(STORAGE_KEYS.DETAIL_LONG_PRESS_HINT_SHOWN));
+    } catch (error) {
+      detailPageLogger.warn("read_long_press_hint_state_failed", {
+        error,
+      });
+      return true;
+    }
+  },
+
+  markLongPressHintShown() {
+    try {
+      wx.setStorageSync(STORAGE_KEYS.DETAIL_LONG_PRESS_HINT_SHOWN, true);
+    } catch (error) {
+      detailPageLogger.warn("write_long_press_hint_state_failed", {
+        error,
+      });
+    }
+  },
+
+  maybeShowLongPressHint() {
+    if (this.hasShownLongPressHint()) {
+      return;
+    }
+
+    this.setData({
+      longPressHintVisible: true,
+    });
+  },
+
+  dismissLongPressHint() {
+    this.markLongPressHintShown();
+    if (!this.data.longPressHintVisible) {
+      return;
+    }
+
+    this.setData({
+      longPressHintVisible: false,
+    });
+  },
+
   showCopyFeedback(text: string, title = "已复制") {
     this.clearCopyFeedbackTimer();
     this.setData({
@@ -1363,6 +1408,7 @@ Page({
       return;
     }
 
+    this.dismissLongPressHint();
     this.openTextCopyPanel(text);
   },
 
@@ -1450,6 +1496,7 @@ Page({
       return;
     }
 
+    this.dismissLongPressHint();
     await this.shareDetailImageToFriend(imageUrl);
   },
 

@@ -123,6 +123,13 @@
               </view>
             </view>
 
+            <view wx:if="{{longPressHintVisible}}" class="long-press-hint">
+              <view class="long-press-hint__text">长按文字复制，长按公式图分享</view>
+              <view class="long-press-hint__action" bindtap="dismissLongPressHint">
+                知道了
+              </view>
+            </view>
+
             <view wx:if="{{coreFormulaImage || coreFormulaHtml}}" class="hero-formula">
               <view wx:if="{{coreFormulaImage}}" class="math-image-block hero-math-image-block">
                 <scroll-view
