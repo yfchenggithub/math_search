@@ -47,6 +47,18 @@ Component({
   },
 
   methods: {
+    onMathImageLongPress(e: WechatMiniprogram.BaseEvent) {
+      const imageUrl = String(e.currentTarget.dataset.url || "").trim();
+
+      if (!imageUrl) {
+        return;
+      }
+
+      this.triggerEvent("mathimagelongpress", {
+        imageUrl,
+      });
+    },
+
     onMathImageError(e: WechatMiniprogram.BaseEvent) {
       const nodePath = String(e.currentTarget.dataset.nodePath || "").trim();
       const imageUrl = String(e.currentTarget.dataset.url || "").trim();

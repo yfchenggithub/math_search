@@ -59,6 +59,7 @@
               data-node-path="{{block.__path}}"
               data-url="{{block.imageUrl}}"
               binderror="onMathImageError"
+              bindlongpress="onMathImageLongPress"
             />
           </scroll-view>
 
@@ -106,6 +107,7 @@
                     data-node-path="{{part.image.__path}}"
                     data-url="{{part.image.imageUrl}}"
                     binderror="onMathImageError"
+                    bindlongpress="onMathImageLongPress"
                   />
                 </scroll-view>
 
@@ -151,6 +153,7 @@
                   data-node-path="{{formulaImage.__path}}"
                   data-url="{{formulaImage.imageUrl}}"
                   binderror="onMathImageError"
+                  bindlongpress="onMathImageLongPress"
                 />
               </scroll-view>
 

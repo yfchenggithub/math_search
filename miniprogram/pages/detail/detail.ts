@@ -54,7 +54,6 @@ import {
   SHARE_COPY,
   buildDetailSharePayload,
   buildDetailTimelinePayload,
-  copyConclusionText,
   showShareMenuSafely,
 } from "../../utils/share";
 
@@ -123,6 +122,7 @@ const DEFAULT_PDF_FILENAME = "hd-pdf.pdf";
 const PDF_CACHE_STORAGE_KEY = "conclusion_pdf_cache_map_v1";
 const MATH_IMAGE_CACHE_STORAGE_KEY = "conclusion_math_image_cache_map_v1";
 const PDF_STATUS_AUTO_HIDE_MS = 900;
+const COPY_FEEDBACK_AUTO_HIDE_MS = 1600;
 const DETAIL_PULL_REFRESH_TOP_THRESHOLD = 2;
 const ENABLE_PDF_ENTITLEMENT_FLOW = FEATURE_FLAGS.ENABLE_PDF_ENTITLEMENT_FLOW;
 const detailPageLogger = createLogger("detail-page");
@@ -146,6 +146,20 @@ function createIdlePdfStatus(): PdfStatusView {
     progressText: "",
     canRetry: false,
   };
+}
+
+function normalizeString(value: unknown): string {
+  return String(value || "").trim();
+}
+
+function isRemoteUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+function isCancelError(error: unknown): boolean {
+  return normalizeString((error as { errMsg?: string })?.errMsg)
+    .toLowerCase()
+    .includes("cancel");
 }
 
 Page({
@@ -194,6 +208,8 @@ Page({
     authStatusToastClosable: false,
     showBackButton: true,
     showHomeButton: false,
+    copyToastVisible: false,
+    copyToastText: "",
   },
   scale: 1,
   lastScale: 1,
@@ -228,6 +244,7 @@ Page({
   inertiaId: 0,
   measureTimer: 0,
   pdfStatusTimer: 0,
+  copyFeedbackTimer: 0,
   pdfDownloadTask: null as WechatMiniprogram.DownloadTask | null,
   currentDetailId: "",
   unsubscribeAuthStatusToast: undefined as undefined | (() => void),
@@ -1215,6 +1232,7 @@ Page({
   onUnload() {
     clearTimeout(this.inertiaId);
     clearTimeout(this.measureTimer);
+    this.clearCopyFeedbackTimer();
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
     this.pendingPdfDownloadAfterUnlock = false;
@@ -1250,6 +1268,162 @@ Page({
     };
   },
 
+  copyPlainText(text: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      wx.setClipboardData({
+        data: text,
+        success: () => {
+          resolve();
+        },
+        fail: (error) => {
+          reject(error);
+        },
+      });
+    });
+  },
+
+  clearCopyFeedbackTimer() {
+    clearTimeout(this.copyFeedbackTimer);
+    this.copyFeedbackTimer = 0;
+  },
+
+  showCopyFeedback(text: string) {
+    this.clearCopyFeedbackTimer();
+    this.setData({
+      copyToastVisible: true,
+      copyToastText: text,
+    });
+
+    this.copyFeedbackTimer = setTimeout(() => {
+      this.setData({
+        copyToastVisible: false,
+        copyToastText: "",
+      });
+      this.copyFeedbackTimer = 0;
+    }, COPY_FEEDBACK_AUTO_HIDE_MS);
+  },
+
+  async onTitleLongPress() {
+    const title = normalizeString(this.data.title);
+
+    if (!title) {
+      wx.showToast({
+        title: "无可复制标题",
+        icon: "none",
+      });
+      return;
+    }
+
+    try {
+      await this.copyPlainText(title);
+      this.showCopyFeedback(title);
+    } catch (error) {
+      detailPageLogger.warn("copy_title_failed", {
+        itemId: normalizeString(this.data.id || this.currentDetailId),
+        error,
+      });
+      wx.showToast({
+        title: SHARE_COPY.copyFailedToast,
+        icon: "none",
+      });
+    }
+  },
+
+  onCoreFormulaImageLongPress(e: WechatMiniprogram.BaseEvent) {
+    void this.openDetailImageMenu(e.currentTarget.dataset.url);
+  },
+
+  onSectionMathImageLongPress(
+    e: WechatMiniprogram.CustomEvent<{ imageUrl?: string }>,
+  ) {
+    void this.openDetailImageMenu(e.detail?.imageUrl);
+  },
+
+  async openDetailImageMenu(rawImageUrl: unknown) {
+    const imageUrl = normalizeString(rawImageUrl);
+
+    if (!imageUrl) {
+      wx.showToast({
+        title: "图片暂时不可用",
+        icon: "none",
+      });
+      return;
+    }
+
+    await this.shareDetailImageToFriend(imageUrl);
+  },
+
+  resolveLocalImagePath(imageUrl: string): Promise<string> {
+    if (!isRemoteUrl(imageUrl)) {
+      return Promise.resolve(imageUrl);
+    }
+
+    return this.downloadImageToTempFile(imageUrl);
+  },
+
+  downloadImageToTempFile(imageUrl: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      wx.downloadFile({
+        url: imageUrl,
+        success: (res) => {
+          if (res.statusCode !== 200 || !res.tempFilePath) {
+            reject(new Error(`image download failed (HTTP ${res.statusCode})`));
+            return;
+          }
+
+          resolve(res.tempFilePath);
+        },
+        fail: (error) => {
+          reject(error);
+        },
+      });
+    });
+  },
+
+  showShareImageMenuForPath(imagePath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      wx.showShareImageMenu({
+        path: imagePath,
+        success: () => {
+          resolve();
+        },
+        fail: (error) => {
+          if (isCancelError(error)) {
+            resolve();
+            return;
+          }
+
+          reject(error);
+        },
+      });
+    });
+  },
+
+  async shareDetailImageToFriend(imageUrl: string) {
+    if (!wx.canIUse || !wx.canIUse("showShareImageMenu")) {
+      wx.showToast({
+        title: "当前版本暂不支持图片分享",
+        icon: "none",
+      });
+      return;
+    }
+
+    try {
+      const localPath = await this.resolveLocalImagePath(imageUrl);
+      await this.showShareImageMenuForPath(localPath);
+    } catch (error) {
+      detailPageLogger.warn("share_detail_image_failed", {
+        itemId: normalizeString(this.data.id || this.currentDetailId),
+        imageUrl,
+        error,
+      });
+      wx.showToast({
+        title: "图片分享失败",
+        icon: "none",
+      });
+    }
+  },
+
   onShareAppMessage() {
     trackShare("share_click", {
       item_id: String(this.data.id || ""),
@@ -1270,44 +1444,6 @@ Page({
       share_type: "timeline",
     });
     return buildDetailTimelinePayload(this.getCurrentShareSource());
-  },
-
-  async onCopyConclusionTap() {
-    trackShare("copy_keyword_click", {
-      item_id: String(this.data.id || ""),
-      source: this.routeSource,
-      page: "detail",
-      entry: "copy_keyword_button",
-      share_type: "copy_keyword",
-    });
-
-    try {
-      await copyConclusionText(this.getCurrentShareSource());
-      trackShare("copy_keyword_success", {
-        item_id: String(this.data.id || ""),
-        source: this.routeSource,
-        page: "detail",
-        entry: "copy_keyword_button",
-        share_type: "copy_keyword",
-      });
-      wx.showToast({
-        title: SHARE_COPY.copySuccessToast,
-        icon: "none",
-      });
-    } catch (_error) {
-      trackShare("copy_keyword_fail", {
-        item_id: String(this.data.id || ""),
-        source: this.routeSource,
-        page: "detail",
-        entry: "copy_keyword_button",
-        share_type: "copy_keyword",
-        error_type: "copy_failed",
-      });
-      wx.showToast({
-        title: SHARE_COPY.copyFailedToast,
-        icon: "none",
-      });
-    }
   },
 
   onReady() {
