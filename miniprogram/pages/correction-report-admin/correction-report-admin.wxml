@@ -72,6 +72,21 @@
             <text>{{item.createdAtText}}</text>
             <text>{{item.userText}}</text>
           </view>
+
+          <view class="correction-admin-card__actions">
+            <block wx:for="{{item.actions}}" wx:key="status" wx:for-item="action">
+              <button
+                class="correction-admin-card__action"
+                data-id="{{item.id}}"
+                data-status="{{action.status}}"
+                loading="{{updatingReportId === item.id}}"
+                disabled="{{updatingReportId > 0}}"
+                catchtap="handleStatusActionTap"
+              >
+                {{action.label}}
+              </button>
+            </block>
+          </view>
         </view>
       </block>
 

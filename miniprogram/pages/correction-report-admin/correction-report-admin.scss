@@ -143,7 +143,7 @@ page {
   background: #fef3c7;
 }
 
-.correction-admin-card__status--reviewed {
+.correction-admin-card__status--fixed {
   color: #047857;
   background: #d1fae5;
 }
@@ -176,6 +176,26 @@ page {
   color: #6b7280;
   font-size: 21rpx;
   line-height: 1.2;
+}
+
+.correction-admin-card__actions {
+  margin-top: 18rpx;
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.correction-admin-card__action {
+  margin: 0;
+  min-width: 156rpx;
+  height: 58rpx;
+  line-height: 58rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: #111827;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 600;
 }
 
 .correction-admin-load-more,

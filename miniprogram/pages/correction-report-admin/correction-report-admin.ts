@@ -1,5 +1,6 @@
 import {
   listCorrectionReports,
+  updateCorrectionReportStatus,
   type CorrectionReportLocation,
   type CorrectionReportRecord,
   type CorrectionReportStatus,
@@ -16,6 +17,11 @@ type StatusFilterOption = {
   label: string;
 };
 
+type StatusAction = {
+  status: CorrectionReportStatus;
+  label: string;
+};
+
 type CorrectionReportAdminItem = CorrectionReportRecord & {
   statusText: string;
   statusClass: string;
@@ -23,12 +29,22 @@ type CorrectionReportAdminItem = CorrectionReportRecord & {
   locationText: string;
   typeText: string;
   userText: string;
+  actions: StatusAction[];
 };
 
 type StatusTapEvent = {
   currentTarget: {
     dataset: {
       status?: StatusFilter;
+    };
+  };
+};
+
+type UpdateStatusTapEvent = {
+  currentTarget: {
+    dataset: {
+      id?: number | string;
+      status?: CorrectionReportStatus;
     };
   };
 };
@@ -44,6 +60,7 @@ type CorrectionReportAdminData = {
   loadingMore: boolean;
   errorMessage: string;
   hasMore: boolean;
+  updatingReportId: number;
   countText: string;
 };
 
@@ -51,7 +68,7 @@ const PAGE_SIZE = 20;
 const STATUS_FILTERS: StatusFilterOption[] = [
   { value: "all", label: "全部" },
   { value: "pending", label: "待处理" },
-  { value: "reviewed", label: "已查看" },
+  { value: "fixed", label: "已修复" },
   { value: "ignored", label: "已忽略" },
 ];
 
@@ -64,8 +81,8 @@ function formatDateTime(value: string): string {
 }
 
 function getStatusText(status: CorrectionReportStatus): string {
-  if (status === "reviewed") {
-    return "已查看";
+  if (status === "fixed") {
+    return "已修复";
   }
 
   if (status === "ignored") {
@@ -73,6 +90,27 @@ function getStatusText(status: CorrectionReportStatus): string {
   }
 
   return "待处理";
+}
+
+function buildActions(status: CorrectionReportStatus): StatusAction[] {
+  if (status === "pending") {
+    return [
+      { status: "fixed", label: "标记已修复" },
+      { status: "ignored", label: "忽略" },
+    ];
+  }
+
+  if (status === "fixed") {
+    return [
+      { status: "pending", label: "重新待处理" },
+      { status: "ignored", label: "忽略" },
+    ];
+  }
+
+  return [
+    { status: "pending", label: "重新待处理" },
+    { status: "fixed", label: "标记已修复" },
+  ];
 }
 
 function getLocationText(location: CorrectionReportLocation): string {
@@ -124,6 +162,7 @@ function mapRecordToViewItem(record: CorrectionReportRecord): CorrectionReportAd
     locationText: getLocationText(record.errorLocation),
     typeText: getTypeText(record.errorType),
     userText: record.userId || "匿名用户",
+    actions: buildActions(record.status),
   };
 }
 
@@ -147,6 +186,7 @@ Page<CorrectionReportAdminData, WechatMiniprogram.IAnyObject>({
     loadingMore: false,
     errorMessage: "",
     hasMore: false,
+    updatingReportId: 0,
     countText: "暂无记录",
   },
 
@@ -180,6 +220,56 @@ Page<CorrectionReportAdminData, WechatMiniprogram.IAnyObject>({
     }
 
     void this.loadReports(this.data.page + 1, true);
+  },
+
+  async handleStatusActionTap(event: UpdateStatusTapEvent) {
+    const reportId = Number(event.currentTarget.dataset.id || 0);
+    const status = event.currentTarget.dataset.status;
+
+    if (!reportId || !status || this.data.updatingReportId > 0) {
+      return;
+    }
+
+    this.setData({
+      updatingReportId: reportId,
+    });
+
+    try {
+      const updated = await updateCorrectionReportStatus(reportId, status);
+      const updatedItem = mapRecordToViewItem(updated);
+      const activeStatus = this.data.activeStatus;
+      const shouldKeep = activeStatus === "all" || activeStatus === updated.status;
+      const nextItems = shouldKeep
+        ? this.data.items.map((item) => (item.id === reportId ? updatedItem : item))
+        : this.data.items.filter((item) => item.id !== reportId);
+      const nextTotal = shouldKeep ? this.data.total : Math.max(0, this.data.total - 1);
+
+      this.setData({
+        items: nextItems,
+        total: nextTotal,
+        countText: buildCountText(nextTotal, nextItems.length),
+        hasMore: nextItems.length < nextTotal,
+      });
+
+      wx.showToast({
+        title: "状态已更新",
+        icon: "none",
+      });
+    } catch (error) {
+      adminLogger.warn("status_update_failed", {
+        reportId,
+        status,
+        error,
+      });
+      wx.showToast({
+        title: getErrorMessage(error, "状态更新失败"),
+        icon: "none",
+      });
+    } finally {
+      this.setData({
+        updatingReportId: 0,
+      });
+    }
   },
 
   async refreshReports() {

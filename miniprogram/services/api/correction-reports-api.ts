@@ -1,7 +1,7 @@
 import { CORRECTION_REPORT_API_CONFIG } from "../../config/api";
 import { request } from "../request/request";
 
-export type CorrectionReportStatus = "pending" | "reviewed" | "ignored";
+export type CorrectionReportStatus = "pending" | "fixed" | "ignored";
 export type CorrectionReportLocation =
   | "title"
   | "summary"
@@ -67,7 +67,7 @@ function normalizeNumber(value: unknown, fallback = 0): number {
 
 function normalizeStatus(value: unknown): CorrectionReportStatus {
   const status = normalizeText(value).toLowerCase();
-  if (status === "reviewed" || status === "ignored") {
+  if (status === "fixed" || status === "ignored") {
     return status;
   }
 
@@ -158,4 +158,21 @@ export async function listCorrectionReports(
   });
 
   return normalizeListResponse(raw);
+}
+
+export async function updateCorrectionReportStatus(
+  id: number,
+  status: CorrectionReportStatus,
+): Promise<CorrectionReportRecord> {
+  const reportId = encodeURIComponent(String(id));
+  const raw = await request<unknown, { status: CorrectionReportStatus }>({
+    url: `${CORRECTION_REPORT_API_CONFIG.ADMIN_LIST_PATH}/${reportId}`,
+    method: "PUT",
+    data: {
+      status,
+    },
+    authMode: "required",
+  });
+
+  return normalizeRecord(raw);
 }
