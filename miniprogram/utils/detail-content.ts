@@ -52,7 +52,8 @@ const DETAIL_DOCUMENT_CACHE_STORAGE_KEY = STORAGE_KEYS.DETAIL_DOCUMENT_CACHE;
 const DETAIL_DOCUMENT_CACHE_DOC_STORAGE_PREFIX = STORAGE_KEYS.DETAIL_DOCUMENT_CACHE_DOC_PREFIX;
 const DETAIL_DOCUMENT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DETAIL_DOCUMENT_CACHE_MAX_STALE_MS = 30 * 24 * 60 * 60 * 1000;
-const DETAIL_DOCUMENT_CACHE_MAX_COUNT = 100;
+const DETAIL_DOCUMENT_CACHE_MAX_COUNT = 30;
+const DETAIL_DOCUMENT_CACHE_MAX_BYTES = 3 * 1024 * 1024;
 const DETAIL_DOCUMENT_CACHE_CHUNK_BYTES = 512 * 1024;
 
 const READING_ITEM_TITLE_COLOR = "#0f172a";
@@ -346,6 +347,14 @@ type PersistedDetailDocumentIndexRecord = {
   storageId: string;
 };
 type PersistedDetailDocumentIndexMap = Record<string, PersistedDetailDocumentIndexRecord>;
+type PersistedDetailDocumentEntryWriteResult = {
+  indexRecord: PersistedDetailDocumentIndexRecord | null;
+  quotaExceeded: boolean;
+};
+type PersistedDetailDocumentCacheWriteResult = {
+  persistedEntries: PersistedDetailDocumentEntry[];
+  quotaExceeded: boolean;
+};
 
 let detailContentCache: RawDetailMap | null = null;
 let fetchConclusionDetailRuntime:
@@ -385,6 +394,16 @@ function toPositiveInteger(value: unknown, fallback: number): number {
   }
 
   return fallback;
+}
+
+function isStorageQuotaError(error: unknown): boolean {
+  const message = error instanceof Error
+    ? error.message
+    : isPlainObject(error) && typeof error.message === "string"
+      ? error.message
+      : String(error || "");
+
+  return /quota/i.test(message);
 }
 
 function isDetailSourceType(value: unknown): value is DetailDocumentView["sourceType"] {
@@ -705,6 +724,50 @@ function collectValidPersistedDetailDocumentEntries(
     });
 }
 
+function getPersistedDetailDocumentEntryBytes(entry: PersistedDetailDocumentEntry): number {
+  try {
+    return getUtf8ByteLength(JSON.stringify(entry.record.detail) || "");
+  } catch (error) {
+    detailContentLogger.warn("measure_detail_document_cache_entry_failed", {
+      id: entry.id,
+      error,
+    });
+    return 0;
+  }
+}
+
+function collectBudgetedPersistedDetailDocumentEntries(
+  cacheMap: PersistedDetailDocumentMap,
+  now: number = Date.now(),
+): PersistedDetailDocumentEntry[] {
+  const validEntries = collectValidPersistedDetailDocumentEntries(cacheMap, now);
+  const selectedEntries: PersistedDetailDocumentEntry[] = [];
+  let selectedBytes = 0;
+
+  validEntries.forEach((entry) => {
+    if (selectedEntries.length >= DETAIL_DOCUMENT_CACHE_MAX_COUNT) {
+      return;
+    }
+
+    const entryBytes = getPersistedDetailDocumentEntryBytes(entry);
+    if (entryBytes <= 0) {
+      return;
+    }
+
+    if (
+      selectedEntries.length > 0
+      && selectedBytes + entryBytes > DETAIL_DOCUMENT_CACHE_MAX_BYTES
+    ) {
+      return;
+    }
+
+    selectedEntries.push(entry);
+    selectedBytes += entryBytes;
+  });
+
+  return selectedEntries;
+}
+
 function buildPersistedDetailDocumentMap(
   entries: PersistedDetailDocumentEntry[],
 ): PersistedDetailDocumentMap {
@@ -720,8 +783,7 @@ function prunePersistedDetailDocumentCache(
   now: number = Date.now(),
 ): PersistedDetailDocumentMap {
   return buildPersistedDetailDocumentMap(
-    collectValidPersistedDetailDocumentEntries(cacheMap, now)
-      .slice(0, DETAIL_DOCUMENT_CACHE_MAX_COUNT),
+    collectBudgetedPersistedDetailDocumentEntries(cacheMap, now),
   );
 }
 
@@ -772,10 +834,28 @@ function removePersistedDetailDocumentChunks(
   }
 }
 
+function removeUnselectedPersistedDetailDocumentChunks(
+  previousIndexMap: PersistedDetailDocumentIndexMap,
+  selectedEntries: PersistedDetailDocumentEntry[],
+): void {
+  const selectedIds = new Set(selectedEntries.map((entry) => entry.id));
+  Object.keys(previousIndexMap).forEach((id) => {
+    if (selectedIds.has(id)) {
+      return;
+    }
+
+    const previousRecord = previousIndexMap[id];
+    removePersistedDetailDocumentChunks(
+      previousRecord.storageId,
+      previousRecord.chunkCount,
+    );
+  });
+}
+
 function writePersistedDetailDocumentEntryToChunkStorage(
   entry: PersistedDetailDocumentEntry,
   previousIndexRecord?: PersistedDetailDocumentIndexRecord,
-): PersistedDetailDocumentIndexRecord | null {
+): PersistedDetailDocumentEntryWriteResult {
   if (
     previousIndexRecord
     && previousIndexRecord.updatedAt === entry.record.updatedAt
@@ -783,8 +863,11 @@ function writePersistedDetailDocumentEntryToChunkStorage(
     && previousIndexRecord.storageId
   ) {
     return {
-      ...previousIndexRecord,
-      lastAccessAt: entry.record.lastAccessAt,
+      indexRecord: {
+        ...previousIndexRecord,
+        lastAccessAt: entry.record.lastAccessAt,
+      },
+      quotaExceeded: false,
     };
   }
 
@@ -796,7 +879,10 @@ function writePersistedDetailDocumentEntryToChunkStorage(
       id: entry.id,
       error,
     });
-    return null;
+    return {
+      indexRecord: null,
+      quotaExceeded: false,
+    };
   }
 
   const storageId = getPersistedDetailDocumentStorageId(
@@ -807,6 +893,17 @@ function writePersistedDetailDocumentEntryToChunkStorage(
     serializedDetail,
     DETAIL_DOCUMENT_CACHE_CHUNK_BYTES,
   );
+
+  if (
+    previousIndexRecord
+    && previousIndexRecord.storageId
+    && previousIndexRecord.storageId !== storageId
+  ) {
+    removePersistedDetailDocumentChunks(
+      previousIndexRecord.storageId,
+      previousIndexRecord.chunkCount,
+    );
+  }
 
   try {
     chunks.forEach((chunk, index) => {
@@ -823,15 +920,21 @@ function writePersistedDetailDocumentEntryToChunkStorage(
       bytes: getUtf8ByteLength(serializedDetail),
       error,
     });
-    return null;
+    return {
+      indexRecord: null,
+      quotaExceeded: isStorageQuotaError(error),
+    };
   }
 
   return {
-    updatedAt: entry.record.updatedAt,
-    lastAccessAt: entry.record.lastAccessAt,
-    chunkCount: chunks.length,
-    bytes: getUtf8ByteLength(serializedDetail),
-    storageId,
+    indexRecord: {
+      updatedAt: entry.record.updatedAt,
+      lastAccessAt: entry.record.lastAccessAt,
+      chunkCount: chunks.length,
+      bytes: getUtf8ByteLength(serializedDetail),
+      storageId,
+    },
+    quotaExceeded: false,
   };
 }
 
@@ -852,27 +955,59 @@ function removeObsoletePersistedDetailDocumentChunks(
   });
 }
 
-function writePersistedDetailDocumentCacheToStorage(
-  cacheMap: PersistedDetailDocumentMap,
-): PersistedDetailDocumentMap {
-  const entries = collectValidPersistedDetailDocumentEntries(cacheMap)
-    .slice(0, DETAIL_DOCUMENT_CACHE_MAX_COUNT);
-  const previousIndexMap = readPersistedDetailDocumentIndexFromStorage();
-  const nextIndexMap: PersistedDetailDocumentIndexMap = {};
-  const persistedEntries: PersistedDetailDocumentEntry[] = [];
+function removeNewPersistedDetailDocumentChunks(
+  previousIndexMap: PersistedDetailDocumentIndexMap,
+  nextIndexMap: PersistedDetailDocumentIndexMap,
+): void {
+  Object.keys(nextIndexMap).forEach((id) => {
+    const previousRecord = previousIndexMap[id];
+    const nextRecord = nextIndexMap[id];
 
-  entries.forEach((entry) => {
-    const indexRecord = writePersistedDetailDocumentEntryToChunkStorage(
-      entry,
-      previousIndexMap[entry.id],
-    );
-    if (!indexRecord) {
+    if (previousRecord && previousRecord.storageId === nextRecord.storageId) {
       return;
     }
 
-    nextIndexMap[entry.id] = indexRecord;
-    persistedEntries.push(entry);
+    removePersistedDetailDocumentChunks(nextRecord.storageId, nextRecord.chunkCount);
   });
+}
+
+function writePersistedDetailDocumentCacheEntriesToStorage(
+  entries: PersistedDetailDocumentEntry[],
+  previousIndexMap: PersistedDetailDocumentIndexMap,
+): PersistedDetailDocumentCacheWriteResult {
+  const nextIndexMap: PersistedDetailDocumentIndexMap = {};
+  const persistedEntries: PersistedDetailDocumentEntry[] = [];
+  let quotaExceeded = false;
+
+  removeUnselectedPersistedDetailDocumentChunks(previousIndexMap, entries);
+
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    const writeResult = writePersistedDetailDocumentEntryToChunkStorage(
+      entry,
+      previousIndexMap[entry.id],
+    );
+
+    if (writeResult.quotaExceeded) {
+      quotaExceeded = true;
+      break;
+    }
+
+    if (!writeResult.indexRecord) {
+      continue;
+    }
+
+    nextIndexMap[entry.id] = writeResult.indexRecord;
+    persistedEntries.push(entry);
+  }
+
+  if (quotaExceeded) {
+    removeNewPersistedDetailDocumentChunks(previousIndexMap, nextIndexMap);
+    return {
+      persistedEntries,
+      quotaExceeded: true,
+    };
+  }
 
   try {
     wx.setStorageSync(DETAIL_DOCUMENT_CACHE_STORAGE_KEY, nextIndexMap);
@@ -882,9 +1017,52 @@ function writePersistedDetailDocumentCacheToStorage(
       size: Object.keys(nextIndexMap).length,
       error,
     });
+    quotaExceeded = isStorageQuotaError(error);
+    if (quotaExceeded) {
+      removeNewPersistedDetailDocumentChunks(previousIndexMap, nextIndexMap);
+    }
   }
 
-  return buildPersistedDetailDocumentMap(persistedEntries);
+  return {
+    persistedEntries,
+    quotaExceeded,
+  };
+}
+
+function writePersistedDetailDocumentCacheToStorage(
+  cacheMap: PersistedDetailDocumentMap,
+): PersistedDetailDocumentMap {
+  const previousIndexMap = readPersistedDetailDocumentIndexFromStorage();
+  let entries = collectBudgetedPersistedDetailDocumentEntries(cacheMap);
+
+  while (entries.length > 0) {
+    const writeResult = writePersistedDetailDocumentCacheEntriesToStorage(
+      entries,
+      previousIndexMap,
+    );
+
+    if (!writeResult.quotaExceeded) {
+      return buildPersistedDetailDocumentMap(writeResult.persistedEntries);
+    }
+
+    const droppedEntry = entries[entries.length - 1];
+    detailContentLogger.warn("detail_document_cache_quota_retry", {
+      droppedId: droppedEntry.id,
+      remainingCount: entries.length - 1,
+    });
+    entries = entries.slice(0, -1);
+  }
+
+  try {
+    wx.setStorageSync(DETAIL_DOCUMENT_CACHE_STORAGE_KEY, {});
+    removeObsoletePersistedDetailDocumentChunks(previousIndexMap, {});
+  } catch (error) {
+    detailContentLogger.warn("write_empty_detail_document_cache_index_failed", {
+      error,
+    });
+  }
+
+  return {};
 }
 
 function getPersistedDetailDocumentCache(): PersistedDetailDocumentMap {
