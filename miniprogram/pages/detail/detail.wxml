@@ -41,6 +41,28 @@
     </view>
   </view>
 
+  <scroll-view
+    wx:if="{{viewState === 'content' && detailTocItems.length && !zoomActive}}"
+    class="detail-toc"
+    scroll-x
+    enhanced="{{true}}"
+    show-scrollbar="{{false}}"
+  >
+    <view class="detail-toc-track">
+      <view
+        wx:for="{{detailTocItems}}"
+        wx:key="key"
+        wx:for-item="item"
+        class="detail-toc-item {{activeDetailTocKey === item.key ? 'detail-toc-item--active' : ''}}"
+        data-anchor-id="{{item.anchorId}}"
+        data-key="{{item.key}}"
+        bindtap="onDetailTocItemTap"
+      >
+        {{item.label}}
+      </view>
+    </view>
+  </scroll-view>
+
   <view class="viewer">
     <view wx:if="{{viewState === 'loading'}}" class="state-card">
       <view class="state-title">正在加载</view>
@@ -69,6 +91,7 @@
         class="article-scroll"
         scroll-y="{{!zoomActive}}"
         scroll-top="{{articleScrollTop}}"
+        scroll-with-animation="{{articleScrollWithAnimation}}"
         enhanced="{{true}}"
         show-scrollbar="{{false}}"
         bindscroll="onArticleScroll"
@@ -180,15 +203,20 @@
               </scroll-view>
             </view>
 
-            <detail-section-renderer
+            <view
               wx:for="{{sections}}"
               wx:key="key"
               wx:for-item="section"
-              section="{{section}}"
-              zoomActive="{{zoomActive}}"
-              bind:mathimagelongpress="onSectionMathImageLongPress"
-              bind:textlongpress="onTextLongPress"
-            ></detail-section-renderer>
+              id="detail-section-{{index}}"
+              class="article-section-anchor"
+            >
+              <detail-section-renderer
+                section="{{section}}"
+                zoomActive="{{zoomActive}}"
+                bind:mathimagelongpress="onSectionMathImageLongPress"
+                bind:textlongpress="onTextLongPress"
+              ></detail-section-renderer>
+            </view>
           </view>
         </view>
       </scroll-view>

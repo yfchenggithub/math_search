@@ -69,6 +69,12 @@ type TouchPoint = {
 };
 
 type DetailNavigationDirection = "prev" | "next";
+type DetailTocKey =
+  | "explanation"
+  | "proof"
+  | "examples"
+  | "traps"
+  | "summary";
 type PdfOperationStage = "validate" | "cache" | "download" | "save" | "open";
 type PdfStatusStage =
   | "idle"
@@ -120,6 +126,16 @@ type CorrectionOptionTapEvent = {
   };
 };
 
+type DetailTocItem = {
+  key: DetailTocKey;
+  label: string;
+  anchorId: string;
+};
+type DetailAnchorMeasurement = {
+  offsetTop: number;
+  targetScrollTop: number;
+};
+
 type PdfUnlockStatus = "locked" | "unlocked" | "expired";
 
 class PdfOperationError extends Error {
@@ -161,6 +177,30 @@ const CORRECTION_TYPE_OPTIONS: CorrectionOption<CorrectionReportType>[] = [
   { value: "layout", label: "排版问题" },
   { value: "other", label: "其他" },
 ];
+const DETAIL_TOC_LABELS: Record<DetailTocKey, string> = {
+  explanation: "理解",
+  proof: "证明",
+  examples: "例题",
+  traps: "易错",
+  summary: "总结",
+};
+const DETAIL_TOC_KEYS = Object.keys(DETAIL_TOC_LABELS) as DetailTocKey[];
+const DETAIL_TOC_TITLE_KEY_MAP: Record<string, DetailTocKey> = {
+  "理解与直觉": "explanation",
+  "证明过程": "proof",
+  "例题应用": "examples",
+  "易错提醒": "traps",
+  "复盘总结": "summary",
+};
+const DETAIL_TOC_SCROLL_CORRECTION_THRESHOLD_PX = 2;
+const DETAIL_TOC_SCROLL_CORRECTION_DELAYS_MS = [
+  80,
+  160,
+  260,
+  420,
+  680,
+  1000,
+] as const;
 const ENABLE_PDF_ENTITLEMENT_FLOW = FEATURE_FLAGS.ENABLE_PDF_ENTITLEMENT_FLOW;
 const detailPageLogger = createLogger("detail-page");
 const PDF_UNLOCK_COPY = {
@@ -213,6 +253,45 @@ function stripCopyHtml(value: string): string {
 
 function normalizeCopyPlainText(value: unknown): string {
   return stripCopyHtml(String(value || ""));
+}
+
+function isDetailTocKey(value: string): value is DetailTocKey {
+  return DETAIL_TOC_KEYS.includes(value as DetailTocKey);
+}
+
+function resolveDetailTocKey(section: DetailSectionView): DetailTocKey | null {
+  const sectionKey = normalizeString(section.key);
+  if (isDetailTocKey(sectionKey)) {
+    return sectionKey;
+  }
+
+  const sectionTitle = normalizeString(section.title);
+  return DETAIL_TOC_TITLE_KEY_MAP[sectionTitle] || null;
+}
+
+function buildDetailTocItems(sections: DetailSectionView[]): DetailTocItem[] {
+  if (!Array.isArray(sections) || sections.length === 0) {
+    return [];
+  }
+
+  const usedKeys = new Set<DetailTocKey>();
+  const items: DetailTocItem[] = [];
+
+  sections.forEach((section, index) => {
+    const key = resolveDetailTocKey(section);
+    if (!key || usedKeys.has(key)) {
+      return;
+    }
+
+    usedKeys.add(key);
+    items.push({
+      key,
+      label: DETAIL_TOC_LABELS[key],
+      anchorId: `detail-section-${index}`,
+    });
+  });
+
+  return items;
 }
 
 function isRemoteUrl(value: string): boolean {
@@ -279,6 +358,8 @@ Page({
     coreFormulaHtml: "",
     coreFormulaImage: null as MathImageNode | null,
     sections: [] as DetailSectionView[],
+    detailTocItems: [] as DetailTocItem[],
+    activeDetailTocKey: "" as "" | DetailTocKey,
     pdfUrl: "",
     pdfFilename: "",
     pdfAvailable: false,
@@ -295,6 +376,7 @@ Page({
     loadDurationMs: 0,
     loadDurationLabel: "",
     articleScrollTop: 0,
+    articleScrollWithAnimation: false,
     transformStyle: "transform: translate3d(0px, 0px, 0) scale(1);",
     zoomActive: false,
     scaleLabel: "100%",
@@ -368,6 +450,7 @@ Page({
   routeSource: "detail",
   routeEntry: "unknown",
   detailViewTracked: false,
+  detailTocScrollCorrectionToken: 0,
   mathImageCacheDownloadTasks: {} as Record<string, Promise<void>>,
 
   raf(callback: Function) {
@@ -678,6 +761,7 @@ Page({
     this.articleScrollTop = 0;
     const hydratedDetail = await this.hydrateMathImageCache(detail);
     const detailWithFavoriteState = this.applyFavoriteStateOverride(hydratedDetail);
+    const detailTocItems = buildDetailTocItems(detailWithFavoriteState.sections);
     this.persistRecentBrowse(detailWithFavoriteState);
 
     this.setData(
@@ -699,6 +783,8 @@ Page({
         coreFormulaHtml: detailWithFavoriteState.coreFormulaHtml,
         coreFormulaImage: detailWithFavoriteState.coreFormulaImage || null,
         sections: detailWithFavoriteState.sections,
+        detailTocItems,
+        activeDetailTocKey: detailTocItems[0]?.key || "",
         pdfUrl: detailWithFavoriteState.pdfUrl,
         pdfFilename: detailWithFavoriteState.pdfFilename,
         pdfAvailable: detailWithFavoriteState.pdfAvailable,
@@ -714,6 +800,7 @@ Page({
         loadDurationMs: Math.max(0, Math.round(Number(loadDurationMs) || 0)),
         loadDurationLabel: this.formatLoadDurationLabel(loadDurationMs),
         articleScrollTop: 0,
+        articleScrollWithAnimation: false,
         transformStyle: this.buildTransformStyle(),
         zoomActive: false,
         scaleLabel: "100%",
@@ -1209,6 +1296,8 @@ Page({
       coreFormulaHtml: "",
       coreFormulaImage: null,
       sections: [],
+      detailTocItems: [],
+      activeDetailTocKey: "",
       pdfUrl: "",
       pdfFilename: "",
       pdfAvailable: false,
@@ -1224,6 +1313,7 @@ Page({
       loadDurationMs: 0,
       loadDurationLabel: "",
       articleScrollTop: 0,
+      articleScrollWithAnimation: false,
       transformStyle: this.buildTransformStyle(),
       zoomActive: false,
       scaleLabel: "100%",
@@ -1259,6 +1349,8 @@ Page({
       coreFormulaHtml: "",
       coreFormulaImage: null,
       sections: [],
+      detailTocItems: [],
+      activeDetailTocKey: "",
       pdfUrl: "",
       pdfFilename: "",
       pdfAvailable: false,
@@ -1274,6 +1366,7 @@ Page({
       loadDurationMs: 0,
       loadDurationLabel: "",
       articleScrollTop: 0,
+      articleScrollWithAnimation: false,
       transformStyle: this.buildTransformStyle(),
       zoomActive: false,
       scaleLabel: "100%",
@@ -3404,6 +3497,212 @@ Page({
     this.articleScrollTop = Number(e.detail.scrollTop || 0);
   },
 
+  onDetailTocItemTap(e: WechatMiniprogram.BaseEvent) {
+    if (this.data.zoomActive) {
+      return;
+    }
+
+    const anchorId = normalizeString(e.currentTarget.dataset.anchorId);
+    const key = normalizeString(e.currentTarget.dataset.key);
+    const matchedItem = (this.data.detailTocItems || []).find(
+      (item) => item.anchorId === anchorId && item.key === key,
+    );
+
+    if (!matchedItem) {
+      return;
+    }
+
+    const correctionToken = this.createDetailTocScrollCorrectionToken();
+    this.scrollDetailArticleToAnchor(matchedItem, correctionToken);
+  },
+
+  createDetailTocScrollCorrectionToken(): number {
+    this.detailTocScrollCorrectionToken += 1;
+    return this.detailTocScrollCorrectionToken;
+  },
+
+  isDetailTocScrollCorrectionActive(token: number): boolean {
+    return (
+      token === this.detailTocScrollCorrectionToken
+      && this.data.viewState === "content"
+      && !this.data.zoomActive
+      && this.scale <= 1.01
+    );
+  },
+
+  measureDetailArticleAnchor(
+    item: DetailTocItem,
+    callback: (
+      measurement: DetailAnchorMeasurement | null,
+    ) => void,
+  ) {
+    const query = wx.createSelectorQuery().in(this);
+    query.select(".article-scroll").fields({
+      rect: true,
+      size: true,
+      scrollOffset: true,
+    });
+    query.select(`#${item.anchorId}`).boundingClientRect();
+    query.exec((res) => {
+      const scrollNode = res[0] as
+        | { top?: number; scrollTop?: number }
+        | null
+        | undefined;
+      const anchorRect = res[1] as
+        | { top?: number }
+        | null
+        | undefined;
+
+      if (
+        !scrollNode
+        || !anchorRect
+        || !Number.isFinite(scrollNode.top)
+        || !Number.isFinite(scrollNode.scrollTop)
+        || !Number.isFinite(anchorRect.top)
+      ) {
+        callback(null);
+        return;
+      }
+
+      const offsetTop = Math.round(
+        Number(anchorRect.top || 0) - Number(scrollNode.top || 0),
+      );
+      const targetScrollTop = Math.max(
+        0,
+        Math.round(
+          Number(scrollNode.scrollTop || 0)
+            + offsetTop,
+        ),
+      );
+
+      callback({
+        offsetTop,
+        targetScrollTop,
+      });
+    });
+  },
+
+  scrollDetailArticleToAnchor(
+    item: DetailTocItem,
+    correctionToken: number,
+    retryCount = 0,
+  ) {
+    if (!this.isDetailTocScrollCorrectionActive(correctionToken)) {
+      return;
+    }
+
+    this.measureDetailArticleAnchor(item, (measurement: DetailAnchorMeasurement | null) => {
+      if (!this.isDetailTocScrollCorrectionActive(correctionToken)) {
+        return;
+      }
+
+      if (!measurement) {
+        if (retryCount < 2) {
+          setTimeout(() => {
+            this.scrollDetailArticleToAnchor(
+              item,
+              correctionToken,
+              retryCount + 1,
+            );
+          }, 80);
+        }
+        return;
+      }
+
+      this.applyDetailArticleScrollTop(
+        measurement.targetScrollTop,
+        item.key,
+        () => {
+          this.scheduleDetailTocScrollCorrection(item, correctionToken, 0);
+        },
+      );
+    });
+  },
+
+  scheduleDetailTocScrollCorrection(
+    item: DetailTocItem,
+    correctionToken: number,
+    attemptIndex: number,
+  ) {
+    const delayMs = DETAIL_TOC_SCROLL_CORRECTION_DELAYS_MS[attemptIndex];
+    if (typeof delayMs !== "number") {
+      return;
+    }
+
+    setTimeout(() => {
+      if (!this.isDetailTocScrollCorrectionActive(correctionToken)) {
+        return;
+      }
+
+      this.measureDetailArticleAnchor(item, (measurement: DetailAnchorMeasurement | null) => {
+        if (!this.isDetailTocScrollCorrectionActive(correctionToken)) {
+          return;
+        }
+
+        const scheduleNext = () => {
+          this.scheduleDetailTocScrollCorrection(
+            item,
+            correctionToken,
+            attemptIndex + 1,
+          );
+        };
+
+        if (!measurement) {
+          scheduleNext();
+          return;
+        }
+
+        if (
+          Math.abs(measurement.offsetTop)
+          <= DETAIL_TOC_SCROLL_CORRECTION_THRESHOLD_PX
+        ) {
+          scheduleNext();
+          return;
+        }
+
+        this.applyDetailArticleScrollTop(
+          measurement.targetScrollTop,
+          item.key,
+          scheduleNext,
+        );
+      });
+    }, delayMs);
+  },
+
+  applyDetailArticleScrollTop(
+    targetScrollTop: number,
+    activeKey: DetailTocKey,
+    callback?: () => void,
+  ) {
+    const normalizedTarget = Math.max(0, Math.round(Number(targetScrollTop) || 0));
+    const currentBoundTop = Math.max(
+      0,
+      Math.round(Number(this.data.articleScrollTop) || 0),
+    );
+
+    const commitScrollTop = () => {
+      this.articleScrollTop = normalizedTarget;
+      this.setData({
+        activeDetailTocKey: activeKey,
+        articleScrollTop: normalizedTarget,
+        articleScrollWithAnimation: false,
+      }, callback);
+    };
+
+    if (currentBoundTop === normalizedTarget) {
+      this.setData(
+        {
+          articleScrollTop: normalizedTarget > 0 ? normalizedTarget - 1 : 1,
+          articleScrollWithAnimation: false,
+        },
+        commitScrollTop,
+      );
+      return;
+    }
+
+    commitScrollTop();
+  },
+
   startInertia() {
     if (this.scale <= 1.01) {
       return;
@@ -3463,6 +3762,10 @@ Page({
     this.handleDoubleTap(e);
 
     const touches = this.getTouches(e);
+
+    if (touches.length === 1 && this.scale <= 1.01) {
+      this.createDetailTocScrollCorrectionToken();
+    }
 
     if (touches.length === 2) {
       if (this.scale <= 1.01) {
