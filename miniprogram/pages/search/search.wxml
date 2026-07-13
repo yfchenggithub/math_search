@@ -47,18 +47,33 @@
   </view>
 
   <view wx:if="{{query && suggestions.length > 0}}" class="suggest-box">
-    <block wx:for="{{suggestions}}" wx:key="index">
-      <view
-        class="suggest-item"
-        data-text="{{item.text}}"
-        data-id="{{item.id}}"
-        data-module="{{item.module}}"
-        bindtap="onSuggestionTap"
-      >
-        <text class="suggest-text">{{item.text}}</text>
-        <text class="suggest-id">{{item.id}}</text>
+    <view class="suggest-header">
+      <view class="suggest-header__icon"></view>
+      <view class="suggest-header__copy">
+        <view class="suggest-header__title">请选择一个相关结论</view>
+        <view class="suggest-header__subtitle">点击下方任意一项即可查看详情</view>
       </view>
-    </block>
+    </view>
+
+    <view class="suggest-list">
+      <block wx:for="{{suggestions}}" wx:key="index" wx:for-item="suggestion">
+        <view
+          class="suggest-item {{index === 0 ? 'suggest-item--primary' : ''}}"
+          data-text="{{suggestion.text}}"
+          data-id="{{suggestion.id}}"
+          data-module="{{suggestion.module}}"
+          bindtap="onSuggestionTap"
+        >
+          <view class="suggest-item__icon"></view>
+          <view class="suggest-text">
+            <block wx:for="{{suggestion.textSegments}}" wx:key="index" wx:for-item="segment">
+              <text class="suggest-text__segment {{segment.highlight ? 'is-highlight' : ''}}">{{segment.text}}</text>
+            </block>
+          </view>
+          <text class="suggest-id">{{suggestion.id}}</text>
+        </view>
+      </block>
+    </view>
   </view>
 
   <view

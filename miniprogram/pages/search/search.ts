@@ -354,6 +354,10 @@ interface SearchCardItem extends ResultItem {
   viewCount: number;
 }
 
+type SearchSuggestionItem = SearchSuggestion & {
+  textSegments: HighlightSegment[];
+};
+
 type PdfEntitlementState = {
   unlocked: boolean;
   expireAt: number | null;
@@ -373,7 +377,7 @@ Page({
     suggestErrorMessage: "",
 
     results: [] as SearchCardItem[],
-    suggestions: [] as SearchSuggestion[],
+    suggestions: [] as SearchSuggestionItem[],
     debugInfo: null as SearchDebugInfo | null,
 
     total: 0,
@@ -1101,7 +1105,7 @@ Page({
       }
 
       this.setData({
-        suggestions: response.suggestions,
+        suggestions: this.buildSuggestionItems(response.suggestions, rawQuery),
         suggestLoading: false,
         suggestErrorMessage: "",
       });
@@ -2438,6 +2442,16 @@ Page({
       .join(" ");
 
     return text;
+  },
+
+  buildSuggestionItems(
+    suggestions: SearchSuggestion[],
+    keyword: string,
+  ): SearchSuggestionItem[] {
+    return suggestions.map((suggestion) => ({
+      ...suggestion,
+      textSegments: this.highlightSegments(suggestion.text, keyword),
+    }));
   },
 
   highlightSegments(text: string, keyword: string): HighlightSegment[] {
