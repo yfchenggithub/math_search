@@ -18,6 +18,7 @@ export type WeeklyUpdatePromptSource =
 interface PromptOptions {
   source: WeeklyUpdatePromptSource;
   force?: boolean;
+  confirmBeforeRequest?: boolean;
 }
 
 type SubscribeMessageResult = Record<string, unknown> & {
@@ -27,6 +28,11 @@ type SubscribeMessageResult = Record<string, unknown> & {
 const weeklyUpdateLogger = createLogger("weekly-update-subscription");
 const PROMPT_STORAGE_KEY = "weekly_update_subscription_prompt_v1";
 const AUTO_PROMPT_THROTTLE_MS = 24 * 60 * 60 * 1000;
+const WEEKLY_UPDATE_AUTH_OPTIONS = {
+  title: "\u8bf7\u5148\u767b\u5f55",
+  content: "\u767b\u5f55\u540e\u624d\u80fd\u63a5\u6536\u6bcf\u5468\u66f4\u65b0\u63d0\u9192",
+  loginSource: "favorites" as const,
+};
 
 const PROMPT_COPY_BY_SOURCE: Record<WeeklyUpdatePromptSource, { title: string; content: string }> = {
   favorite_success: {
@@ -164,18 +170,90 @@ function showResultToast(result: WeeklyUpdateAuthorizationResult, status: Weekly
   });
 }
 
+function buildLocalSubscriptionStatus(
+  result: WeeklyUpdateAuthorizationResult,
+  source: WeeklyUpdatePromptSource,
+): WeeklyUpdateSubscriptionStatus {
+  const accepted = result === "accept";
+  return {
+    templateId: WEEKLY_UPDATE_TEMPLATE_ID,
+    status: accepted ? "active" : "inactive",
+    isFollowing: accepted,
+    availableCount: accepted ? 1 : 0,
+    needsResubscribe: !accepted,
+    lastRequestResult: result,
+    lastPromptSource: source,
+    lastAuthorizedAt: accepted ? new Date().toISOString() : null,
+    lastSentAt: null,
+    totalAcceptCount: accepted ? 1 : 0,
+    totalRejectCount: result === "reject" ? 1 : 0,
+    totalSentCount: 0,
+  };
+}
+
+function recordWeeklyUpdateAuthorizationResult(
+  source: WeeklyUpdatePromptSource,
+  result: WeeklyUpdateAuthorizationResult,
+): Promise<WeeklyUpdateSubscriptionStatus> {
+  return recordWeeklyUpdateAuthorization({
+    template_id: WEEKLY_UPDATE_TEMPLATE_ID,
+    result,
+    source,
+  });
+}
+
 async function requestAndRecordWeeklyUpdateSubscription(
   source: WeeklyUpdatePromptSource,
 ): Promise<WeeklyUpdateSubscriptionStatus | null> {
   const subscribeResult = await requestSubscribeMessage();
   const result = normalizeAuthorizationResult(subscribeResult[WEEKLY_UPDATE_TEMPLATE_ID]);
-  const status = await recordWeeklyUpdateAuthorization({
-    template_id: WEEKLY_UPDATE_TEMPLATE_ID,
-    result,
-    source,
-  });
+  const status = await recordWeeklyUpdateAuthorizationResult(source, result);
   showResultToast(result, status);
   return status;
+}
+
+async function requestAndRecordWeeklyUpdateSubscriptionFromTap(
+  source: WeeklyUpdatePromptSource,
+): Promise<WeeklyUpdateSubscriptionStatus | null> {
+  try {
+    const subscribeResult = await requestSubscribeMessage();
+    const result = normalizeAuthorizationResult(subscribeResult[WEEKLY_UPDATE_TEMPLATE_ID]);
+    const wasAuthenticated = authService.isAuthenticated();
+
+    if (!wasAuthenticated && result !== "accept") {
+      showResultToast(result, buildLocalSubscriptionStatus(result, source));
+      return null;
+    }
+
+    const status = await requireAuthAndRun(
+      () => recordWeeklyUpdateAuthorizationResult(source, result),
+      WEEKLY_UPDATE_AUTH_OPTIONS,
+    );
+
+    if (!status) {
+      if (result === "accept" && !wasAuthenticated && !authService.isAuthenticated()) {
+        wx.showToast({
+          title: "\u767b\u5f55\u540e\u624d\u80fd\u63a5\u6536\u66f4\u65b0\u63d0\u9192",
+          icon: "none",
+        });
+      }
+      return null;
+    }
+
+    showResultToast(result, status);
+    return status;
+  } catch (error) {
+    weeklyUpdateLogger.warn("subscribe_request_failed", {
+      source,
+      error,
+      direct: true,
+    });
+    wx.showToast({
+      title: getErrorMessage(error, "\u8ba2\u9605\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"),
+      icon: "none",
+    });
+    return null;
+  }
 }
 
 export async function promptWeeklyUpdateSubscription(
@@ -183,12 +261,17 @@ export async function promptWeeklyUpdateSubscription(
 ): Promise<WeeklyUpdateSubscriptionStatus | null> {
   const source = options.source;
   const force = Boolean(options.force);
+  const confirmBeforeRequest = options.confirmBeforeRequest !== false;
 
   if (!force && shouldSkipAutoPrompt(source)) {
     return null;
   }
 
   markPromptShown(source);
+
+  if (!confirmBeforeRequest) {
+    return await requestAndRecordWeeklyUpdateSubscriptionFromTap(source);
+  }
 
   const status = await requireAuthAndRun(
     async () => {

@@ -412,6 +412,7 @@ Page({
     pdfEntitlementHint: PDF_COPY.lockedHint as string,
     pdfEntitlementActionText: PDF_COPY.lockedAction as string,
     pdfEntitlementActionBusy: false,
+    weeklySubscribeActionBusy: false,
     authStatusToastVisible: false,
     authStatusToastType: "idle" as AuthStatusToastType,
     authStatusToastTitle: "",
@@ -613,11 +614,26 @@ Page({
 
   noop() {},
 
-  onWeeklyUpdateSubscribeTap() {
-    void promptWeeklyUpdateSubscription({
-      source: "home_weekly_entry",
-      force: true,
+  async onWeeklyUpdateSubscribeTap() {
+    if (this.data.weeklySubscribeActionBusy) {
+      return;
+    }
+
+    this.setData({
+      weeklySubscribeActionBusy: true,
     });
+
+    try {
+      await promptWeeklyUpdateSubscription({
+        source: "home_weekly_entry",
+        force: true,
+        confirmBeforeRequest: false,
+      });
+    } finally {
+      this.setData({
+        weeklySubscribeActionBusy: false,
+      });
+    }
   },
 
   handleAuthStatusToastRetry() {

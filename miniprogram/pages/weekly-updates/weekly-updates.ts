@@ -173,6 +173,7 @@ Page({
       await promptWeeklyUpdateSubscription({
         source: "weekly_updates_page",
         force: true,
+        confirmBeforeRequest: false,
       });
     } finally {
       this.setData({

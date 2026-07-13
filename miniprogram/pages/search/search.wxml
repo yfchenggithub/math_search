@@ -16,7 +16,12 @@
         <view class="title">{{homeCopy.title}}</view>
         <view class="sub">{{homeCopy.subtitle}}</view>
       </view>
-      <button class="weekly-subscribe-btn" bindtap="onWeeklyUpdateSubscribeTap">
+      <button
+        class="weekly-subscribe-btn"
+        bindtap="onWeeklyUpdateSubscribeTap"
+        loading="{{weeklySubscribeActionBusy}}"
+        disabled="{{weeklySubscribeActionBusy}}"
+      >
         <text class="weekly-subscribe-btn__text">订阅更新</text>
       </button>
     </view>
