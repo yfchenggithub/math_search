@@ -66,10 +66,10 @@ type CorrectionReportAdminData = {
 
 const PAGE_SIZE = 20;
 const STATUS_FILTERS: StatusFilterOption[] = [
-  { value: "all", label: "全部" },
   { value: "pending", label: "待处理" },
   { value: "fixed", label: "已修复" },
   { value: "ignored", label: "已忽略" },
+  { value: "all", label: "全部" },
 ];
 
 const adminLogger = createLogger("correction-report-admin");
