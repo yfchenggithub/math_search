@@ -177,7 +177,7 @@ function buildCountText(total: number, currentCount: number): string {
 Page<CorrectionReportAdminData, WechatMiniprogram.IAnyObject>({
   data: {
     filters: STATUS_FILTERS,
-    activeStatus: "all",
+    activeStatus: "pending",
     items: [],
     total: 0,
     page: 1,
