@@ -120,12 +120,23 @@ function requestSubscribeMessage(): Promise<SubscribeMessageResult> {
       return;
     }
 
+    weeklyUpdateLogger.info("subscribe_message_request_start", {
+      templateId: WEEKLY_UPDATE_TEMPLATE_ID,
+    });
     wx.requestSubscribeMessage({
       tmplIds: [WEEKLY_UPDATE_TEMPLATE_ID],
       success: (result) => {
+        weeklyUpdateLogger.info("subscribe_message_request_success", {
+          templateId: WEEKLY_UPDATE_TEMPLATE_ID,
+          result,
+        });
         resolve(result as SubscribeMessageResult);
       },
       fail: (error) => {
+        weeklyUpdateLogger.warn("subscribe_message_request_failed", {
+          templateId: WEEKLY_UPDATE_TEMPLATE_ID,
+          error,
+        });
         reject(error);
       },
     });
@@ -207,7 +218,21 @@ async function requestAndRecordWeeklyUpdateSubscription(
 ): Promise<WeeklyUpdateSubscriptionStatus | null> {
   const subscribeResult = await requestSubscribeMessage();
   const result = normalizeAuthorizationResult(subscribeResult[WEEKLY_UPDATE_TEMPLATE_ID]);
+  weeklyUpdateLogger.info("subscribe_message_result_normalized", {
+    source,
+    templateId: WEEKLY_UPDATE_TEMPLATE_ID,
+    result,
+    rawTemplateResult: subscribeResult[WEEKLY_UPDATE_TEMPLATE_ID],
+  });
   const status = await recordWeeklyUpdateAuthorizationResult(source, result);
+  weeklyUpdateLogger.info("subscribe_authorization_recorded", {
+    source,
+    templateId: status.templateId,
+    result,
+    status: status.status,
+    availableCount: status.availableCount,
+    needsResubscribe: status.needsResubscribe,
+  });
   showResultToast(result, status);
   return status;
 }
@@ -219,6 +244,14 @@ async function requestAndRecordWeeklyUpdateSubscriptionFromTap(
     const subscribeResult = await requestSubscribeMessage();
     const result = normalizeAuthorizationResult(subscribeResult[WEEKLY_UPDATE_TEMPLATE_ID]);
     const wasAuthenticated = authService.isAuthenticated();
+    weeklyUpdateLogger.info("subscribe_message_result_normalized", {
+      source,
+      templateId: WEEKLY_UPDATE_TEMPLATE_ID,
+      result,
+      rawTemplateResult: subscribeResult[WEEKLY_UPDATE_TEMPLATE_ID],
+      wasAuthenticated,
+      direct: true,
+    });
 
     if (!wasAuthenticated && result !== "accept") {
       showResultToast(result, buildLocalSubscriptionStatus(result, source));
@@ -240,6 +273,15 @@ async function requestAndRecordWeeklyUpdateSubscriptionFromTap(
       return null;
     }
 
+    weeklyUpdateLogger.info("subscribe_authorization_recorded", {
+      source,
+      templateId: status.templateId,
+      result,
+      status: status.status,
+      availableCount: status.availableCount,
+      needsResubscribe: status.needsResubscribe,
+      direct: true,
+    });
     showResultToast(result, status);
     return status;
   } catch (error) {
