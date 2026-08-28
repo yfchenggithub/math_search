@@ -56,6 +56,7 @@ const DETAIL_DOCUMENT_CACHE_MAX_STALE_MS = 30 * 24 * 60 * 60 * 1000;
 const DETAIL_DOCUMENT_CACHE_MAX_COUNT = 30;
 const DETAIL_DOCUMENT_CACHE_MAX_BYTES = 3 * 1024 * 1024;
 const DETAIL_DOCUMENT_CACHE_CHUNK_BYTES = 512 * 1024;
+const DETAIL_DOCUMENT_VIEW_MODEL_VERSION = 2;
 
 const READING_ITEM_TITLE_COLOR = "#0f172a";
 const READING_INDEX_MARKER_PATTERN = /[一二三四五六七八九十百千万两\d]+/;
@@ -330,6 +331,7 @@ interface DetailMetadataView {
 }
 
 export interface DetailDocumentView {
+  viewModelVersion: number;
   id: string;
   title: string;
   category: string;
@@ -442,7 +444,8 @@ function looksLikeDetailDocumentView(value: unknown): value is DetailDocumentVie
 
   const candidate = value as Partial<DetailDocumentView>;
   return Boolean(
-    typeof candidate.id === "string"
+    candidate.viewModelVersion === DETAIL_DOCUMENT_VIEW_MODEL_VERSION
+      && typeof candidate.id === "string"
       && candidate.id.trim().length > 0
       && typeof candidate.title === "string"
       && typeof candidate.category === "string"
@@ -1147,10 +1150,30 @@ function upsertPersistedDetailDocument(detail: DetailDocumentView, updatedAt = D
   );
 }
 
+function countTikzImagesInSections(sections: DetailSectionView[]): number {
+  if (!Array.isArray(sections)) {
+    return 0;
+  }
+
+  return sections.reduce(
+    (total, section) => total + (
+      Array.isArray(section.blocks)
+        ? section.blocks.filter((block) => block.kind === "tikz_image").length
+        : 0
+    ),
+    0,
+  );
+}
+
 async function fetchRemoteDetailDocumentById(id: string): Promise<DetailDocumentView> {
   const fetchConclusionDetail = resolveDetailApiFetcher();
   const remoteDetail = await fetchConclusionDetail(id);
-  const detailDocument = buildCanonicalDetailDocument(remoteDetail, id);
+  const detailDocument = adaptCanonicalDetailDocument(remoteDetail, id);
+  detailContentLogger.info("detail_remote_adapted", {
+    id: detailDocument.id,
+    viewModelVersion: detailDocument.viewModelVersion,
+    tikzImageCount: countTikzImagesInSections(detailDocument.sections),
+  });
   upsertPersistedDetailDocument(detailDocument);
   return detailDocument;
 }
@@ -1240,6 +1263,7 @@ export function getDetailDocument(id: string): DetailDocumentView | null {
   const coreFormulaHtml = coreFormula ? renderMath(coreFormula, true).html : "";
 
   return {
+    viewModelVersion: DETAIL_DOCUMENT_VIEW_MODEL_VERSION,
     id: viewModel.id,
     title: getPreferredTitle(rawEntry, id),
     category: getPreferredCategory(rawEntry),
@@ -1313,7 +1337,7 @@ export async function getDetailDocumentById(id: string): Promise<DetailDocumentV
  * 将 canonical v2 详情适配为当前 detail 页面可直接消费的统一模型。
  * 重点是桥接 sections，尽量复用现有渲染与手势能力，不改页面协议。
  */
-function buildCanonicalDetailDocument(
+export function adaptCanonicalDetailDocument(
   detail: CanonicalConclusionDetail,
   fallbackId: string,
 ): DetailDocumentView {
@@ -1332,6 +1356,7 @@ function buildCanonicalDetailDocument(
   const pdfAvailable = normalizeCanonicalPdfAvailable(detail, pdfUrl);
 
   return {
+    viewModelVersion: DETAIL_DOCUMENT_VIEW_MODEL_VERSION,
     id: resolvedId,
     title: normalizeText(detail.meta?.title) || resolvedId,
     category:
