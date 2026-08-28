@@ -155,6 +155,27 @@ $reading-theorem-desc-color: #334155;
   color: #94a3b8;
 }
 
+.tikz-image-block {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 24rpx 0;
+}
+
+.tikz-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12rpx;
+}
+
+.tikz-image-caption {
+  margin-top: 10rpx;
+  color: #64748b;
+  font-size: 24rpx;
+  line-height: 1.6;
+  text-align: center;
+}
+
 .theorem-card {
   margin-top: 18rpx;
   padding: 24rpx 22rpx;

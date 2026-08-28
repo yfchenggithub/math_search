@@ -90,6 +90,31 @@
           </view>
         </view>
 
+        <view wx:if="{{block.kind === 'tikz_image'}}" class="tikz-image-block">
+          <image
+            wx:if="{{block.imageUrl && !block.imageLoadFailed}}"
+            class="tikz-image"
+            src="{{block.imageUrl}}"
+            mode="widthFix"
+            lazy-load="{{true}}"
+            data-block-index="{{index}}"
+            data-node-path="{{block.__path}}"
+            data-url="{{block.imageUrl}}"
+            binderror="onTikzImageError"
+            bindlongpress="onTikzImageLongPress"
+          />
+
+          <view
+            wx:if="{{!block.imageUrl || block.imageLoadFailed}}"
+            class="math-image-fallback"
+          >
+            <text class="math-image-fallback-title">TikZ 图片暂时无法显示</text>
+            <text wx:if="{{block.alt}}" class="math-image-fallback-alt">{{block.alt}}</text>
+          </view>
+
+          <view wx:if="{{block.caption}}" class="tikz-image-caption">{{block.caption}}</view>
+        </view>
+
         <view wx:if="{{block.kind === 'theorem'}}" class="theorem-card">
           <view
             wx:if="{{block.titleHtml}}"

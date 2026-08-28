@@ -36,6 +36,7 @@ import { getFormulaImageScale } from "../services/settings";
 import type {
   CanonicalMathImageAsset,
   CanonicalMathImageBlock,
+  CanonicalTikzImageBlock,
   CanonicalPrimaryFormula,
   CanonicalConclusionDetail,
   CanonicalDetailBlock,
@@ -125,6 +126,22 @@ export interface MathImageNode {
   imageUrl?: string;
   displayWidth?: number;
   displayWidthRpx?: number;
+  imageLoadFailed?: boolean;
+  __path?: string;
+}
+
+export interface TikzImageNode {
+  type: "tikz_image";
+  src?: string;
+  widthPx?: number;
+  heightPx?: number;
+  displayWidthPx?: number;
+  displayHeightPx?: number;
+  scale?: number;
+  alt?: string;
+  caption?: string;
+  source?: string;
+  imageUrl?: string;
   imageLoadFailed?: boolean;
   __path?: string;
 }
@@ -252,7 +269,7 @@ export interface TheoremDescPartView {
 
 export interface DetailBlockView {
   id: string;
-  kind: "text" | "bullet" | "formula" | "theorem" | "mixed" | "math_image";
+  kind: "text" | "bullet" | "formula" | "theorem" | "mixed" | "math_image" | "tikz_image";
   formulaAlign?: "center" | "left";
   title?: string;
   titleHtml?: string;
@@ -267,7 +284,7 @@ export interface DetailBlockView {
   formulaText?: string;
   formulaHtml?: string;
   formulaImages?: MathImageNode[];
-  type?: "math_image";
+  type?: "math_image" | "tikz_image";
   latex?: string;
   alt?: string;
   asset?: DetailMathImageAsset;
@@ -276,6 +293,14 @@ export interface DetailBlockView {
   displayWidthRpx?: number;
   imageLoadFailed?: boolean;
   __path?: string;
+  src?: string;
+  widthPx?: number;
+  heightPx?: number;
+  displayWidthPx?: number;
+  displayHeightPx?: number;
+  scale?: number;
+  caption?: string;
+  source?: string;
 }
 
 export interface DetailSectionView {
@@ -1293,7 +1318,7 @@ function buildCanonicalDetailDocument(
   fallbackId: string,
 ): DetailDocumentView {
   const resolvedId = normalizeText(detail.id) || fallbackId;
-  const sections = normalizeMathImageBlocksInSections(
+  const sections = normalizeDetailImageBlocksInSections(
     maybeInjectDevMathImageNode(buildCanonicalSections(detail)),
   );
   const summary = getCanonicalSummary(detail, sections);
@@ -1420,6 +1445,14 @@ function buildCanonicalBlock(
     return buildCanonicalMathImageBlock(
       sectionKey,
       block as CanonicalMathImageBlock,
+      blockIndex,
+    );
+  }
+
+  if (blockType === "tikz_image" || blockType === "image_block") {
+    return buildCanonicalTikzImageBlock(
+      sectionKey,
+      block as CanonicalTikzImageBlock,
       blockIndex,
     );
   }
@@ -1702,6 +1735,31 @@ function buildCanonicalMathImageBlock(
   };
 
   return createMathImageBlock(blockId, node);
+}
+
+function buildCanonicalTikzImageBlock(
+  sectionKey: string,
+  block: CanonicalTikzImageBlock,
+  blockIndex: number,
+): DetailBlockView | null {
+  const src = normalizeUnknownText(block.src);
+  if (!src) {
+    return null;
+  }
+
+  const blockId = resolveCanonicalBlockId(sectionKey, block, blockIndex, "tikz-image");
+  return createTikzImageBlock(blockId, {
+    type: "tikz_image",
+    src,
+    widthPx: normalizeUnknownPositiveNumber(block.width_px),
+    heightPx: normalizeUnknownPositiveNumber(block.height_px),
+    displayWidthPx: normalizeUnknownPositiveNumber(block.display_width_px),
+    displayHeightPx: normalizeUnknownPositiveNumber(block.display_height_px),
+    scale: normalizeUnknownPositiveNumber(block.scale),
+    alt: normalizeUnknownText(block.alt),
+    caption: normalizeUnknownText(block.caption),
+    source: normalizeUnknownText(block.source),
+  });
 }
 
 function buildCanonicalTheoremBlocks(
@@ -2146,6 +2204,10 @@ function extractBlockPlainText(block: DetailBlockView): string {
     return normalizeText(block.alt) || normalizeText(block.latex);
   }
 
+  if (block.kind === "tikz_image") {
+    return normalizeText(block.caption) || normalizeText(block.alt);
+  }
+
   return "";
 }
 
@@ -2578,6 +2640,37 @@ function createMathImageBlock(blockId: string, node: MathImageNode): DetailBlock
   };
 }
 
+function createTikzImageBlock(blockId: string, node: TikzImageNode): DetailBlockView {
+  return {
+    id: blockId,
+    kind: "tikz_image",
+    ...node,
+  };
+}
+
+function normalizeTikzImageNode(node: TikzImageNode, nodePath: string): TikzImageNode {
+  const normalized: TikzImageNode = {
+    type: "tikz_image",
+    src: normalizeText(node.src),
+    widthPx: normalizeUnknownPositiveNumber(node.widthPx),
+    heightPx: normalizeUnknownPositiveNumber(node.heightPx),
+    displayWidthPx: normalizeUnknownPositiveNumber(node.displayWidthPx),
+    displayHeightPx: normalizeUnknownPositiveNumber(node.displayHeightPx),
+    scale: normalizeUnknownPositiveNumber(node.scale),
+    alt: normalizeText(node.alt),
+    caption: normalizeText(node.caption),
+    source: normalizeText(node.source),
+    imageUrl: buildAbsoluteApiUrl(normalizeText(node.src)),
+    imageLoadFailed: false,
+  };
+
+  if (nodePath) {
+    normalized.__path = nodePath;
+  }
+
+  return normalized;
+}
+
 function normalizeMathImageNode(node: MathImageNode, nodePath: string): MathImageNode {
   const normalized: MathImageNode = {
     type: "math_image",
@@ -2597,7 +2690,7 @@ function normalizeMathImageNode(node: MathImageNode, nodePath: string): MathImag
   return normalized;
 }
 
-function normalizeMathImageBlocksInSections(sections: DetailSectionView[]): DetailSectionView[] {
+function normalizeDetailImageBlocksInSections(sections: DetailSectionView[]): DetailSectionView[] {
   if (!Array.isArray(sections)) {
     return [];
   }
@@ -2605,6 +2698,29 @@ function normalizeMathImageBlocksInSections(sections: DetailSectionView[]): Deta
   return sections.map((section) => ({
     ...section,
     blocks: section.blocks.map((block, blockIndex) => {
+      if (block.kind === "tikz_image") {
+        const normalizedNode = normalizeTikzImageNode(
+          {
+            type: "tikz_image",
+            src: block.src,
+            widthPx: block.widthPx,
+            heightPx: block.heightPx,
+            displayWidthPx: block.displayWidthPx,
+            displayHeightPx: block.displayHeightPx,
+            scale: block.scale,
+            alt: block.alt,
+            caption: block.caption,
+            source: block.source,
+          },
+          `section.blocks[${blockIndex}]`,
+        );
+
+        return {
+          ...block,
+          ...normalizedNode,
+        };
+      }
+
       if (block.kind === "math_image") {
         const normalizedNode = normalizeMathImageNode(
           {
@@ -2752,7 +2868,12 @@ function getMathImageUrl(node: MathImageNode): string {
   return buildAbsoluteApiUrl(selectedPath);
 }
 
-function getMathImageBaseDisplayWidth(node: Partial<MathImageNode>): number {
+type MathImageDisplaySizeInput = Pick<
+  Partial<MathImageNode>,
+  "asset" | "displayWidth"
+>;
+
+function getMathImageBaseDisplayWidth(node: MathImageDisplaySizeInput): number {
   const asset = node.asset;
   const directWidth = asset?.display_width_px;
 
@@ -2777,7 +2898,7 @@ function getMathImageBaseDisplayWidth(node: Partial<MathImageNode>): number {
   return MATH_IMAGE_DEFAULT_WIDTH_PX;
 }
 
-export function resolveMathImageDisplayWidthRpx(node: Partial<MathImageNode>): number {
+export function resolveMathImageDisplayWidthRpx(node: MathImageDisplaySizeInput): number {
   return getMathImageDisplayWidthRpx(node);
 }
 
@@ -2785,7 +2906,7 @@ function getMathImageDisplayWidth(node: MathImageNode): number {
   return getMathImageBaseDisplayWidth(node);
 }
 
-function getMathImageDisplayWidthRpx(node: Partial<MathImageNode>): number {
+function getMathImageDisplayWidthRpx(node: MathImageDisplaySizeInput): number {
   return Math.max(
     1,
     Math.round(
@@ -2826,7 +2947,7 @@ function getRawDetailEntry(id: string): RawDetailEntry | null {
  */
 function buildDetailViewModel(rawEntry: RawDetailEntry, id: string) {
   const summary = getPreferredSummary(rawEntry);
-  const sections = normalizeMathImageBlocksInSections(
+  const sections = normalizeDetailImageBlocksInSections(
     maybeInjectDevMathImageNode(buildSections(rawEntry, summary)),
   );
   const pdfUrl = getPreferredPdfUrl(id, rawEntry);

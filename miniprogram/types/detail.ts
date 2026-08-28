@@ -70,6 +70,22 @@ export interface CanonicalMathImageBlock {
   [key: string]: unknown;
 }
 
+export interface CanonicalTikzImageBlock {
+  id?: string;
+  type?: "tikz_image" | "image_block";
+  src?: string;
+  width_px?: number;
+  height_px?: number;
+  display_width_px?: number;
+  display_height_px?: number;
+  scale?: number;
+  alt?: string;
+  caption?: string;
+  source?: string;
+  align?: "left" | "center" | "right" | string;
+  [key: string]: unknown;
+}
+
 export interface CanonicalTheoremGroupBlock {
   id?: string;
   type?: "theorem_group";
@@ -81,6 +97,7 @@ export type CanonicalDetailBlock =
   | CanonicalParagraphBlock
   | CanonicalMathBlock
   | CanonicalMathImageBlock
+  | CanonicalTikzImageBlock
   | CanonicalTheoremGroupBlock
   | Record<string, unknown>;
 
