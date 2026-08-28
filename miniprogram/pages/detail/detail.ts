@@ -9,6 +9,11 @@ import { authService } from "../../services/auth/auth-service";
 import type { AuthStatusToastType } from "../../services/auth/auth-types";
 import { prefetchConclusionBundlesByIds } from "../../services/conclusion-prefetch";
 import {
+  fetchAndCacheConclusionCards,
+  getCachedConclusionCard,
+  resolveConclusionCards,
+} from "../../services/conclusion-card-cache";
+import {
   getCachedFavoriteState,
   setCachedFavoriteState,
 } from "../../services/favorite-state-cache";
@@ -375,6 +380,7 @@ Page({
     viewMessage: "",
     loadDurationMs: 0,
     loadDurationLabel: "",
+    updatedAtLabel: "",
     articleScrollTop: 0,
     articleScrollWithAnimation: false,
     transformStyle: "transform: translate3d(0px, 0px, 0) scale(1);",
@@ -531,6 +537,7 @@ Page({
       viewMessage: "正在加载详情...",
       loadDurationMs: 0,
       loadDurationLabel: "",
+      updatedAtLabel: "",
     });
 
     try {
@@ -716,7 +723,7 @@ Page({
       await this.invalidatePdfCacheForDetailRefresh(detailId, detail);
 
       const loadDurationMs = Math.max(0, Date.now() - refreshStartedAt);
-      await this.applyDetailDocument(detail, loadDurationMs);
+      await this.applyDetailDocument(detail, loadDurationMs, true);
       showAuthStatusToast({
         type: "success",
         title: "已经获取到最新",
@@ -753,13 +760,58 @@ Page({
     return `${safeDuration}ms`;
   },
 
-  async applyDetailDocument(detail: DetailDocumentView, loadDurationMs = 0) {
+  formatDetailUpdatedAtLabel(value: unknown): string {
+    const normalized = String(value || "").trim();
+    if (!normalized) {
+      return "";
+    }
+
+    const dateMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
+    if (!dateMatch) {
+      return "";
+    }
+
+    return `最近更新: ${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+  },
+
+  async resolveDetailUpdatedAtLabel(id: string, forceRemote = false): Promise<string> {
+    const normalizedId = String(id || "").trim();
+    if (!normalizedId) {
+      return "";
+    }
+
+    const cachedCard = getCachedConclusionCard(normalizedId);
+
+    try {
+      const result = forceRemote
+        ? await fetchAndCacheConclusionCards([normalizedId])
+        : await resolveConclusionCards([normalizedId]);
+      const card = result.items.find((item) => item.id === normalizedId) || cachedCard;
+      return this.formatDetailUpdatedAtLabel(card?.contentUpdatedAt);
+    } catch (error) {
+      detailPageLogger.warn("detail_updated_at_resolve_failed", {
+        id: normalizedId,
+        forceRemote,
+        error,
+      });
+      return this.formatDetailUpdatedAtLabel(cachedCard?.contentUpdatedAt);
+    }
+  },
+
+  async applyDetailDocument(
+    detail: DetailDocumentView,
+    loadDurationMs = 0,
+    forceUpdatedAtRefresh = false,
+  ) {
     this.resetTransform(false);
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
     this.pendingPdfDownloadAfterUnlock = false;
     this.articleScrollTop = 0;
-    const hydratedDetail = await this.hydrateMathImageCache(detail);
+    const [hydratedDetail, updatedAtLabel] = await Promise.all([
+      this.hydrateMathImageCache(detail),
+      this.resolveDetailUpdatedAtLabel(detail.id, forceUpdatedAtRefresh),
+    ]);
     const detailWithFavoriteState = this.applyFavoriteStateOverride(hydratedDetail);
     const detailTocItems = buildDetailTocItems(detailWithFavoriteState.sections);
     this.persistRecentBrowse(detailWithFavoriteState);
@@ -799,6 +851,7 @@ Page({
         viewMessage: "",
         loadDurationMs: Math.max(0, Math.round(Number(loadDurationMs) || 0)),
         loadDurationLabel: this.formatLoadDurationLabel(loadDurationMs),
+        updatedAtLabel,
         articleScrollTop: 0,
         articleScrollWithAnimation: false,
         transformStyle: this.buildTransformStyle(),
@@ -1312,6 +1365,7 @@ Page({
       viewMessage: message,
       loadDurationMs: 0,
       loadDurationLabel: "",
+      updatedAtLabel: "",
       articleScrollTop: 0,
       articleScrollWithAnimation: false,
       transformStyle: this.buildTransformStyle(),
@@ -1365,6 +1419,7 @@ Page({
       viewMessage: message,
       loadDurationMs: 0,
       loadDurationLabel: "",
+      updatedAtLabel: "",
       articleScrollTop: 0,
       articleScrollWithAnimation: false,
       transformStyle: this.buildTransformStyle(),

@@ -31,6 +31,7 @@
           {{loadDurationLabel}}
         </view>
         <view class="toolbar-chip toolbar-scale">{{scaleLabel}}</view>
+        <text wx:if="{{updatedAtLabel}}" class="toolbar-updated-at">{{updatedAtLabel}}</text>
       </view>
     </view>
 

@@ -85,10 +85,11 @@
   margin-top: 16rpx;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10rpx;
   font-size: 22rpx;
   color: #64748b;
+  white-space: nowrap;
 }
 
 .toolbar-chip {
@@ -108,6 +109,15 @@
   white-space: nowrap;
   font-size: 26rpx;
   letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar-updated-at {
+  flex: 0 0 auto;
+  color: #64748b;
+  font-size: 22rpx;
+  line-height: 52rpx;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
