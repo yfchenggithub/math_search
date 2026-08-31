@@ -232,6 +232,7 @@ export interface HomeRecommendFacadeResponse {
   items: SearchViewItem[];
   source: "remote";
   generatedAt: string;
+  contentUpdatedAt: string;
 }
 
 interface RemoteSearchFacetBucketRaw {
@@ -313,6 +314,8 @@ interface RemoteHomeRecommendDataRaw {
   total?: number;
   generated_at?: string;
   generatedAt?: string;
+  content_updated_at?: string;
+  contentUpdatedAt?: string;
   items?: RemoteSearchItemRaw[];
   list?: RemoteSearchItemRaw[];
 }
@@ -735,6 +738,9 @@ async function homeRecommendRemoteFacade(
     items,
     source: "remote",
     generatedAt: normalizeText(remoteData.generated_at || remoteData.generatedAt),
+    contentUpdatedAt: normalizeText(
+      remoteData.content_updated_at || remoteData.contentUpdatedAt,
+    ),
   };
 }
 

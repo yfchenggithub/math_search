@@ -1372,7 +1372,10 @@ Page({
       );
 
       this.setData({
-        homeCopy: buildHomeCopyWithMeta(response.total, response.generatedAt),
+        homeCopy: buildHomeCopyWithMeta(
+          response.total,
+          response.contentUpdatedAt || response.generatedAt,
+        ),
         homeRecommendSections: recommendState.sections,
         noResultRecommendItems: recommendState.noResultItems,
       });
