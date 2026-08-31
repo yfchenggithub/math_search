@@ -206,6 +206,8 @@ const DETAIL_TOC_SCROLL_CORRECTION_DELAYS_MS = [
   680,
   1000,
 ] as const;
+const DETAIL_TOC_ACTIVE_SYNC_DELAY_MS = 48;
+const DETAIL_TOC_ACTIVE_SCROLL_OFFSET_PX = 48;
 const ENABLE_PDF_ENTITLEMENT_FLOW = FEATURE_FLAGS.ENABLE_PDF_ENTITLEMENT_FLOW;
 const detailPageLogger = createLogger("detail-page");
 const PDF_UNLOCK_COPY = {
@@ -457,6 +459,8 @@ Page({
   routeEntry: "unknown",
   detailViewTracked: false,
   detailTocScrollCorrectionToken: 0,
+  detailTocActiveSyncTimer: 0,
+  detailTocActiveSyncRequestId: 0,
   mathImageCacheDownloadTasks: {} as Record<string, Promise<void>>,
 
   raf(callback: Function) {
@@ -807,6 +811,7 @@ Page({
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
     this.pendingPdfDownloadAfterUnlock = false;
+    this.cancelDetailTocActiveSync();
     this.articleScrollTop = 0;
     const [hydratedDetail, updatedAtLabel] = await Promise.all([
       this.hydrateMathImageCache(detail),
@@ -1604,6 +1609,7 @@ Page({
   onUnload() {
     clearTimeout(this.inertiaId);
     clearTimeout(this.measureTimer);
+    this.cancelDetailTocActiveSync();
     this.clearCopyFeedbackTimer();
     this.clearPdfStatusTimer();
     this.abortPdfDownloadTask();
@@ -3550,6 +3556,105 @@ Page({
     }
 
     this.articleScrollTop = Number(e.detail.scrollTop || 0);
+    this.scheduleDetailTocActiveSync();
+  },
+
+  cancelDetailTocActiveSync() {
+    clearTimeout(this.detailTocActiveSyncTimer);
+    this.detailTocActiveSyncTimer = 0;
+    this.detailTocActiveSyncRequestId += 1;
+  },
+
+  scheduleDetailTocActiveSync() {
+    if (
+      this.data.viewState !== "content"
+      || this.data.zoomActive
+      || this.scale > 1.01
+      || !this.data.detailTocItems.length
+    ) {
+      return;
+    }
+
+    clearTimeout(this.detailTocActiveSyncTimer);
+    const requestId = this.detailTocActiveSyncRequestId + 1;
+    this.detailTocActiveSyncRequestId = requestId;
+    this.detailTocActiveSyncTimer = setTimeout(() => {
+      this.syncDetailTocActiveKey(requestId);
+    }, DETAIL_TOC_ACTIVE_SYNC_DELAY_MS) as unknown as number;
+  },
+
+  syncDetailTocActiveKey(requestId: number) {
+    if (
+      requestId !== this.detailTocActiveSyncRequestId
+      || this.data.viewState !== "content"
+      || this.data.zoomActive
+      || this.scale > 1.01
+    ) {
+      return;
+    }
+
+    const tocItems = this.data.detailTocItems || [];
+    if (tocItems.length === 0) {
+      return;
+    }
+
+    const query = wx.createSelectorQuery().in(this);
+    query.select(".article-scroll").fields({
+      rect: true,
+      scrollOffset: true,
+    });
+    tocItems.forEach((item) => {
+      query.select(`#${item.anchorId}`).boundingClientRect();
+    });
+    query.exec((res) => {
+      if (
+        requestId !== this.detailTocActiveSyncRequestId
+        || this.data.viewState !== "content"
+        || this.data.zoomActive
+        || this.scale > 1.01
+      ) {
+        return;
+      }
+
+      const scrollNode = res[0] as
+        | { top?: number; scrollTop?: number }
+        | null
+        | undefined;
+      if (
+        !scrollNode
+        || !Number.isFinite(scrollNode.top)
+        || !Number.isFinite(scrollNode.scrollTop)
+      ) {
+        return;
+      }
+
+      const scrollTop = Number(scrollNode.scrollTop);
+      const activationScrollTop = scrollTop + DETAIL_TOC_ACTIVE_SCROLL_OFFSET_PX;
+      let activeItem = tocItems[0];
+
+      tocItems.forEach((item, index) => {
+        const anchorRect = res[index + 1] as
+          | { top?: number }
+          | null
+          | undefined;
+        if (!anchorRect || !Number.isFinite(anchorRect.top)) {
+          return;
+        }
+
+        const anchorScrollTop = scrollTop
+          + Number(anchorRect.top)
+          - Number(scrollNode.top);
+        if (anchorScrollTop <= activationScrollTop) {
+          activeItem = item;
+        }
+      });
+
+      if (this.data.activeDetailTocKey !== activeItem.key) {
+        this.setData({
+          activeDetailTocKey: activeItem.key,
+        });
+      }
+    });
   },
 
   onDetailTocItemTap(e: WechatMiniprogram.BaseEvent) {
